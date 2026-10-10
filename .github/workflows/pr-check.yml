@@ -1,0 +1,64 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-rules:
+    name: PR 제목·브랜치 이름 검사
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title and branch name
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          types='feat|fix|docs|style|design|test|refactor|ci|perf|chore|rename|remove'
+          failed=0
+
+          # PR 제목: "type: 메시지" (Squash and merge 시 이 제목이 커밋 제목이 됨)
+          if ! [[ "$TITLE" =~ ^($types):\ .+ ]]; then
+            echo "::error::PR 제목은 'type: 메시지' 형식이어야 합니다. (예: feat: ETF 수집기 추가) 현재: $TITLE"
+            failed=1
+          fi
+
+          # 브랜치: "type/설명-이슈번호" (develop → main 배포 PR은 예외)
+          if [[ "$BRANCH" != "develop" ]] && ! [[ "$BRANCH" =~ ^($types)/[a-z0-9]+(-[a-z0-9]+)*-[0-9]+$ ]]; then
+            echo "::error::브랜치 이름은 'type/설명-이슈번호' 형식이어야 합니다. (예: feat/etf-collector-12) 현재: $BRANCH"
+            failed=1
+          fi
+
+          exit $failed
+
+  web:
+    name: web lint·build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4 # web/package.json의 packageManager 필드에서 버전을 읽음
+        with:
+          package_json_file: web/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Lint Check
+        run: pnpm run lint
+
+      - name: Build test
+        run: pnpm run build
