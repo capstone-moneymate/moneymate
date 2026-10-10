@@ -1,0 +1,36 @@
+# 환경변수 (키는 절대 커밋하지 않음)
+.env
+.env.*
+!.env.example
+
+# Node (web, server)
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (worker, tradingagents)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 로그
+logs/
+*.log
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.idea/
