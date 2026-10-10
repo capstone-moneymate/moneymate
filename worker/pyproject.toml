@@ -1,0 +1,23 @@
+[project]
+name = "moneymate-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+# 공통 의존성 + 모듈별 패키지. 모듈별 패키지는 담당자가 필요할 때 추가한다(변경은 A에게 PR).
+dependencies = [
+  "psycopg[binary]>=3.2",
+  "python-dotenv>=1.0",
+  "pandas>=2.2",
+  "requests>=2.32",
+  "edgartools>=5.61",  # 13F 수집 (A, collectors/filings_13f.py)
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+# 폴더가 여러 개라 패키지 자동 탐색을 끈다 (의존성 설치용 프로젝트)
+[tool.setuptools]
+py-modules = []

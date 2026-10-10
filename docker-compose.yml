@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:16
+    container_name: moneymate-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-moneymate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moneymate}
+      POSTGRES_DB: ${POSTGRES_DB:-moneymate}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 빈 DB가 처음 만들어질 때 001_init.sql 등이 파일명 순서로 자동 실행된다.
+      # 이미 만든 DB에는 다시 실행되지 않는다 -> docs/conventions.md 의 "마이그레이션" 참고
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-moneymate} -d ${POSTGRES_DB:-moneymate}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

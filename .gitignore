@@ -1,36 +1,28 @@
-# 환경변수 (키는 절대 커밋하지 않음)
+# 비밀값
 .env
 .env.*
 !.env.example
 
-# Node (web, server)
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
 node_modules/
 dist/
 build/
-*.tsbuildinfo
 .vite/
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Python (worker, tradingagents)
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# 로그
-logs/
+# 데이터/로그/OS
 *.log
-
-# OS / 에디터
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
+# ETF 반자동 수집 등으로 내려받는 원본 파일
+worker/data_raw/
