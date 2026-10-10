@@ -6,7 +6,7 @@
 ## 먼저 읽을 문서
 - docs/기술확정안.md  기술·데이터·검증·채점 확정 사항
 - docs/서비스흐름.md  화면 흐름
-- docs/분담표.md      A·B·C 담당(최신). 폴더별 담당자 표시가 있다
+- docs/개발분담표.md      A·B·C 담당(최신). 폴더별 담당자 표시가 있다
 - docs/conventions.md 공통 저장 규칙 (티커, 날짜, 수량, 방향 상수). **DB에 쓰거나 읽는 코드는 반드시 따른다**
 
 ## 구조
@@ -18,8 +18,8 @@
 
 ## 작업 규칙
 1. **공통 파일은 A만 수정**: db/migrations, CLAUDE.md, docker-compose.yml, worker/config.py, worker/db.py, server/src/db.ts. 필요하면 A에게 요청하거나 PR.
-2. 각자 브랜치(또는 git worktree)에서 작업하고 PR로 올린다. main에 직접 푸시하지 않는다.
-3. 기능마다 커밋. 커밋 메시지는 `모듈: 한 일` (예: `overlap: 방향 판정 추가`).
+2. 각자 브랜치에서 작업하고 PR로 develop에 올린다. main과 develop에는 직접 push하지 않는다. 브랜치 이름은 `타입/영어제목-이슈번호` (예: `feat/etf-collector-12`)
+3. 기능마다 커밋. 커밋·PR 제목은 `타입: 메시지` (예: `feat: ETF 수집기 추가`). 타입은 feat, fix, docs, style, design, test, refactor, ci, perf, chore, rename, remove 중 하나.
    git commit · git push 는 항상 사람이 직접 한다. Claude는 실행하지 않고, 커밋 메시지 제안과 칠 명령만 알려준다. (.claude/settings.json 에서 차단)
 4. 비밀값(.env, API 키)은 절대 커밋하지 않는다. 새 키 이름은 .env.example 에만 추가.
 5. 스키마를 바꿔야 하면 기존 파일을 고치지 말고 `db/migrations/00N_설명.sql` 을 **새로** 만든다.
