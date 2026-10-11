@@ -2,19 +2,16 @@ from_concept,to_concept,force_dir,note
 inflation,rate_hike,up,물가가 오르면 인상 압력이 커진다
 inflation,rate_cut,down,물가가 오르면 인하하기 어렵다
 rate_hike,bond_yield,up,기준금리가 오르면 시장금리도 따라 오른다
-rate_cut,bond_yield,down,기준금리가 내리면 시장금리도 따라 내린다
-rate_hike,bank_margin,up,대출 금리가 예금 금리보다 빨리 올라 예대마진이 커진다
-rate_cut,bank_margin,down,대출 금리가 먼저 내려 예대마진이 줄어든다
-rate_hold,bank_margin,up,고금리 수준에서 동결하면 높은 예대마진이 유지된다 (검토 필요)
+rate_cut,bond_yield,down,기준금리가 내리면 시장금리(무위험 할인율)도 따라 내린다 (자본시장연구원 KCMI 2018 하반기 94쪽 각주 27)
+rate_hike,bank_margin,up,잔액 기준 예대금리차는 인상기에 평균적으로 확대되며 가계대출에서 더 뚜렷하다 (BOK 이슈노트 2022-39 5쪽)
+rate_cut,bank_margin,down,잔액 기준 예대금리차는 인하기에 평균적으로 축소된다 (BOK 이슈노트 2022-39 5쪽)
 rate_hike,growth_valuation,down,먼 미래 이익을 더 크게 할인해 성장주 가치평가가 낮아진다
-rate_cut,growth_valuation,up,할인율이 낮아져 성장주 가치평가가 높아진다
-rate_hold,growth_valuation,down,고금리 수준에서 동결하면 성장주 부담이 이어진다 (검토 필요)
-bond_yield,growth_valuation,down,시장금리가 오르면 성장주 가치평가가 낮아진다
-rate_cut,ai_investment,up,자금 조달 비용이 낮아져 대규모 설비투자가 쉬워진다 (테마 연결)
+rate_hold,growth_valuation,down,시장이 인하를 기대할 때 동결하면 시장금리가 높게 유지돼 할인율이 올라 성장주가 눌린다. 실적 성장이 강하면 상쇄될 수 있다 (Bernanke & Kuttner 2005)
+bond_yield,growth_valuation,down,시장금리가 오르면 할인율 영향이 큰 성장주가 눌리고 내리면 성장주가 유리하다. 경기 침체로 금리가 내릴 때는 위험 프리미엄이 더 커져 반대로 갈 수 있다 (자본시장연구원 KCMI 2018 하반기 94·99·101쪽 / 2020 24쪽)
+rate_cut,ai_investment,up,자금 조달 비용이 낮아져 대규모 설비투자가 쉬워진다 (테마 연결. 출처 확인 중)
 ai_investment,gpu_demand,up,데이터센터를 늘리면 AI 반도체가 더 필요하다
 gpu_demand,hbm_demand,up,AI 반도체 한 개에 HBM이 여러 개 들어간다
 hbm_demand,memory_price,up,수요가 공급보다 빠르면 메모리 가격이 오른다
-hbm_supply,memory_price,down,공급이 늘면 가격 상승 압력이 줄어든다
-hbm_supply,semi_earnings,up,메모리 업체의 판매량이 늘어난다
+hbm_supply,memory_price,up,HBM 생산이 웨이퍼를 더 쓰면서 범용 D램 생산 여력이 줄어 가격이 오른다. 공급 부족 국면 기준 (TrendForce 2026.5.29·2026.9.29)
 memory_price,semi_earnings,up,메모리 가격이 오르면 메모리 업체 이익이 늘어난다
 gpu_demand,semi_earnings,up,AI 반도체 기업의 매출이 늘어난다
