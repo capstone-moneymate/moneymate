@@ -9,6 +9,7 @@ dependencies = [
   "pandas>=2.2",
   "requests>=2.32",
   "edgartools>=5.61",  # 13F 수집 (A, collectors/filings_13f.py)
+  "pykrx>=1.2.9",  # ETF 구성종목 수집 (B, collectors/etf_holdings.py). KRX 로그인 지원 버전
 ]
 
 [project.optional-dependencies]
