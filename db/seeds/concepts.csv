@@ -1,0 +1,18 @@
+id,name,theme,kind,aliases
+rate_hike,기준금리 인상,금리,event,금리 인상;기준금리 상승;금리 올림
+rate_cut,기준금리 인하,금리,event,금리 인하;기준금리 하락;금리 내림
+rate_hold,기준금리 동결,금리,event,금리 동결;금리 유지
+inflation,물가 상승,금리,indicator,인플레이션;소비자물가 상승;CPI 상승
+bond_yield,국채 금리,금리,indicator,채권 금리;국채 수익률;시장금리
+bank_margin,은행 예대금리차(잔액 기준),금리,outcome,예대마진
+growth_valuation,성장주 가치평가,금리,outcome,기술주 밸류에이션;성장주 주가 매력
+ai_investment,AI 데이터센터 투자,AI·반도체,event,AI 인프라 투자;빅테크 설비투자;AI 투자
+gpu_demand,AI 반도체 수요,AI·반도체,indicator,GPU 수요;AI 칩 수요
+hbm_supply,HBM 공급 확대,AI·반도체,event,HBM 증산;HBM4 공급 확대
+hbm_demand,HBM 수요,AI·반도체,indicator,고대역폭메모리 수요
+memory_price,범용 메모리(D램) 가격,AI·반도체,indicator,D램 가격;범용 D램 가격;메모리 가격
+semi_earnings,반도체 기업 실적,AI·반도체,outcome,반도체 실적;반도체 이익
+volume_spike,거래량 급증,차트 읽기,signal,거래량 증가;거래량 폭증
+rsi_overbought,RSI 과매수,차트 읽기,signal,과매수 구간;RSI 70 이상
+ma_breakout,이동평균선 돌파,차트 읽기,signal,이평선 돌파;골든크로스
+consecutive_rise,연속 상승,차트 읽기,signal,연속 상승 마감;N거래일 연속 상승
