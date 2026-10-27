@@ -59,4 +59,49 @@
 - **자금 유입 보정**: 수량이 1CU 기준임을 확인했으므로 `trend_adj_pct`(중앙값 빼기) 제거를 제안한다. 기술확정안의 "ETF 자금 유입 보정"과 conventions.md P3(방향 판정에 `trend_adj_pct` 사용)도 함께 수정 필요. 단, 운용사가 설정단위를 바꾸면 전 종목이 같은 비율로 변하므로 수집기에서 이 경우 경고를 띄운다
 
 ## C — 뉴스 API 샘플 20건 / Claude 호출 1회 비용
-(C가 작성)
+
+### 네이버 검색 API (뉴스)
+
+확인 방법: `cd worker && python scripts/check_naver_news.py` → 감시 키워드 3개(엔비디아·반도체·기준금리)로 20건, `logs/naver_news_sample.json` 에 저장
+
+- **검색 API가 네이버 개발자센터에서 NAVER API HUB(네이버 클라우드 플랫폼)로 옮겨갔다.** 개발자센터 "사용 API" 목록에 검색이 없다. 개발자센터 키는 못 쓰고, NCP 콘솔 → NAVER API HUB → Application 등록으로 새로 발급한다 ([이관 가이드](https://guide.ncloud-docs.com/docs/apihub-migration))
+  - 주소: `https://naverapihub.apigw.ntruss.com/search/v1/news`
+  - 헤더: `X-NCP-APIGW-API-KEY-ID`(Client ID), `X-NCP-APIGW-API-KEY`(Client Secret). `.env` 키 이름은 `NAVER_CLIENT_ID/SECRET` 그대로
+  - 한도: 기간 한정 무료(유료 전환은 사전 공지), NAVER 검색 묶음 합계 월 775,000건, 키당 50 RPS. 하루 4회 수집이면 충분
+- 막힌 점: **NCP 가입 시 결제 수단 등록이 필수.** 무료 기간에는 한도 초과 시 과금이 아니라 429로 막히지만, 유료 전환 뒤에는 과금될 수 있다
+- 응답 필드: `title`, `originallink`, `link`, `description`, `pubDate`(`Mon, 12 Oct 2026 17:20:00 +0900` 형식). 언론사 이름 필드가 없어 `raw_news.press` 는 `originallink` 도메인(예: `www.aitimes.com`)으로 매핑해야 한다. 제목·요약에 `<b>` 태그와 HTML 엔티티가 섞여 와서 저장 전에 지운다
+- 확인일 2026-10-12, 결과: **성공.** 3개 키워드 × 7건 → 20건, 원문 링크 20건 모두 있음(네이버 뉴스 링크 6건)
+  - 제목 평균 36자(25~45), **요약 평균 123자(116~135), 20건 중 19건이 `...`로 잘림**
+  - 요약은 기사 리드가 아니라 **검색어 주변 문장 발췌**다. 예: "삼성전자, 역대급 실적에도 주가 하락" 기사의 요약이 본론과 무관한 엔비디아 젯슨 실험 문장
+  - **검색어가 지나가듯 나온 기사도 잡힌다.** `반도체`로 LH 집값·한전채·쿠팡 기사가 나옴 → news_select.py에서 관련도 거르기 필요
+  - **같은 기사가 다른 키워드로 중복 수집된다** (한은 총재 국감 기사가 `반도체`·`기준금리` 둘 다) → url UNIQUE로 막히지만 keyword가 하나만 남음
+- (제안) 결론: 제목·요약은 **선별과 유형 분류(Haiku) 재료로는 충분**하지만, 기사 1건의 요약만으로는 **카드뉴스 3장(무슨 일 → 포인트 → 결론) 재료로는 부족**해 보인다.
+- **2026-10-13 약관 확인 결과: 출제 재료로 사용 불가.** NCP 콘솔의 네이버 검색 API 개별 특약(2026-09-07 시행, API HUB 2026-09-20)이 다음을 금지한다. 비상업·교육 목적 예외는 없다
+  - 2.1 네이버 검색결과를 제공하기 위한 목적으로만 이용
+  - 2.2 가공 없이 노출, 출처 표시와 원문 링크 필수
+  - 2.3 데이터(가공·파생물 포함)의 복사·저장·캐싱, 제3자 제공, **AI에 입력하거나 학습·개선·평가·노출에 활용** 금지
+  - 2.4 임시 보관만 허용 (기기 24시간, 서버 이력 조회 목적 최대 21일)
+  - → 뉴스 대신 **1차 자료(공시·기관 발표·가격 데이터)**를 쓰기로 했다. 선별 기준은 기술확정안 "1차 자료 선별"에 따로 정리한다 (별도 PR)
+- **네이버 API는 사용하지 않는다 → 키가 필요 없다.** 약관상 허용되는 용도는 출처·원문 링크를 붙여 가공 없이 보여주는 "관련 기사"뿐인데, 화면 계획에 없는 기능이라 만들지 않는다. C의 NAVER API HUB는 해지하고, `.env.example`의 `NAVER_CLIENT_ID/SECRET`도 지운다(A에게 요청). 확인 스크립트(`check_naver_news.py`)는 이 결정의 근거 기록으로 남긴다
+
+### Anthropic (Claude 호출 1회)
+
+확인 방법: `cd worker && python scripts/check_claude_call.py` → `claude-haiku-5-5` 1회 호출, `resp.usage` 로 비용 계산 후 `llm_cost_log` 에 INSERT (`module='week1_check'`, DB에 못 쓰면 `logs/llm_cost_log.jsonl`)
+
+- Console 월 사용 한도: **$10** (2026-10-12 설정). `.env`·config.py 의 `LLM_MONTHLY_LIMIT_USD=10` 과 같다. 선불 충전 방식이고 자동 충전(Auto-reload)은 껐다 → 충전한 금액 이상은 나가지 않는다
+- 확인일 2026-10-12, 결과: **성공.** 질문 1개(기준금리 동결 → 은행주 영향 한 문장, effort low)
+  - 입력 51 토큰, 출력 104 토큰(생각 토큰 포함) → **$0.000057** (Haiku 5.5: 입력 $0.10 / 출력 $0.50 per 1M)
+  - `llm_cost_log` id 1 로 DB에 기록됨 (`module='week1_check'`, `note` 에 request_id)
+- 참고: 출제(Sonnet 5.5)는 단가가 Haiku의 20배라, 문제 1개당 비용은 3주차에 실제 프롬프트로 다시 잰다
+- 계정: 지금은 C의 Console 계정 하나로 쓰고, A가 4주차 채점에 필요해지면 C의 조직에 초대해 A가 키를 따로 발급한다 (A에게 공유함)
+- **월 한도는 출제(C)와 채점(A)이 함께 쓴다.** Console 월 한도는 조직 전체 합계라, A를 초대하면 $10을 출제·채점이 같이 쓴다. 그래서
+  - `llm_client.py`(3주차)의 한도 확인은 **module 구분 없이 `llm_cost_log`의 이번 달(KST) 전체 합계(A + C)**로 한다. 자기 모듈 것만 더하면 둘이 각자 $10까지 써서 Console 한도에 먼저 막힌다
+  - **채점 호출도 `llm_cost_log`에 기록해야** 합계가 맞는다. 판단 채점은 Spring 서버 → FastAPI 채점 서버(A의 judge.py)에서 Claude를 부르므로, judge.py가 `llm_client.py`를 같이 써서 기록과 한도 확인을 한 곳에서 하자고 제안 (module='judge')
+
+싱크 안건 (C):
+- **C1 (의존성)**: `anthropic` 을 `worker/pyproject.toml` 공통 의존성에 추가 요청 (3주차 llm_client.py 도 씀)
+- **C1-2 (.gitignore)**: #5 에서 `logs/` 가 빠졌다. 확인 스크립트가 기사 샘플·비용 로그를 `logs/` 에 저장하므로 `.gitignore` 에 `logs/` 를 다시 넣어 달라고 요청 (`*.log` 만으로는 `.json`·`.jsonl` 이 안 걸림)
+- ~~C2 (카드뉴스 재료)~~: **결정됨.** 네이버 약관(2.3 AI 입력 금지)으로 뉴스 묶기·원문 읽기 대안이 모두 불가 → 1차 자료로 전환 (위 약관 확인 결과 참고)
+- **C3 (A에게 요청, LLM 비용)**: `.env.example`의 `LLM_MONTHLY_LIMIT_USD` 주석을 "출제·채점(A+C) 이번 달 전체 합계 상한"으로 고치기. 판단 채점(judge.py)도 `llm_cost_log`에 기록하기 (llm_client.py 같이 쓰기 제안)
+- **C4 (A에게 요청, 네이버 키)**: 네이버 API를 쓰지 않으므로 `.env.example`의 `NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET` 삭제
+- **C5 (키 관리 원칙)**: API 키는 팀 채널로 공유하지 않는다. 한 키를 여럿이 쓰면 한 명의 사용량에 모두 막히고, 채팅에 남은 키는 회수가 어렵다. 개발은 각자 키, 운영 키는 서버·워커 한 곳(Secrets Manager)에만 둔다
