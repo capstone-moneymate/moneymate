@@ -94,12 +94,14 @@ const NewsCard = ({ card, order, completed }: NewsCardProps) => {
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-primary text-sm font-bold">{order}</span>
-        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-          {card.theme}
-        </span>
+        {card.theme && (
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+            {card.theme}
+          </span>
+        )}
         <span className="text-xs text-slate-400">{TYPE_LABEL[card.type]}</span>
         <span className="ml-auto flex gap-1">
-          {card.linked13f && (
+          {card.type === 3 && (
             <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
               13F·ETF 연결
             </span>
@@ -118,7 +120,7 @@ const NewsCard = ({ card, order, completed }: NewsCardProps) => {
       </h3>
       <p className="mt-1 line-clamp-2 text-sm text-slate-600">{card.summary}</p>
       <p className="mt-2 text-xs text-slate-400">
-        {card.press} · {formatTime(card.publishedAt)} · {card.stepCount}단계
+        {card.sourceName} · {formatTime(card.sourcePublishedAt)} · {card.stepCount}단계
       </p>
     </Link>
   )
