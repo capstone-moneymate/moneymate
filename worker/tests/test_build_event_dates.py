@@ -1,4 +1,4 @@
-"""build_event_dates.index_events: 앞쪽 기간은 계산에만 쓰고, 고르기는 start 이후에서만 (CodeRabbit 리뷰, PR #22)."""
+"""build_event_dates.index_events: 앞쪽 기간은 계산에만 쓰고, 고르기는 start 이후에서만 (CodeRabbit 리뷰, PR #23)."""
 from datetime import date, timedelta
 
 import pandas as pd

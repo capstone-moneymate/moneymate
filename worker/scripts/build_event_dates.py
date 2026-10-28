@@ -35,7 +35,7 @@ def index_events(df: pd.DataFrame, key: str, start: date) -> list[dict]:
     """수익률·252일 평균 거래량·연속 상승 길이는 앞쪽 기간(lookback)까지 써서 계산하고,
     상위 N개는 start 이후 날짜 중에서만 고른다.
 
-    처음엔 전체에서 고른 뒤 start 이전을 버려서 줄 수가 모자랐다 (CodeRabbit 리뷰, PR #22).
+    처음엔 전체에서 고른 뒤 start 이전을 버려서 줄 수가 모자랐다 (CodeRabbit 리뷰, PR #23).
     """
     df = df.sort_values("market_date").reset_index(drop=True)
     df["ret"] = df["close"].pct_change()
