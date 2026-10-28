@@ -27,7 +27,9 @@ event_date,market,ticker,event_type,concept_id,value,note,source
 2026-04-29,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
 2026-05-21,INDEX,KS11,big_rise,,0.0842,KS11 하루 +8.42%,FinanceDataReader
 2026-05-28,INDEX,KS11,rate_decision,rate_hold,2.5,한국은행 기준금리 결정 2.5% → 2.5%,ECOS 722Y001
+2026-06-02,INDEX,IXIC,consecutive_rise,consecutive_rise,9.0,IXIC 9거래일 연속 상승,FinanceDataReader
 2026-06-05,INDEX,IXIC,big_drop,,-0.0418,IXIC 하루 -4.18%,FinanceDataReader
+2026-06-15,INDEX,IXIC,big_rise,,0.0307,IXIC 하루 +3.07%,FinanceDataReader
 2026-06-17,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
 2026-06-23,INDEX,KS11,big_drop,,-0.0999,KS11 하루 -9.99%,FinanceDataReader
 2026-07-13,INDEX,KS11,big_drop,,-0.0895,KS11 하루 -8.95%,FinanceDataReader

@@ -31,10 +31,19 @@ COLUMNS = ["event_date", "market", "ticker", "event_type", "concept_id", "value"
 N_EXTREME = 4
 
 
-def index_events(df: pd.DataFrame, key: str) -> list[dict]:
+def index_events(df: pd.DataFrame, key: str, start: date) -> list[dict]:
+    """수익률·252일 평균 거래량·연속 상승 길이는 앞쪽 기간(lookback)까지 써서 계산하고,
+    상위 N개는 start 이후 날짜 중에서만 고른다.
+
+    처음엔 전체에서 고른 뒤 start 이전을 버려서 줄 수가 모자랐다 (CodeRabbit 리뷰, PR #22).
+    """
     df = df.sort_values("market_date").reset_index(drop=True)
     df["ret"] = df["close"].pct_change()
     df["abn_vol"] = df["volume"] / df["volume"].shift(1).rolling(252).mean()
+    up = (df["ret"] > 0).astype(int)
+    df["streak"] = up.groupby((up == 0).cumsum()).cumsum()  # 오른 날이 이어진 길이
+    is_end = (df["streak"] > 0) & (df["streak"].shift(-1, fill_value=0) == 0)  # 연속 상승 구간의 마지막 날
+    df = df[df["market_date"] >= start]
     rows = []
 
     def row(r, event_type, concept, value, note):
@@ -50,10 +59,8 @@ def index_events(df: pd.DataFrame, key: str) -> list[dict]:
     for r in vol.nlargest(N_EXTREME, "abn_vol").itertuples():
         row(r, "volume_spike", "volume_spike", r.abn_vol, f"{key} 거래량 252일 평균의 {r.abn_vol:.1f}배")
 
-    # 연속 상승: 오른 날이 이어진 길이. 구간 마지막 날에 길이를 남긴다
-    up = (df["ret"] > 0).astype(int)
-    streak = up.groupby((up == 0).cumsum()).cumsum()
-    ends = df[(streak > 0) & (streak.shift(-1, fill_value=0) == 0)].assign(streak=streak)
+    # 연속 상승: 구간 마지막 날에 길이를 남긴다. 구간이 start 전에 시작했어도 끝난 날이 기간 안이면 넣는다
+    ends = df[is_end[df.index]]
     for r in ends.nlargest(2, "streak").itertuples():
         row(r, "consecutive_rise", "consecutive_rise", r.streak, f"{key} {int(r.streak)}거래일 연속 상승")
     return rows
@@ -87,7 +94,7 @@ def main(argv: list[str]) -> int:
     for key in ("KS11", "IXIC"):
         # 252일 평균을 내려고 시작일보다 400일 앞부터 받는다
         df = fetch_index(key, start - timedelta(days=400), date.today())
-        rows += [r for r in index_events(df, key) if r["event_date"] >= start]
+        rows += index_events(df, key, start)
     rows += rate_events(start)
     rows.sort(key=lambda r: (r["event_date"], r["ticker"], r["event_type"]))
     with open(OUT, "w", encoding="utf-8", newline="") as f:
