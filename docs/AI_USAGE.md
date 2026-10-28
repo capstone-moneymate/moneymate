@@ -15,3 +15,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-10-12 | C | worker/.venv | Python 설치와 가상환경·패키지 설치 안내 요청 | 설치 관리자가 기본으로 최신 버전(3.15)을 깔려고 해서, 그 단계를 건너뛰고 팀 기준인 3.12를 직접 골라 설치 |
 | 2026-10-12 | C | worker/scripts/check_naver_news.py, docs/findings.md | 네이버 뉴스 API 샘플 20건 확인 스크립트 작성·실행, findings 정리 요청 | AI가 안내한 개발자센터 등록 화면의 "사용 API" 목록에 검색이 없는 것을 C가 직접 확인 → 검색 API가 NAVER API HUB(네이버 클라우드)로 이관된 것을 찾아 주소·인증 헤더를 바꾸게 함 |
 | 2026-10-12 | C | worker/scripts/check_claude_call.py, docs/findings.md | Claude 호출 1회 + llm_cost_log 기록 스크립트 작성·실행 요청 | AI가 제안한 키 운영 방식(조직 공유 / 각자 계정) 중, 지금은 C 계정 하나로 쓰고 A는 4주차쯤 조직에 초대해 키를 따로 발급하기로 결정 |
+| 2026-10-28 | C | worker/generate/llm_client.py, worker/tests/test_llm_client.py, docs/modules/llm_client.md | check_claude_call.py의 비용 계산·기록을 이어받아 월 한도 확인·호출·비용 기록 공통 모듈과 pytest(가짜 클라이언트), 모듈 명세 초안 작성 요청 | - |
