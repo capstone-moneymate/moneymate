@@ -1,10 +1,13 @@
 """sources.py 의 변환 함수 (네트워크 없이). DART·ECOS 응답 모양은 각 API 문서의 예시를 따른 가짜 값이다."""
 from datetime import date
 
+import pytest
+
 from collectors.sources import (
     MACRO_CALENDAR,
     bok_rate_change,
     dart_rows_to_sources,
+    ecos_rows,
     fed_rate_change,
     load_macro_calendar,
     macro_sources_on,
@@ -50,6 +53,15 @@ def test_bok_rate_change_hold_and_cut():
     rows[-1]["DATA_VALUE"] = "2.25"
     assert bok_rate_change(rows, date(2026, 10, 22))["decision"] == "cut"
     assert bok_rate_change(rows[:1], date(2026, 10, 20)) is None  # 결정일 전 값이 없음
+
+
+def test_ecos_rows_error_payload():
+    # 실제 ECOS 응답 모양 (2026-10-28): 오류는 RESULT 로 온다
+    assert ecos_rows({"RESULT": {"CODE": "INFO-200", "MESSAGE": "해당하는 데이터가 없습니다."}}) == []
+    with pytest.raises(RuntimeError, match="INFO-100"):
+        ecos_rows({"RESULT": {"CODE": "INFO-100", "MESSAGE": "인증키가 유효하지 않습니다."}})
+    rows = [{"TIME": "20261022", "DATA_VALUE": "3"}]
+    assert ecos_rows({"StatisticSearch": {"list_total_count": 1, "row": rows}}) == rows
 
 
 def test_fed_rate_change_uses_next_day():

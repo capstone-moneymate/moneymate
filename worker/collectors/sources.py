@@ -220,9 +220,21 @@ def fetch_bok_rate(d: date, api_key: str | None = None) -> dict | None:
         raise RuntimeError("ECOS_API_KEY 가 비어 있습니다 (ecos.bok.or.kr 인증키 신청 후 .env 에 넣기)")
     url = ECOS_URL.format(key=api_key, start=(d - timedelta(days=10)).strftime("%Y%m%d"),
                           end=(d + timedelta(days=3)).strftime("%Y%m%d"))
-    res = requests.get(url, timeout=20).json()
-    rows = res.get("StatisticSearch", {}).get("row", [])
-    return bok_rate_change(rows, d)
+    return bok_rate_change(ecos_rows(requests.get(url, timeout=20).json()), d)
+
+
+def ecos_rows(res: dict) -> list[dict]:
+    """ECOS 응답 → 행 목록. 오류는 StatisticSearch 대신 RESULT 로 온다 (2026-10-28 실호출 확인).
+
+    INFO-200(해당 데이터 없음)은 빈 목록, 그 외(INFO-100 인증키 오류, 호출 한도 등)는 예외로 멈춘다.
+    조용히 None 을 돌려주면 한은 결정이 빈 채로 저장되기 때문이다 (DART 의 status 검사와 같은 이유).
+    """
+    if "RESULT" in res:
+        code, msg = res["RESULT"].get("CODE"), res["RESULT"].get("MESSAGE")
+        if code == "INFO-200":
+            return []
+        raise RuntimeError(f"ECOS 오류 {code}: {msg}")
+    return res.get("StatisticSearch", {}).get("row", [])
 
 
 def fetch_macro(d: date) -> list[Source]:
@@ -231,7 +243,8 @@ def fetch_macro(d: date) -> list[Source]:
         if s.category == "bok_rate" and os.getenv("ECOS_API_KEY"):
             s.numbers.update(fetch_bok_rate(d) or {})
         elif s.category == "fomc":
-            # 결정 다음 날 값이 있어야 판정된다. 미국 다음 날 아침(KST) 수집이면 FRED 반영 전일 수 있어 비면 다음 날 다시 채운다
+            # 결정 다음 날 값이 있어야 판정된다. 미국 다음 날 아침(KST) 수집이면 FRED 반영 전일 수 있어 비면
+            # 다음 날 같은 날짜로 다시 수집한다 (save_sources 가 numbers 를 합쳐 갱신. run_daily 에서 전날 거시도 다시 돌릴 것)
             s.numbers.update(fetch_fed_rate(d) or {})
     return out
 
@@ -240,7 +253,13 @@ def fetch_macro(d: date) -> list[Source]:
 # 저장
 # ------------------------------------------------------------------
 def save_sources(conn, sources: list[Source]) -> int:
-    """raw_sources 에 넣는다. 이미 있는 (source_type, source_key) 는 건너뛴다. 새로 넣은 줄 수."""
+    """raw_sources 에 넣는다. 새로 넣거나 numbers 가 바뀐 줄 수를 돌려준다.
+
+    이미 있는 (source_type, source_key) 는 다른 칸은 그대로 두고 numbers 만 합친다 (jsonb ||, 새 값이 우선).
+    FOMC 는 결정 다음 날 아침에 FRED 가 아직 안 바뀌어 금리 값이 비어 저장될 수 있어서,
+    다음 날 같은 발표를 다시 수집하면 rate_before·rate_after·decision 이 채워지게 하려는 것이다.
+    새 값이 이미 다 들어 있으면(@>) 쓰지 않는다.
+    """
     n = 0
     with conn.cursor() as cur:
         for s in sources:
@@ -249,7 +268,9 @@ def save_sources(conn, sources: list[Source]) -> int:
                 INSERT INTO raw_sources (source_type, source_key, category, title, url, issuer_name,
                                          ticker, market, published_date, published_at, numbers)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (source_type, source_key) DO NOTHING
+                ON CONFLICT (source_type, source_key) DO UPDATE
+                    SET numbers = raw_sources.numbers || EXCLUDED.numbers
+                    WHERE NOT raw_sources.numbers @> EXCLUDED.numbers
                 """,
                 (s.source_type, s.source_key, s.category, s.title, s.url, s.issuer_name,
                  s.ticker, s.market, s.published_date, s.published_at, json.dumps(s.numbers)),
@@ -282,7 +303,7 @@ def main(argv: list[str]) -> int:
     from db import get_conn
 
     with get_conn() as conn:
-        print(f"raw_sources 새로 저장 {save_sources(conn, sources)}건")
+        print(f"raw_sources 새로 저장·숫자 갱신 {save_sources(conn, sources)}건")
     return 0
 
 
