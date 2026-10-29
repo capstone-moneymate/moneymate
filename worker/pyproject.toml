@@ -10,6 +10,8 @@ dependencies = [
   "requests>=2.32",
   "edgartools>=5.61",  # 13F 수집 (A, collectors/filings_13f.py)
   "pykrx>=1.2.9",  # ETF 구성종목 수집 (B, collectors/etf_holdings.py). KRX 로그인 지원 버전
+  "finance-datareader>=0.9.90",  # 지수·미국 가격 (C, collectors/prices.py)
+  "yfinance>=0.2.50",  # FDR 실패 시 대체 (C, collectors/prices.py)
 ]
 
 [project.optional-dependencies]

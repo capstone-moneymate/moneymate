@@ -1,0 +1,17 @@
+event_id,market,kind,announce_at,target,title,url,verified
+fomc_2026_01,US,fomc,2026-01-28T14:00:00-05:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_03,US,fomc,2026-03-18T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_04,US,fomc,2026-04-29T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_06,US,fomc,2026-06-17T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_07,US,fomc,2026-07-29T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_09,US,fomc,2026-09-16T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_10,US,fomc,2026-10-28T14:00:00-04:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+fomc_2026_12,US,fomc,2026-12-09T14:00:00-05:00,US500,FOMC 정책금리 결정,https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm,Y
+bok_2026_01,KR,bok_rate,2026-01-15T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_02,KR,bok_rate,2026-02-26T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_04,KR,bok_rate,2026-04-10T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_05,KR,bok_rate,2026-05-28T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_07,KR,bok_rate,2026-07-16T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_08,KR,bok_rate,2026-08-27T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_10,KR,bok_rate,2026-10-22T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
+bok_2026_11,KR,bok_rate,2026-11-26T10:00:00+09:00,KS11,한국은행 기준금리 결정,https://www.bok.or.kr,Y
