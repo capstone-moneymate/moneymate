@@ -146,7 +146,10 @@ def main(argv: list[str] | None = None) -> int:
         if not (args.start and args.end):
             print("--from 과 --to 를 함께 주세요.")
             return 1
-        e = effect(g, args.start, args.end, args.change)
+        try:
+            e = effect(g, args.start, args.end, args.change)
+        except ValueError as err:
+            parser.error(str(err))
         print(f"{g.names[e.start]}({'커짐' if args.change == UP else '줄어듦'}) → {g.names[e.end]}: {label[e.direction]}")
         for path, s in e.paths:
             print(f"  {'▲' if s == 1 else '▼'} {format_path(g, path)}")
