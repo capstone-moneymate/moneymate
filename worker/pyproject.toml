@@ -8,6 +8,7 @@ dependencies = [
   "python-dotenv>=1.0",
   "pandas>=2.2",
   "requests>=2.32",
+  "anthropic>=2.0",  # Claude 호출 (C llm_client.py, A judge.py 공통)
   "edgartools>=5.61",  # 13F 수집 (A, collectors/filings_13f.py)
   "pykrx>=1.2.9",  # ETF 구성종목 수집 (B, collectors/etf_holdings.py). KRX 로그인 지원 버전
 ]
