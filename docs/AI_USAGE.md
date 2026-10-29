@@ -20,3 +20,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-10-29 | A | worker/collectors/filings_13f.py, compute/holdings_change.py, compute/overlap.py, generate/rule_judge.py, common/quarters.py, config.py, tests, docs/modules | 2·3주차 A 몫(13F 수집, 큰손 변화, 겹침 판정, 규칙 채점) 작성과 손계산 pytest, 실제 13F 호출 확인 요청 | - |
 | 2026-10-29 | A | CLAUDE.md, docs/기술확정안.md, docs/개발분담표.md | 기술확정안 v4(docx) 기준으로 스택(Spring Boot·MyBatis, FastAPI 채점 서버)·출제·검토 에이전트·채점 표·DB 목록 반영 요청 (1차 자료 선별은 develop 유지). 리뷰 코멘트로 루브릭 9점(증거 2·추론 4·반박 3)을 기술확정안·개발분담표에 반영 | - |
 | 2026-10-29 | B | worker/concepts/graph.py, worker/tests/test_graph.py, docs/modules/graph.md | 개념 사전 경로 탐색에 방향 계산(부호 곱)·모호성 탐지·순환 검사를 더해 작성하고 손계산 pytest, 실제 사전 실행 확인 요청 (멘토 제안 추론 엔진의 1단계) | - |
+| 2026-10-29 | B | worker/validate/validators.py, worker/tests/test_validators.py, docs/modules/validators.md | 인과 순서 문제를 개념 사전 경로·방향과 원문 인용에 대조하는 검증기 최소 버전과 정상·불량 샘플 pytest 작성 요청 | - |
