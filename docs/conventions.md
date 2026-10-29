@@ -37,7 +37,7 @@
 | P14 | **13F 같은 CUSIP 합산**: 한 제출 건에 같은 CUSIP이 여러 줄이면(운용 주체 구분 등) P5 필터 후 `shares` 를 합산해 한 줄로 저장한다 | `UNIQUE(filer_cik, period_end, cusip)` 충돌, 수량 누락 방지 |
 | P15 | **ETF 추세 기준일**: `trend_chg_pct` 를 계산할 때 비교한 스냅샷 날짜를 `holdings_etf.trend_base_date` 에 저장한다. 보통 13F 분기 말, 그날 스냅샷이 없으면 수집 시작일 (002) | P7 "날짜를 섞지 않는다"를 데이터로 확인할 수 있게 |
 | P16 | **ETF 구성종목 코드·저장 범위**: pykrx 구성종목 코드는 CUSIP 9자리의 2~7번째 글자다(NVIDIA `67066G104` → `7066G1`). `raw_code`에 받은 그대로 저장하고, `ticker`는 13F `cusip`의 2~7번째 글자와 맞추거나 OpenFIGI로 변환해 채운다(못 찾으면 `NULL`). **주식만 저장**하고 원화현금 `010010`, 설정현금액 `H00000`, 선물은 저장하지 않는다. 1CU 기준 수량이라 **자금 유입 보정(`trend_adj_pct`)은 쓰지 않는다** (003) | findings.md B칸. 6자리가 드물게 다른 회사와 겹칠 수 있어 매칭 결과는 종목명으로 한 번 확인한다. 운용사가 설정 단위를 바꾸면 전 종목이 같은 비율로 변하므로 수집기가 경고한다 |
-| P17 | **판단 단계 "맞음" 기준**: 판단(`judgement`) 채점 `score`(0~100) **60점 이상**이면 `user_concepts`에 맞음으로 기록한다. 기록은 공통 함수 `recordConceptResult(userId, conceptIds, isCorrect)` 하나로 (B 구현, answers.ts·judgement.ts가 부름) | 채점이 두 곳에서 일어나도 기준이 하나가 되게 |
+| P17 | **판단 단계 "맞음" 기준**: 판단(`judgement`) 채점 `score`(0~100) **60점 이상**이면 `user_concepts`에 맞음으로 기록한다. 기록은 서버(Spring Boot)의 공통 메서드 `recordConceptResult(userId, conceptIds, isCorrect)` 하나로 한다 (B 구현). 코드 채점을 하는 답안 API(C)와 판단 채점 API(A)가 이 메서드를 부른다 | 채점이 두 곳에서 일어나도 기준이 하나가 되게 |
 | P18 | **카드 출처**: 카드는 `card_sources`(card_id, source_id, is_main)로 `raw_sources`의 1차 자료 여러 개를 묶는다. 대표 자료(`is_main`)는 카드당 1개. `cards.news_id`는 없앴다 (003) | 같은 사건 자료를 한 카드로 묶되 FK로 무결성 유지 |
 
 ## 3. 컬럼 합의가 필요한 5개 테이블 (분담표 7장)
