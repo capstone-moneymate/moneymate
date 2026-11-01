@@ -102,6 +102,9 @@ def test_good_card_passes(offline, ids):
     (lambda c: c["steps"][2]["causal"].update(evidence_quote="금리를 내렸다"), "원문에 없음"),
     (lambda c: c["steps"][2].update(concept_ids=["growth_valuation", "rate_hold"]), "정답 순서 그대로"),
     (lambda c: c["steps"][3]["chart_check"].update(value="2.5"), "코드가 계산한 값은 3.0"),
+    # chart_check 는 맞는데 answer_index 가 다른 보기를 가리킴 (리뷰 #45)
+    (lambda c: c["steps"][3].update(answer_index=1), "정답 보기(1번 '2배')에 코드가 확인한 값 3.0 이 없어요"),
+    (lambda c: c["steps"][3].update(options=["3배", "3.0배", "1배"], answer_index=0), "보기 여러 개(0, 1번)"),
     (lambda c: c["steps"][3]["chart_check"].update(end_date="2026-09-06"), "확인할 수 없어요"),  # 일요일
     (lambda c: c["steps"][4].update(chain=[]), "chain"),
     (lambda c: c["steps"][0].update(concept_ids=["moon"]), "사전에 없는 개념"),
@@ -256,3 +259,27 @@ def test_shape_errors(offline, ids, break_it, expect):
     break_it(card)
     errors = cp.validate_card(card, 2, ids, CTX)
     assert any(expect in e for e in errors), errors
+
+
+# --- 정답 보기에 확인한 값이 있는지 (표기가 달라도 숫자로 비교) ---
+
+@pytest.mark.parametrize("option, metric, expected, ok", [
+    ("3배", "volume_ratio", 3.0, True),
+    ("평균의 3.0배", "volume_ratio", 3.0, True),
+    ("약 3배", "volume_ratio", 3.04, True),        # 정수 표기는 ±0.5 안이면 같은 값
+    ("2배", "volume_ratio", 3.0, False),
+    ("약 -16.48%", "return_pct", -16.48, True),
+    ("약 +16.48%", "return_pct", -16.48, False),   # 부호가 다르면 다른 값
+    ("약 -16.5%", "return_pct", -16.48, True),     # 소수 한 자리 표기 ±0.05
+    ("약 -16.4%", "return_pct", -16.48, False),
+    ("RSI 1,234.5", "rsi", 1234.5, True),
+    ("2026-10-30", "top_volume_date", "2026-10-30", True),
+    ("10월 30일", "top_volume_date", "2026-10-30", True),
+    ("10/30(목)", "top_volume_date", "2026-10-30", True),
+    ("2025-10-30", "top_volume_date", "2026-10-30", False),  # 연도가 적혀 있으면 연도도 본다
+    ("10월 29일", "top_volume_date", "2026-10-30", False),
+    ("2026-10-30 기준 -10%", "return_pct", -10.0, True),      # 날짜 속 '-10' 은 숫자로 읽지 않는다
+    ("2026-10-30", "return_pct", -10.0, False),
+])
+def test_option_matches(option, metric, expected, ok):
+    assert cp.option_matches(option, metric, expected) is ok

@@ -285,6 +285,55 @@ def shape_errors(value, schema: dict, path: str = "card") -> list[str]:
     return errors
 
 
+# 연도가 있으면 -./ 모두, 연도가 없으면 '/' 와 'M월 D일'만 날짜로 본다 ('3.0', '16.48' 은 숫자)
+_DATE = re.compile(r"(\d{4})[-./](\d{1,2})[-./](\d{1,2})|(\d{1,2})/(\d{1,2})|(\d{1,2})\s*월\s*(\d{1,2})\s*일")
+_NUM = re.compile(r"[+\-−]?\d+(?:,\d{3})*(?:\.\d+)?")
+
+
+def _dates_in(text: str) -> list[tuple[int | None, int, int]]:
+    """보기 문장 속 날짜 (연, 월, 일). '2026-10-30', '10/30', '10월 30일' 모두 읽는다."""
+    out = []
+    for m in _DATE.finditer(text):
+        if m.group(1):
+            out.append((int(m.group(1)), int(m.group(2)), int(m.group(3))))
+        elif m.group(4):
+            out.append((None, int(m.group(4)), int(m.group(5))))
+        else:
+            out.append((None, int(m.group(6)), int(m.group(7))))
+    return out
+
+
+def _numbers_in(text: str) -> list[tuple[float, float]]:
+    """보기 문장 속 숫자와 그 표기의 허용 오차. '약 +16.5%'는 소수 한 자리라 ±0.05, '3배'는 ±0.5.
+    날짜 안의 숫자(2026-10-30 의 -10 등)는 빼고 읽는다."""
+    text = _DATE.sub(" ", text)
+    out = []
+    for raw in _NUM.findall(text):
+        s = raw.replace(",", "").replace("−", "-")
+        decimals = len(s.split(".")[1]) if "." in s else 0
+        out.append((float(s), max(tools.TOLERANCE, 0.5 * 10 ** -decimals)))
+    return out
+
+
+def option_matches(option: str, metric: str, expected) -> bool:
+    """보기 문장에 코드가 계산한 값이 들어 있는가. 표기('3'/'3.0'/'3배', '10월 30일')가 달라도 숫자로 비교한다."""
+    if metric == "top_volume_date":
+        y, m, d = map(int, str(expected).split("-"))
+        return any((oy is None or oy == y) and (om, od) == (m, d) for oy, om, od in _dates_in(option))
+    return any(abs(v - float(expected)) <= tol for v, tol in _numbers_in(option))
+
+
+def option_errors(options: list[str], answer_index: int, metric: str, expected) -> list[str]:
+    """정답 보기에 확인한 값이 있고, 다른 보기에는 없어야 한다 (정답이 하나로 읽히게)."""
+    hits = [i for i, o in enumerate(options) if option_matches(o, metric, expected)]
+    if answer_index not in hits:
+        return [f"정답 보기({answer_index}번 '{options[answer_index]}')에 코드가 확인한 값 {expected} 이 없어요. "
+                "answer_index 나 보기 문장을 고치세요"]
+    if len(hits) > 1:
+        return [f"확인한 값 {expected} 이 보기 여러 개({', '.join(map(str, hits))}번)에 들어 있어 정답이 하나로 읽히지 않아요"]
+    return []
+
+
 def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.ToolContext) -> list[str]:
     errors = shape_errors(card, card_schema())
     if errors:
@@ -328,6 +377,9 @@ def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.
                 out = tools.validate_chart_answer(ticker=s["ticker"], **s["chart_check"])
                 if not out["passed"]:
                     errors.append(f"{where}: {out['error']}")
+                elif 0 <= s["answer_index"] < len(s["options"]):
+                    errors += [f"{where}: {e}" for e in option_errors(s["options"], s["answer_index"],
+                                                                       out["metric"], out["expected"])]
             except tools.ToolError as e:
                 errors.append(f"{where}: 차트 정답을 확인할 수 없어요 ({e})")
             except psycopg.Error:
