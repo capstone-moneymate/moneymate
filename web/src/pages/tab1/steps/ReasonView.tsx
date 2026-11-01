@@ -1,35 +1,32 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
-import type { AnswerResult, JudgementStep, OpenEndedStep } from '@/types/card'
+import type { AnswerResult, JudgementStep } from '@/types/card'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 /** 근거 최소 글자 수. 근거 작성은 필수 (기술확정안 루브릭) */
 const MIN_REASON = 20
 
 interface ReasonViewProps {
-  step: JudgementStep | OpenEndedStep
+  step: JudgementStep
   onNext: (result: AnswerResult) => void
 }
 
-/** 판단해보기(선택 + 근거)와 주관식(근거만). 선택은 채점하지 않고 근거만 루브릭으로 채점한다 */
+/** 판단해보기(선택 + 근거). 선택은 채점하지 않고 근거만 루브릭으로 채점한다 */
 export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
   const [choice, setChoice] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const submit = useSubmitAnswer()
-  const needsChoice = step.kind === 'judgement'
-  const ready = (!needsChoice || choice !== null) && reason.trim().length >= MIN_REASON
+  const ready = choice !== null && reason.trim().length >= MIN_REASON
 
   const send = () => {
-    const answer =
-      step.kind === 'judgement'
-        ? { kind: 'judgement' as const, choiceIndex: choice ?? 0, reason: reason.trim() }
-        : { kind: 'open_ended' as const, reason: reason.trim() }
+    if (choice === null) return
+    const answer = { kind: 'judgement' as const, choiceIndex: choice, reason: reason.trim() }
     submit.mutate({ stepId: step.id, answer }, { onSuccess: onNext })
   }
 
   return (
     <StepFrame
-      label={needsChoice ? '판단해보기' : '주관식'}
+      label="판단해보기"
       heading={step.question}
       buttonLabel={submit.isPending ? '채점 중…' : '제출하기'}
       buttonDisabled={!ready || submit.isPending}
@@ -37,7 +34,7 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
     >
       <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{step.context}</p>
 
-      {step.kind === 'judgement' && (
+      {step.choices.length > 0 && (
         <ul className="mt-4 flex flex-col gap-2">
           {step.choices.map((c, i) => (
             <li key={c}>

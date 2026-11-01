@@ -16,7 +16,7 @@ export const useCard = (cardId: string) => {
 /**
  * 답안 제출. 서버가 생기면
  * - 퀴즈·인과 순서·차트: apiClient.post('/api/answers', …) (C, 코드 채점)
- * - 판단해보기·주관식: apiClient.post('/api/judgement', …) (A, 루브릭 채점)
+ * - 판단해보기: apiClient.post('/api/judgement', …) (A, 루브릭 채점)
  * 으로 바꾼다. 지금은 목 정답과 목 채점으로 돌려준다.
  */
 const submitAnswer = async ({
@@ -26,7 +26,7 @@ const submitAnswer = async ({
   stepId: string
   answer: AnswerInput
 }): Promise<AnswerResult> => {
-  if (answer.kind === 'judgement' || answer.kind === 'open_ended') {
+  if (answer.kind === 'judgement') {
     return { stepId, isCorrect: null, grade: mockRubricGrade(answer.reason) }
   }
   const key = answerMocks[stepId]
@@ -44,14 +44,15 @@ export const useSubmitAnswer = () => {
 
 /**
  * 목 루브릭 채점 (화면 확인용). A의 키워드 규칙 채점(rule_judge.py)이 생기기 전까지만 쓴다.
- * 근거에 숫자가 있으면 증거, 연결어 수만큼 추론, 반박어가 있으면 반박 점수를 준다. 7점 → 100점 환산.
+ * 근거에 숫자가 있으면 증거, 연결어 수만큼 추론, 반박어 수만큼 반박 점수를 준다.
+ * 루브릭 9점(증거 0~2 · 추론 0~4 · 반박 0~3) → 100점 환산.
  */
 const mockRubricGrade = (reason: string): RubricGrade => {
   const evidence = Math.min(2, (reason.match(/\d/g) ? 1 : 0) + (reason.length >= 60 ? 1 : 0))
   const links = reason.match(/때문|그래서|따라서|이어|그러면|늘면|오르면|줄면/g)?.length ?? 0
-  const reasoning = Math.min(3, links)
-  const rebuttal = Math.min(2, reason.match(/다만|하지만|반대로|위험|그런데/g)?.length ?? 0)
-  const score = Math.round(((evidence + reasoning + rebuttal) / 7) * 100)
+  const reasoning = Math.min(4, links)
+  const rebuttal = Math.min(3, reason.match(/다만|하지만|반대로|위험|그런데/g)?.length ?? 0)
+  const score = Math.round(((evidence + reasoning + rebuttal) / 9) * 100)
   return {
     score,
     rubric: { evidence, reasoning, rebuttal },

@@ -2,11 +2,11 @@ import type { RubricGrade } from '@/types/card'
 
 const RUBRIC = [
   { key: 'evidence', label: '증거', max: 2 },
-  { key: 'reasoning', label: '추론', max: 3 },
-  { key: 'rebuttal', label: '반박', max: 2 },
+  { key: 'reasoning', label: '추론', max: 4 },
+  { key: 'rebuttal', label: '반박', max: 3 },
 ] as const
 
-/** AI 분석: 루브릭 점수 + 잘한 점 · 더 생각할 점 · 인과 뼈대. 유형 3 단계 화면과 결과 화면이 같이 쓴다 */
+/** AI 분석: 루브릭 점수 + 잘한 점 · 더 생각할 점 · 인과 뼈대. 판단해보기 제출 후 결과 화면에 나온다 */
 export const AiAnalysis = ({ grade }: { grade: RubricGrade }) => {
   return (
     <section className="rounded-2xl bg-slate-50 px-4 py-4">

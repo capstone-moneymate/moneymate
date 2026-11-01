@@ -4,22 +4,20 @@ import { useCard } from '@/api/cards'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, Step } from '@/types/card'
 import { CloseLink } from '@/pages/tab1/CloseLink'
-import { AiAnalysis } from '@/pages/tab1/steps/AiAnalysis'
 import { CausalOrderView } from '@/pages/tab1/steps/CausalOrderView'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
 import { QuizView } from '@/pages/tab1/steps/QuizView'
 import { ReasonView } from '@/pages/tab1/steps/ReasonView'
-import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 /**
  * 단계형 학습. 카드 유형에 따라 단계 구성이 다르다 (서비스흐름 2.2)
- * 유형 1: 개념 → 퀴즈 → 차트 → 판단 / 유형 2: 개념 → 퀴즈 → 인과 순서 → 차트 → 판단 / 유형 3: 개념 → 주관식 → AI 분석
+ * 유형 1: 개념 → 퀴즈 → 차트 → 판단 / 유형 2: 개념 → 퀴즈 → 인과 순서 → 차트 → 판단 / 유형 3: 개념 → 판단
+ * AI 분석은 단계가 아니라 판단해보기 제출 후 결과 화면에 나온다
  */
 export const LearnPage = () => {
   const { cardId = '' } = useParams()
   const navigate = useNavigate()
   const { data: card, isPending, isError } = useCard(cardId)
-  const results = useLearnStore((s) => s.results[cardId])
   const saveResult = useLearnStore((s) => s.saveResult)
   const resetCard = useLearnStore((s) => s.resetCard)
   const [index, setIndex] = useState(0)
@@ -62,7 +60,7 @@ export const LearnPage = () => {
       </div>
       <div className="flex flex-1 flex-col">
         {/* key: 단계가 바뀌면 고른 답·입력을 새로 시작 */}
-        <StepSwitch key={step.id} step={step} steps={card.steps} results={results} onNext={next} />
+        <StepSwitch key={step.id} step={step} onNext={next} />
       </div>
     </div>
   )
@@ -70,12 +68,10 @@ export const LearnPage = () => {
 
 interface StepSwitchProps {
   step: Step
-  steps: Step[]
-  results?: Record<string, AnswerResult>
   onNext: (result?: AnswerResult) => void
 }
 
-const StepSwitch = ({ step, steps, results, onNext }: StepSwitchProps) => {
+const StepSwitch = ({ step, onNext }: StepSwitchProps) => {
   switch (step.kind) {
     case 'concept':
       return <ConceptView step={step} onNext={onNext} />
@@ -85,26 +81,6 @@ const StepSwitch = ({ step, steps, results, onNext }: StepSwitchProps) => {
     case 'causal_order':
       return <CausalOrderView step={step} onNext={onNext} />
     case 'judgement':
-    case 'open_ended':
       return <ReasonView step={step} onNext={onNext} />
-    case 'ai_analysis': {
-      // 바로 앞 주관식의 채점 결과를 보여 준다
-      const prev = steps[steps.indexOf(step) - 1]
-      const grade = prev && results?.[prev.id]?.grade
-      return (
-        <StepFrame
-          label="AI 분석"
-          heading={'내 답을\n이렇게 읽었어요'}
-          buttonLabel="결과 보기 ›"
-          onButton={() => onNext()}
-        >
-          {grade ? (
-            <AiAnalysis grade={grade} />
-          ) : (
-            <p className="text-sm text-slate-500">앞 단계 답안이 없어요.</p>
-          )}
-        </StepFrame>
-      )
-    }
   }
 }

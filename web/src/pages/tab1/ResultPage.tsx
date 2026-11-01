@@ -32,7 +32,6 @@ export const ResultPage = () => {
   const judgement = grade?.score ?? null
   const parts = [concept, judgement].filter((v): v is number => v !== null)
   const total = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : 0
-  const hasAiStep = card.steps.some((s) => s.kind === 'ai_analysis')
 
   return (
     <div className="flex min-h-full flex-col px-5 pt-5 pb-5">
@@ -60,8 +59,8 @@ export const ResultPage = () => {
         </ul>
       </section>
 
-      {/* 유형 3은 AI 분석 단계에서 이미 봤으므로 다시 보여 주지 않는다 */}
-      {grade && !hasAiStep && (
+      {/* AI 분석: 판단해보기 채점 결과 (모든 유형 공통) */}
+      {grade && (
         <div className="mt-5">
           <AiAnalysis grade={grade} />
         </div>

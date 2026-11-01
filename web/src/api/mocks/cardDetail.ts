@@ -127,12 +127,16 @@ export const cardDetailMocks: Record<string, CardDetail> = {
       {
         id: 'hb-2',
         no: 2,
-        kind: 'open_ended',
+        kind: 'judgement',
         conceptIds: ['hbm_supply', 'gpu_demand', 'ai_investment'],
         question: 'KoAct가 엔비디아(NVDA)를 왜 늘렸을까요? 오늘 공시와 이어서 써 보세요.',
         context: 'KoAct 미국나스닥성장기업액티브는 9/30 이후 NVDA 보유 수량을 늘렸어요.',
+        choices: [
+          'AI 칩 수요가 이어진다고 봤을 것 같다',
+          '공시와는 별개의 이유가 더 컸을 것 같다',
+          '아직 판단하기 어렵다',
+        ],
       },
-      { id: 'hb-3', no: 3, kind: 'ai_analysis', conceptIds: [] },
     ],
   },
   'mock-kospi-3up': {

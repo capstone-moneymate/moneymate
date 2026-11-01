@@ -53,7 +53,11 @@ export interface ChartStep extends StepBase {
   options: string[]
 }
 
-/** 판단해보기 (선택은 채점하지 않고 근거만 루브릭 채점, A의 /api/judgement) */
+/**
+ * 판단해보기 (모든 유형 공통, 마지막 단계). 선택 + 근거(필수).
+ * 선택은 채점하지 않고 근거만 루브릭 채점 (A의 /api/judgement).
+ * AI 분석은 단계가 아니라 제출 후 결과 화면에 나온다 (003: steps.kind 5종)
+ */
 export interface JudgementStep extends StepBase {
   kind: 'judgement'
   question: string
@@ -61,26 +65,7 @@ export interface JudgementStep extends StepBase {
   choices: string[]
 }
 
-/** 주관식 (유형 3, 루브릭 채점) */
-export interface OpenEndedStep extends StepBase {
-  kind: 'open_ended'
-  question: string
-  context: string
-}
-
-/** AI 분석 (유형 3). 바로 앞 주관식의 채점 결과를 보여 주는 자리라 내용은 비어 있다 */
-export interface AiAnalysisStep extends StepBase {
-  kind: 'ai_analysis'
-}
-
-export type Step =
-  | ConceptStep
-  | QuizStep
-  | CausalOrderStep
-  | ChartStep
-  | JudgementStep
-  | OpenEndedStep
-  | AiAnalysisStep
+export type Step = ConceptStep | QuizStep | CausalOrderStep | ChartStep | JudgementStep
 
 export interface CardDetail {
   id: string
@@ -101,9 +86,8 @@ export type AnswerInput =
   | { kind: 'quiz' | 'chart'; optionIndex: number }
   | { kind: 'causal_order'; order: string[] }
   | { kind: 'judgement'; choiceIndex: number; reason: string }
-  | { kind: 'open_ended'; reason: string }
 
-/** 루브릭 채점 결과 (증거 2 · 추론 3 · 반박 2 → 100점 환산) ← user_answers.rubric·score·feedback */
+/** 루브릭 채점 결과 (증거 0~2 · 추론 0~4 · 반박 0~3, 9점 → 100점 환산) ← user_answers.rubric·score·feedback */
 export interface RubricGrade {
   score: number
   rubric: { evidence: number; reasoning: number; rebuttal: number }
