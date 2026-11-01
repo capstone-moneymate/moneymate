@@ -1,1 +1,9 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+  --color-primary: #1b64da;
+  /* 늘림·상승 빨강 ▲, 줄임·하락 파랑 ▼ */
+  --color-up: #d6213b;
+  --color-down: #1b64da;
+}
