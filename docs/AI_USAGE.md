@@ -25,3 +25,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-01 | C | worker/generate/classify.py, tests/test_classify.py, docs/modules/classify.md | 3주차 classify(Haiku로 시작 개념 enum 선택, 유형은 코드 판정) 작성과 pytest, 실제 호출 1회 확인 요청 | - |
 | 2026-10-29 | B | worker/concepts/graph.py, worker/tests/test_graph.py, docs/modules/graph.md | 개념 사전 경로 탐색에 방향 계산(부호 곱)·모호성 탐지·순환 검사를 더해 작성하고 손계산 pytest, 실제 사전 실행 확인 요청 (멘토 제안 추론 엔진의 1단계) | - |
 | 2026-10-29 | B | worker/validate/validators.py, worker/tests/test_validators.py, docs/modules/validators.md | 인과 순서 문제를 개념 사전 경로·방향과 원문 인용에 대조하는 검증기 최소 버전과 정상·불량 샘플 pytest 작성 요청 | - |
+| 2026-11-02 | C | worker/generate/classify.py, tests/test_classify.py, docs/modules/classify.md | #41 리뷰 반영 요청 (CodeRabbit: 자료를 JSON 데이터로 분리, B: ETF ticker NULL 제외·비면 경고, 테스트 종목 NVDA로) | - |
