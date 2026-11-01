@@ -25,4 +25,8 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-01 | C | worker/generate/classify.py, tests/test_classify.py, docs/modules/classify.md | 3주차 classify(Haiku로 시작 개념 enum 선택, 유형은 코드 판정) 작성과 pytest, 실제 호출 1회 확인 요청 | - |
 | 2026-10-29 | B | worker/concepts/graph.py, worker/tests/test_graph.py, docs/modules/graph.md | 개념 사전 경로 탐색에 방향 계산(부호 곱)·모호성 탐지·순환 검사를 더해 작성하고 손계산 pytest, 실제 사전 실행 확인 요청 (멘토 제안 추론 엔진의 1단계) | - |
 | 2026-10-29 | B | worker/validate/validators.py, worker/tests/test_validators.py, docs/modules/validators.md | 인과 순서 문제를 개념 사전 경로·방향과 원문 인용에 대조하는 검증기 최소 버전과 정상·불량 샘플 pytest 작성 요청 | - |
+| 2026-11-01 | C | worker/generate/tools.py, tests/test_tools.py, docs/modules/tools.md | 3주차 출제 에이전트 도구(RSI·수익률·거래량·개념 경로·이벤트 날짜·인과 순서·차트 정답 검증) 작성과 손계산 pytest, 도구 스키마 실제 호출 확인 요청 | - |
+| 2026-11-01 | C | worker/generate/compose.py, prompts/compose.md, tests/test_compose.py, docs/modules/compose.md | 3주차 출제 에이전트(tool use 루프·코드 검증·수정 3회·pending 저장·카드별 비용) 작성과 pytest, 실제 유형 3 출제 1회·비용 측정 요청 | - |
 | 2026-11-02 | C | worker/generate/classify.py, tests/test_classify.py, docs/modules/classify.md | #41 리뷰 반영 요청 (CodeRabbit: 자료를 JSON 데이터로 분리, B: ETF ticker NULL 제외·비면 경고, 테스트 종목 NVDA로) | - |
+| 2026-11-02 | C | worker/generate/compose.py, tests/test_compose.py, docs/modules/compose.md | #45 리뷰 반영 요청 (차트 정답 보기 문장에 확인한 값이 있는지·다른 보기와 겹치지 않는지 검사, 표기 차이는 숫자로 비교) | - |
+| 2026-11-02 | C | worker/generate/compose.py, tests/test_compose.py, docs/modules/compose.md | #45 리뷰 반영 요청 (judgement chain·counter 도 사전 id 검사, ETF 변화율 소수를 코드가 % 문구·신규 편입으로 바꿔 넘기기) | - |
