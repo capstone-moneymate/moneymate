@@ -10,14 +10,14 @@
 - docs/conventions.md 공통 저장 규칙 (티커, 날짜, 수량, 방향 상수). **DB에 쓰거나 읽는 코드는 반드시 따른다**
 
 ## 구조
-- worker/  Python 3.12. 수집(collectors) → 계산(compute) → 출제·채점(generate) → 검증(validate). DB에 쓴다
-- server/  Node.js + Express + pg. **DB 읽기 중심**. LLM 호출은 판단 채점·주관식 피드백뿐
+- worker/  Python 3.12. 수집(collectors) → 계산(compute) → 출제 에이전트·채점(generate) → 검증(validate). DB에 쓴다. 판단 채점은 FastAPI 채점 서버(judge_api.py)로 띄운다
+- server/  Java + Spring Boot + MyBatis. **DB 읽기 중심**. 판단 채점·주관식 피드백은 직접 LLM을 부르지 않고 FastAPI 채점 서버에 HTTP로 요청
 - web/     React + TS, 모바일 390×844
 - db/migrations/  스키마 SQL. docker-compose.yml 이 PostgreSQL 16을 띄운다
 - tradingagents/  탭1 해설용 시험 (별도 venv)
 
 ## 작업 규칙
-1. **공통 파일은 A만 수정**: db/migrations, CLAUDE.md, docker-compose.yml, worker/config.py, worker/db.py, server/src/db.ts. 필요하면 A에게 요청하거나 PR.
+1. **공통 파일은 A만 수정**: db/migrations, CLAUDE.md, docker-compose.yml, worker/config.py, worker/db.py, server의 앱 시작·DB·MyBatis 설정. 필요하면 A에게 요청하거나 PR.
 2. 각자 브랜치에서 작업하고 PR로 develop에 올린다. main과 develop에는 직접 push하지 않는다. 브랜치 이름은 `타입/영어제목-이슈번호` (예: `feat/etf-collector-12`)
 3. 기능마다 커밋. 커밋·PR 제목은 `타입: 메시지` (예: `feat: ETF 수집기 추가`). 타입은 feat, fix, docs, style, design, test, refactor, ci, perf, chore, rename, remove 중 하나.
    git commit · git push 는 항상 사람이 직접 한다. Claude는 실행하지 않고, 커밋 메시지 제안과 칠 명령만 알려준다. (.claude/settings.json 에서 차단)
