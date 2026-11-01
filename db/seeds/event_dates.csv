@@ -1,0 +1,42 @@
+event_date,market,ticker,event_type,concept_id,value,note,source
+2024-05-16,INDEX,IXIC,volume_spike,volume_spike,2.3788,IXIC 거래량 252일 평균의 2.4배,FinanceDataReader
+2025-01-07,INDEX,IXIC,volume_spike,volume_spike,2.279,IXIC 거래량 252일 평균의 2.3배,FinanceDataReader
+2025-04-03,INDEX,IXIC,big_drop,,-0.0597,IXIC 하루 -5.97%,FinanceDataReader
+2025-04-04,INDEX,IXIC,big_drop,,-0.0582,IXIC 하루 -5.82%,FinanceDataReader
+2025-04-09,INDEX,IXIC,big_rise,,0.1216,IXIC 하루 +12.16%,FinanceDataReader
+2025-04-09,INDEX,IXIC,volume_spike,volume_spike,2.0585,IXIC 거래량 252일 평균의 2.1배,FinanceDataReader
+2025-04-10,INDEX,IXIC,big_drop,,-0.0431,IXIC 하루 -4.31%,FinanceDataReader
+2025-05-12,INDEX,IXIC,big_rise,,0.0435,IXIC 하루 +4.35%,FinanceDataReader
+2025-06-12,INDEX,IXIC,volume_spike,volume_spike,2.2776,IXIC 거래량 252일 평균의 2.3배,FinanceDataReader
+2025-09-16,INDEX,KS11,consecutive_rise,consecutive_rise,11.0,KS11 11거래일 연속 상승,FinanceDataReader
+2026-01-15,INDEX,KS11,rate_decision,rate_hold,2.5,한국은행 기준금리 결정 2.5% → 2.5%,ECOS 722Y001
+2026-01-19,INDEX,KS11,consecutive_rise,consecutive_rise,12.0,KS11 12거래일 연속 상승,FinanceDataReader
+2026-01-28,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
+2026-02-20,INDEX,KS11,volume_spike,volume_spike,3.7348,KS11 거래량 252일 평균의 3.7배,FinanceDataReader
+2026-02-24,INDEX,KS11,volume_spike,volume_spike,3.3518,KS11 거래량 252일 평균의 3.4배,FinanceDataReader
+2026-02-26,INDEX,KS11,rate_decision,rate_hold,2.5,한국은행 기준금리 결정 2.5% → 2.5%,ECOS 722Y001
+2026-03-04,INDEX,KS11,big_drop,,-0.1206,KS11 하루 -12.06%,FinanceDataReader
+2026-03-04,INDEX,KS11,volume_spike,volume_spike,3.3066,KS11 거래량 252일 평균의 3.3배,FinanceDataReader
+2026-03-05,INDEX,KS11,big_rise,,0.0963,KS11 하루 +9.63%,FinanceDataReader
+2026-03-05,INDEX,KS11,volume_spike,volume_spike,3.3209,KS11 거래량 252일 평균의 3.3배,FinanceDataReader
+2026-03-18,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
+2026-03-31,INDEX,IXIC,big_rise,,0.0383,IXIC 하루 +3.83%,FinanceDataReader
+2026-04-01,INDEX,KS11,big_rise,,0.0844,KS11 하루 +8.44%,FinanceDataReader
+2026-04-10,INDEX,KS11,rate_decision,rate_hold,2.5,한국은행 기준금리 결정 2.5% → 2.5%,ECOS 722Y001
+2026-04-17,INDEX,IXIC,consecutive_rise,consecutive_rise,13.0,IXIC 13거래일 연속 상승,FinanceDataReader
+2026-04-29,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
+2026-05-21,INDEX,KS11,big_rise,,0.0842,KS11 하루 +8.42%,FinanceDataReader
+2026-05-28,INDEX,KS11,rate_decision,rate_hold,2.5,한국은행 기준금리 결정 2.5% → 2.5%,ECOS 722Y001
+2026-06-02,INDEX,IXIC,consecutive_rise,consecutive_rise,9.0,IXIC 9거래일 연속 상승,FinanceDataReader
+2026-06-05,INDEX,IXIC,big_drop,,-0.0418,IXIC 하루 -4.18%,FinanceDataReader
+2026-06-15,INDEX,IXIC,big_rise,,0.0307,IXIC 하루 +3.07%,FinanceDataReader
+2026-06-17,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
+2026-06-23,INDEX,KS11,big_drop,,-0.0999,KS11 하루 -9.99%,FinanceDataReader
+2026-07-13,INDEX,KS11,big_drop,,-0.0895,KS11 하루 -8.95%,FinanceDataReader
+2026-07-16,INDEX,KS11,rate_decision,rate_hike,2.75,한국은행 기준금리 결정 2.5% → 2.75%,ECOS 722Y001
+2026-07-28,INDEX,KS11,big_drop,,-0.1084,KS11 하루 -10.84%,FinanceDataReader
+2026-07-29,INDEX,US500,rate_decision,rate_hold,3.75,FOMC 정책금리 결정 3.75% → 3.75%,FRED DFEDTARU
+2026-07-31,INDEX,KS11,big_rise,,0.1791,KS11 하루 +17.91%,FinanceDataReader
+2026-08-27,INDEX,KS11,rate_decision,rate_hike,3.0,한국은행 기준금리 결정 2.75% → 3.0%,ECOS 722Y001
+2026-09-16,INDEX,US500,rate_decision,rate_hike,4.0,FOMC 정책금리 결정 3.75% → 4.0%,FRED DFEDTARU
+2026-10-22,INDEX,KS11,rate_decision,rate_hold,3.0,한국은행 기준금리 결정 3.0% → 3.0%,ECOS 722Y001
