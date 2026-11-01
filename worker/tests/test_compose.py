@@ -108,6 +108,9 @@ def test_good_card_passes(offline, ids):
     (lambda c: c["steps"][3]["chart_check"].update(end_date="2026-09-06"), "확인할 수 없어요"),  # 일요일
     (lambda c: c["steps"][4].update(chain=[]), "chain"),
     (lambda c: c["steps"][0].update(concept_ids=["moon"]), "사전에 없는 개념"),
+    # judgement 의 chain·counter 도 사전과 대조 (리뷰 #45, A의 채점이 이 id 로 개념 이름을 찾는다)
+    (lambda c: c["steps"][4].update(chain=["rate_hold", "moon"]), "5단계(judgement): 사전에 없는 개념 moon"),
+    (lambda c: c["steps"][4].update(counter=["recession"]), "5단계(judgement): 사전에 없는 개념 recession"),
 ])
 def test_bad_cards_fail(offline, ids, break_it, expect):
     card = good_card(offline)
@@ -283,3 +286,20 @@ def test_shape_errors(offline, ids, break_it, expect):
 ])
 def test_option_matches(option, metric, expected, ok):
     assert cp.option_matches(option, metric, expected) is ok
+
+
+# --- ETF 변화율은 코드가 문구로 바꿔서 넘긴다 (소수 0.053097 = +5.3%, NULL = 신규 편입) ---
+
+@pytest.mark.parametrize("trend, day, base, want_trend, want_day", [
+    (0.053097, -0.012, date(2026, 9, 30), "9/30 대비 +5.3%", "-1.2%"),
+    (0.0, 0.0, date(2026, 9, 30), "9/30 대비 +0.0%", "+0.0%"),
+    (None, None, date(2026, 9, 30), "9/30 이후 신규 편입", "전 거래일에 없던 종목 (신규)"),
+    (None, 0.01, None, "추세 기준일 없음", "+1.0%"),
+])
+def test_etf_row_text(trend, day, base, want_trend, want_day):
+    from decimal import Decimal
+
+    row = cp.etf_row_text("426030", date(2026, 10, 30), Decimal("12345"), trend, day, base)
+    assert row["분기 말 대비 추세"] == want_trend
+    assert row["전 거래일 대비"] == want_day
+    assert row["보유 수량"] == "12,345주" and row["기준일"] == "2026-10-30"

@@ -143,14 +143,39 @@ def build_user(source: dict, cls: ClassifyResult, etf_rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _md(d: date) -> str:
+    return f"{d.month}/{d.day}"
+
+
+def _pct(v) -> str:
+    """소수 변화율 → 화면 문구 (0.053097 → '+5.3%'). LLM 이 ×100 을 하지 않게 코드가 바꾼다."""
+    return f"{float(v) * 100:+.1f}%"
+
+
+def etf_row_text(etf_code: str, snapshot: date, shares, trend, day, base: date | None) -> dict:
+    """holdings_etf 한 행을 에이전트에게 줄 문구로. trend_chg_pct·day_chg_pct 는 소수이고
+    NULL 은 비교 대상이 없다는 뜻 (etf_trend.py: 기준일·전일 스냅샷에 없던 종목 = 신규 편입)."""
+    if trend is not None:
+        trend_text = f"{_md(base)} 대비 {_pct(trend)}" if base else _pct(trend)
+    else:
+        trend_text = f"{_md(base)} 이후 신규 편입" if base else "추세 기준일 없음"
+    return {
+        "etf_code": etf_code,
+        "기준일": str(snapshot),
+        "보유 수량": f"{int(shares):,}주",
+        "분기 말 대비 추세": trend_text,
+        "전 거래일 대비": _pct(day) if day is not None else "전 거래일에 없던 종목 (신규)",
+    }
+
+
 def load_etf_rows(ticker: str | None) -> list[dict]:
-    """그 종목을 담은 ETF 마다 최신 스냅샷의 수량 변화. DB 가 없으면 빈 목록."""
+    """그 종목을 담은 ETF 마다 최신 스냅샷의 수량 변화 (문구로 바꾼 것). DB 가 없으면 빈 목록."""
     if not ticker:
         return []
     try:
         with get_conn() as conn:
             rows = conn.execute(
-                """SELECT h.etf_code, h.snapshot_date, h.shares, h.trend_chg_pct, h.day_chg_pct
+                """SELECT h.etf_code, h.snapshot_date, h.shares, h.trend_chg_pct, h.day_chg_pct, h.trend_base_date
                    FROM holdings_etf h
                    JOIN (SELECT etf_code, max(snapshot_date) AS d FROM holdings_etf GROUP BY etf_code) m
                      ON h.etf_code = m.etf_code AND h.snapshot_date = m.d
@@ -159,8 +184,7 @@ def load_etf_rows(ticker: str | None) -> list[dict]:
             ).fetchall()
     except psycopg.Error:
         return []
-    keys = ("etf_code", "snapshot_date", "shares", "trend_chg_pct", "day_chg_pct")
-    return [dict(zip(keys, r)) for r in rows]
+    return [etf_row_text(*r) for r in rows]
 
 
 # --- 에이전트 루프 ---
@@ -355,7 +379,9 @@ def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.
 
     for no, s in enumerate(steps, 1):
         where = f"{no}단계({s['kind']})"
-        unknown = sorted(set(s["concept_ids"]) - concept_ids)
+        # judgement 의 chain·counter 도 A의 채점이 개념 이름을 찾는 id 라 같이 본다
+        used = s["concept_ids"] + (s["chain"] + s["counter"] if s["kind"] == "judgement" else [])
+        unknown = sorted(set(used) - concept_ids)
         if unknown:
             errors.append(f"{where}: 사전에 없는 개념 {', '.join(unknown)}")
         if s["kind"] in ("quiz", "chart"):
