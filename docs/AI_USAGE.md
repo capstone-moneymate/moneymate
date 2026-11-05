@@ -30,3 +30,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-02 | C | worker/generate/classify.py, tests/test_classify.py, docs/modules/classify.md | #41 리뷰 반영 요청 (CodeRabbit: 자료를 JSON 데이터로 분리, B: ETF ticker NULL 제외·비면 경고, 테스트 종목 NVDA로) | - |
 | 2026-11-02 | C | worker/generate/compose.py, tests/test_compose.py, docs/modules/compose.md | #45 리뷰 반영 요청 (차트 정답 보기 문장에 확인한 값이 있는지·다른 보기와 겹치지 않는지 검사, 표기 차이는 숫자로 비교) | - |
 | 2026-11-02 | C | worker/generate/compose.py, tests/test_compose.py, docs/modules/compose.md | #45 리뷰 반영 요청 (judgement chain·counter 도 사전 id 검사, ETF 변화율 소수를 코드가 % 문구·신규 편입으로 바꿔 넘기기) | - |
+| 2026-11-05 | A | worker/judge_api.py, tests/test_judge_api.py, Dockerfile, docker-compose.yml, .env.example, pyproject.toml, docs/modules/judge_api.md | #54 FastAPI 채점 서버(POST /judge·GET /health, pydantic 스키마, judge.py 없으면 rule_judge 호출) 작성과 pytest, docker compose 서비스 추가 요청 | - |
