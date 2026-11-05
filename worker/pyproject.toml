@@ -15,6 +15,7 @@ dependencies = [
   "yfinance>=0.2.50",  # FDR 실패 시 대체 (C, collectors/prices.py)
   "fastapi>=0.115",  # 판단 채점 서버 (A, judge_api.py)
   "uvicorn[standard]>=0.30",  # judge_api 실행
+  "rapidfuzz>=3.0",  # 문제 중복 검사 (B, validate/validators.py)
 ]
 
 [project.optional-dependencies]
