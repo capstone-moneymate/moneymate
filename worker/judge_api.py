@@ -15,7 +15,8 @@
 - judge.grade() 가 예외를 올려도 이 서버가 규칙 채점으로 한 번 더 받아서, 채점 요청이 500 으로 끝나지 않게 한다.
 
 이 서버는 DB를 읽지 않는다. 카드의 key_facts 와 개념 id(steps.answer 의 chain·counter)를 이름·별칭으로 풀어서
-보내는 것은 부르는 쪽(Spring)의 몫이다. 하루 호출 제한·같은 답안 해시 재사용·실패 시 고정 문구도 Spring 몫이다.
+보내는 것은 부르는 쪽(Spring /api/judgement, #55 2차)의 몫이다. 하루 호출 제한·같은 답안 해시 재사용·실패 시
+고정 문구도 Spring 몫이다.
 Claude 호출 비용 기록과 월 한도 확인은 judge.py 가 C의 generate/llm_client.py 로 한다 (module='judge').
 """
 import logging
@@ -27,8 +28,11 @@ from pydantic import BaseModel, Field
 from generate import rule_judge
 
 try:
-    from generate import judge as _judge  # 4주차 Claude 채점. 아직 없으면 규칙 채점만 쓴다
-except ImportError:
+    from generate import judge as _judge  # Claude 루브릭 채점 (#55)
+except ModuleNotFoundError as e:
+    # judge.py 파일이 없을 때만 규칙 채점으로 간다. judge.py 안의 import 오류(패키지 누락 등)는 그대로 올려서 드러낸다
+    if e.name != "generate.judge":
+        raise
     _judge = None
 
 log = logging.getLogger("judge_api")
@@ -73,6 +77,8 @@ class JudgeResponse(BaseModel):
     matched_facts: list[str]
     matched_concepts: list[str]
     grader: Literal["claude", "rule"] = Field(description="실제로 점수를 매긴 쪽")
+    reasons: dict[str, str] = Field(default_factory=dict,
+                                    description="Claude 채점 이유 {reasoning, rebuttal}. 규칙 채점이면 빈 객체")
 
 
 class Health(BaseModel):
@@ -122,4 +128,5 @@ def judge(req: JudgeRequest) -> JudgeResponse:
         matched_facts=list(result.matched_facts),
         matched_concepts=list(result.matched_concepts),
         grader=grader,
+        reasons=dict(getattr(result, "reasons", None) or {}),
     )
