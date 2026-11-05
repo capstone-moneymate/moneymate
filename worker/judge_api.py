@@ -70,6 +70,19 @@ class Rubric(BaseModel):
     rebuttal: int = Field(ge=0, le=rule_judge.MAX["rebuttal"])
 
 
+class ChainItem(BaseModel):
+    name: str
+    used: bool = Field(description="사용자 답안에 이 개념이 있었는지 (코드가 판단)")
+
+
+class Feedback(BaseModel):
+    """AI 분석 피드백 (#56). 결과 화면의 잘한 점·더 생각할 점·인과 뼈대."""
+    good: str = Field(description="잘한 점")
+    think_more: str = Field(description="더 생각할 점")
+    chain: list[ChainItem] = Field(description="인과 뼈대: 카드의 chain 개념 순서 (코드)")
+    chain_comment: str = Field(description="인과 뼈대 설명 한 문장")
+
+
 class JudgeResponse(BaseModel):
     rubric: Rubric
     total: int = Field(ge=0, le=rule_judge.TOTAL_MAX)
@@ -79,6 +92,8 @@ class JudgeResponse(BaseModel):
     grader: Literal["claude", "rule"] = Field(description="실제로 점수를 매긴 쪽")
     reasons: dict[str, str] = Field(default_factory=dict,
                                     description="Claude 채점 이유 {reasoning, rebuttal}. 규칙 채점이면 빈 객체")
+    feedback: Feedback | None = Field(default=None,
+                                      description="AI 분석 피드백. Claude 실패 시 고정 문구 + 코드 인과 뼈대")
 
 
 class Health(BaseModel):
@@ -109,15 +124,19 @@ def judge(req: JudgeRequest) -> JudgeResponse:
         "counter": [c.model_dump() for c in req.counter],
     }
     grader = "rule"
+    feedback = None
     if _judge is not None:
         try:
             result = _judge.grade(**args, card_id=req.card_id)
             # judge.py 가 안에서 규칙 채점으로 넘어갔으면 grader="rule" 을 달아 준다
             grader = getattr(result, "grader", "claude")
+            feedback = getattr(result, "feedback", None) or None
         except Exception:  # noqa: BLE001 - 어떤 실패든 규칙 채점으로 받는다
             log.exception("judge.grade 실패, 규칙 채점으로 전환 (card_id=%s)", req.card_id)
             result = _rule_grade(args)
             grader = "rule"
+            make = getattr(_judge, "fallback_feedback", None)
+            feedback = make(args["chain"], result.matched_concepts) if make else None
     else:
         result = _rule_grade(args)
 
@@ -129,4 +148,5 @@ def judge(req: JudgeRequest) -> JudgeResponse:
         matched_concepts=list(result.matched_concepts),
         grader=grader,
         reasons=dict(getattr(result, "reasons", None) or {}),
+        feedback=feedback,
     )
