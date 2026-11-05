@@ -16,7 +16,7 @@
 실패하면 (같은 함수 안에서) rule_judge.grade 로 전환한다:
 API 오류·연결 오류, 월 한도 초과(BudgetExceeded), 응답이 끝나지 않음, JSON 파싱·필드 오류.
 
-이유 문장에 금지 표현(compose.FORBIDDEN, 매수·매도 권유·수익 예측)이 있으면 고정 문구로 바꾼다.
+이유 문장에 금지 표현(B의 validators.find_banned, 목록은 validate/banned_terms.txt)이 있으면 고정 문구로 바꾼다.
 비용은 llm_client 가 llm_cost_log 에 module='judge' 로 남긴다.
 """
 import json
@@ -25,8 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from generate import rule_judge
-from generate.compose import FORBIDDEN
 from generate.llm_client import SONNET, create, text_of
+from validate.validators import find_banned
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def clip(value, key: str) -> int:
 def clean_reason(text: str) -> str:
     """금지 표현이 있으면 고정 문구로 바꾼다."""
     text = (text or "").strip()
-    return FIXED_REASON if FORBIDDEN.search(text) else text
+    return FIXED_REASON if find_banned([text]) else text
 
 
 def output_schema() -> dict:
