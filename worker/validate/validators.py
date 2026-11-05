@@ -24,10 +24,19 @@
 5. 정답 순서: 사전 경로 중 하나와 같은가. 경로가 여러 개면 통과시키되 경고를 붙인다 (원문 설명과 같은 경로인지는 사람이 확인)
 6. 방향: 사전으로 계산한 방향과 같은가
 7. 근거 인용: 원문에 그대로 있는가 (띄어쓰기·줄바꿈 차이는 무시)
+
+카드 전체에 쓰는 검사 (DB 를 읽지 않는 순수 함수. C의 compose 가 검증 단계에서 부른다)
+- find_banned(texts): 매수·매도 권유, 수익 예측 표현. 목록은 banned_terms.txt
+- find_duplicates(new_texts, past_texts): 이미 출제한 문제와 거의 같은 문장. 예전 문제는 C가 steps 에서 읽어 넘긴다
 """
+import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 from concepts.graph import AMBIGUOUS, DOWN, UP, Graph, effect, load_graph
+
+BANNED_PATH = Path(__file__).with_name("banned_terms.txt")
 
 FIELDS = ["start_concept", "change", "end_concept", "answer_order", "direction", "evidence_quote"]
 LABEL = {UP: "상승 압력", DOWN: "하락 압력"}
@@ -96,3 +105,66 @@ def verify(quiz: dict, source_text: str, g: Graph | None = None) -> Report:
     if e.direction != AMBIGUOUS and quiz.get("direction") in (UP, DOWN) and quiz["direction"] != e.direction:
         r.errors.append(f"오르내림 방향이 개념 사전과 다름 (사전: {LABEL[e.direction]}, 퀴즈: {LABEL[quiz['direction']]})")
     return r
+
+
+# ------------------------------------------------------------------
+# 금지 표현 (CLAUDE.md 10번). 목록은 banned_terms.txt
+# ------------------------------------------------------------------
+
+def parse_banned(lines: list[str]) -> list[re.Pattern]:
+    """banned_terms.txt 줄 → 정규식. 빈 줄·# 주석은 건너뛰고, 띄어쓰기는 '있어도 없어도'(\\s*)로 바꾼다."""
+    patterns = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        patterns.append(re.compile(r"\s*".join(line.split())))
+    return patterns
+
+
+@lru_cache(maxsize=1)
+def _banned_patterns() -> tuple[re.Pattern, ...]:
+    return tuple(parse_banned(BANNED_PATH.read_text(encoding="utf-8").splitlines()))
+
+
+def find_banned(texts: list[str], patterns: list[re.Pattern] | None = None) -> list[str]:
+    """문장들에서 걸린 금지 표현을 찾은 순서대로, 겹치지 않게 돌려준다. 없으면 빈 목록.
+
+    출제 에이전트에게 "이 표현을 빼라"로 돌려주거나, 채점 피드백을 고정 문구로 바꿀지 정할 때 쓴다.
+    """
+    found: list[str] = []
+    for text in texts:
+        for p in patterns if patterns is not None else _banned_patterns():
+            for m in p.finditer(text or ""):
+                if m.group() not in found:
+                    found.append(m.group())
+    return found
+
+
+# ------------------------------------------------------------------
+# 중복 (이미 출제한 문제와 거의 같은 문장인가)
+# ------------------------------------------------------------------
+
+DUPLICATE_THRESHOLD = 90
+
+
+def find_duplicates(new_texts: list[str], past_texts: list[str],
+                    threshold: float = DUPLICATE_THRESHOLD) -> list[str]:
+    """새 문제 문장마다 예전 문제 중 가장 비슷한 것과 비교해, threshold 이상이면 오류 문장을 돌려준다.
+
+    유사도는 RapidFuzz ratio(문장 전체를 글자 단위로 비교, 0~100). 대소문자·문장부호는 무시한다.
+    기술확정안의 token_set_ratio 는 짧은 문장이 긴 문장에 포함되기만 해도 100이 나와서 쓰지 않았다.
+    "거의 같은 문장"만 잡는다. 말투만 바꾼 같은 질문(75점 안팎)은 잡지 못하고, 같은 틀에 종목·사건만 바꾼
+    문제(86점 안팎)는 통과시킨다 (측정 예시는 docs/modules/validators.md).
+    """
+    from rapidfuzz import fuzz, process, utils  # 의존성 추가 전에도 다른 검사는 쓸 수 있게 여기서 불러온다
+
+    past = [t for t in past_texts if t and t.strip()]
+    errors = []
+    for text in new_texts:
+        if not text or not text.strip() or not past:
+            continue
+        match, score, _ = process.extractOne(text, past, scorer=fuzz.ratio, processor=utils.default_process)
+        if score >= threshold:
+            errors.append(f'"{text}" 가 예전 문제 "{match}" 와 거의 같아요 (유사도 {score:.0f}). 다른 질문으로 바꿔 주세요')
+    return errors
