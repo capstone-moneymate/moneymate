@@ -12,6 +12,7 @@ import java.util.Map;
  * @param grader  "claude" / "rule". 채점하지 못했으면 null
  * @param reused  같은 단계·같은 답안의 이전 채점 결과를 다시 쓴 경우 true
  * @param message 채점하지 못했을 때 보여 줄 고정 문구. 채점했으면 null
+ * @param feedback AI 분석 피드백 (잘한 점·더 생각할 점·인과 뼈대). 채점하지 못했으면 null (#56)
  */
 public record JudgementResponse(
         Integer score,
@@ -20,5 +21,6 @@ public record JudgementResponse(
         Map<String, String> reasons,
         String grader,
         boolean reused,
-        String message) {
+        String message,
+        JudgementFeedback feedback) {
 }

@@ -10,5 +10,6 @@ public record JudgeApiResponse(
         int total,
         int score,
         String grader,
-        Map<String, String> reasons) {
+        Map<String, String> reasons,
+        JudgementFeedback feedback) {
 }

@@ -21,7 +21,7 @@ public interface JudgementRepository {
     /** users 에 없으면 넣는다 (user_answers 의 외래키). */
     void ensureUser(@Param("userId") String userId);
 
-    /** 답안 1개 저장. 채점하지 못했으면 score·rubric·gradedBy·isCorrect 가 null. */
+    /** 답안 1개 저장. 채점하지 못했으면 score·rubric·gradedBy·isCorrect·feedback 이 null. feedback 은 JSON 문자열. */
     void insertAnswer(@Param("userId") String userId,
                       @Param("cardId") long cardId,
                       @Param("stepId") long stepId,
@@ -31,5 +31,6 @@ public interface JudgementRepository {
                       @Param("isCorrect") Boolean isCorrect,
                       @Param("score") Integer score,
                       @Param("rubric") Rubric rubric,
-                      @Param("gradedBy") String gradedBy);
+                      @Param("gradedBy") String gradedBy,
+                      @Param("feedback") String feedback);
 }

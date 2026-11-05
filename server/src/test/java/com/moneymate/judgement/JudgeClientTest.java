@@ -50,7 +50,10 @@ class JudgeClientTest {
                 .andRespond(withSuccess("""
                         {"rubric":{"evidence":1,"reasoning":3,"rebuttal":0},"total":4,"score":44,
                          "matched_facts":["3% 동결"],"matched_concepts":["기준금리 동결"],
-                         "grader":"claude","reasons":{"reasoning":"이었어요","rebuttal":"없어요"}}""",
+                         "grader":"claude","reasons":{"reasoning":"이었어요","rebuttal":"없어요"},
+                         "feedback":{"good":"잘 이었어요","think_more":"다른 힘도 보세요",
+                                     "chain":[{"name":"기준금리 동결","used":true},{"name":"은행 실적","used":false}],
+                                     "chain_comment":"은행 실적까지 이어 보세요"}}""",
                         MediaType.APPLICATION_JSON));
 
         JudgeApiResponse r = client.judge(request());
@@ -59,6 +62,11 @@ class JudgeClientTest {
         assertThat(r.score()).isEqualTo(44);
         assertThat(r.grader()).isEqualTo("claude");
         assertThat(r.reasons()).containsEntry("rebuttal", "없어요");
+        // snake_case(think_more, chain_comment) 를 camelCase 필드로 받는다
+        assertThat(r.feedback()).isEqualTo(new JudgementFeedback("잘 이었어요", "다른 힘도 보세요",
+                java.util.List.of(new JudgementFeedback.ChainItem("기준금리 동결", true),
+                        new JudgementFeedback.ChainItem("은행 실적", false)),
+                "은행 실적까지 이어 보세요"));
         server.verify();
     }
 

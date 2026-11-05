@@ -49,6 +49,7 @@
             <arg column="reasoning" javaType="_int"/>
             <arg column="rebuttal" javaType="_int"/>
             <arg column="graded_by" javaType="String"/>
+            <arg column="feedback" javaType="String"/>
         </constructor>
     </resultMap>
 
@@ -57,7 +58,8 @@
                (rubric ->> 'evidence')::int  AS evidence,
                (rubric ->> 'reasoning')::int AS reasoning,
                (rubric ->> 'rebuttal')::int  AS rebuttal,
-               graded_by
+               graded_by,
+               feedback
           FROM user_answers
          WHERE step_id = #{stepId}
            AND answer_hash = #{answerHash}
@@ -74,7 +76,7 @@
 
     <insert id="insertAnswer">
         INSERT INTO user_answers
-            (user_id, card_id, step_id, answer, answer_hash, is_correct, score, rubric, graded_by)
+            (user_id, card_id, step_id, answer, answer_hash, is_correct, score, rubric, graded_by, feedback)
         VALUES
             (CAST(#{userId} AS uuid), #{cardId}, #{stepId},
              jsonb_build_object('choice', CAST(#{choice} AS text), 'text', CAST(#{answer} AS text)),
@@ -86,6 +88,6 @@
                  </when>
                  <otherwise>NULL,</otherwise>
              </choose>
-             #{gradedBy})
+             #{gradedBy}, #{feedback})
     </insert>
 </mapper>
