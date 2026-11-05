@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.judgement.JudgementRepository">
+
+    <resultMap id="stepMap" type="com.moneymate.judgement.JudgementStep">
+        <constructor>
+            <arg column="step_id" javaType="_long"/>
+            <arg column="card_id" javaType="_long"/>
+            <arg column="key_facts_json" javaType="String"/>
+            <arg column="chain_json" javaType="String"/>
+            <arg column="counter_json" javaType="String"/>
+            <arg column="concept_ids" javaType="[Ljava.lang.String;"
+                 typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <!-- steps.answer 의 chain·counter 는 개념 id 배열이다. 순서를 지켜 concepts 의 이름·별칭 JSON 으로 바꾼다 -->
+    <select id="findStep" resultMap="stepMap">
+        SELECT s.id      AS step_id,
+               s.card_id AS card_id,
+               COALESCE(c.key_facts, '[]'::jsonb)::text AS key_facts_json,
+               (SELECT COALESCE(json_agg(json_build_object('name', k.name, 'aliases', k.aliases) ORDER BY t.ord), '[]'::json)::text
+                  FROM jsonb_array_elements_text(COALESCE(s.answer -> 'chain', '[]'::jsonb)) WITH ORDINALITY AS t(id, ord)
+                  JOIN concepts k ON k.id = t.id) AS chain_json,
+               (SELECT COALESCE(json_agg(json_build_object('name', k.name, 'aliases', k.aliases) ORDER BY t.ord), '[]'::json)::text
+                  FROM jsonb_array_elements_text(COALESCE(s.answer -> 'counter', '[]'::jsonb)) WITH ORDINALITY AS t(id, ord)
+                  JOIN concepts k ON k.id = t.id) AS counter_json,
+               ARRAY(SELECT jsonb_array_elements_text(COALESCE(s.answer -> 'chain', '[]'::jsonb))) AS concept_ids
+          FROM steps s
+          JOIN cards c ON c.id = s.card_id
+         WHERE s.id = #{stepId}
+           AND s.kind = 'judgement'
+    </select>
+
+    <select id="countJudgementsSince" resultType="int">
+        SELECT count(*)
+          FROM user_answers ua
+          JOIN steps s ON s.id = ua.step_id
+         WHERE ua.user_id = CAST(#{userId} AS uuid)
+           AND s.kind = 'judgement'
+           AND ua.created_at &gt;= #{since}
+    </select>
+
+    <!-- Claude 채점 결과만 재사용한다. 규칙 채점 결과는 Claude 가 실패했을 때 것이라 다음에 다시 채점해 본다 -->
+    <resultMap id="gradeMap" type="com.moneymate.judgement.StoredGrade">
+        <constructor>
+            <arg column="score" javaType="_int"/>
+            <arg column="evidence" javaType="_int"/>
+            <arg column="reasoning" javaType="_int"/>
+            <arg column="rebuttal" javaType="_int"/>
+            <arg column="graded_by" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findReusable" resultMap="gradeMap">
+        SELECT score,
+               (rubric ->> 'evidence')::int  AS evidence,
+               (rubric ->> 'reasoning')::int AS reasoning,
+               (rubric ->> 'rebuttal')::int  AS rebuttal,
+               graded_by
+          FROM user_answers
+         WHERE step_id = #{stepId}
+           AND answer_hash = #{answerHash}
+           AND graded_by = 'llm'
+           AND score IS NOT NULL
+         ORDER BY created_at DESC
+         LIMIT 1
+    </select>
+
+    <insert id="ensureUser">
+        INSERT INTO users (id) VALUES (CAST(#{userId} AS uuid))
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <insert id="insertAnswer">
+        INSERT INTO user_answers
+            (user_id, card_id, step_id, answer, answer_hash, is_correct, score, rubric, graded_by)
+        VALUES
+            (CAST(#{userId} AS uuid), #{cardId}, #{stepId},
+             jsonb_build_object('choice', CAST(#{choice} AS text), 'text', CAST(#{answer} AS text)),
+             #{answerHash}, #{isCorrect}, #{score},
+             <choose>
+                 <when test="rubric != null">
+                     jsonb_build_object('evidence', #{rubric.evidence}, 'reasoning', #{rubric.reasoning},
+                                        'rebuttal', #{rubric.rebuttal}),
+                 </when>
+                 <otherwise>NULL,</otherwise>
+             </choose>
+             #{gradedBy})
+    </insert>
+</mapper>
