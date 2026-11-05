@@ -21,5 +21,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # 판단 채점 서버 (A, worker/judge_api.py). Spring 의 /api/judgement 가 http://localhost:8000/judge 를 부른다
+  judge:
+    build: ./worker
+    container_name: moneymate-judge
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 컨테이너 안에서는 localhost 가 아니라 db 서비스 이름으로 접속한다 (.env 의 DATABASE_URL 보다 우선)
+      DATABASE_URL: postgresql://${POSTGRES_USER:-moneymate}:${POSTGRES_PASSWORD:-moneymate}@db:5432/${POSTGRES_DB:-moneymate}
+      TZ: Asia/Seoul
+    ports:
+      - "${JUDGE_API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:
