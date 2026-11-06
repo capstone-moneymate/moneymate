@@ -4,10 +4,15 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 
+from collectors import etf_holdings
 from collectors.etf_holdings import (
+    HOLDING_COLUMNS,
+    collect_day,
+    fetch_trading_day,
     fill_tickers,
     holdings_from_pykrx,
     latest_trading_day,
+    main,
     same_company,
     unit_change_ratio,
 )
@@ -159,3 +164,62 @@ def test_latest_trading_day_uses_same_calendar_as_backfill(monkeypatch):
     monkeypatch.setattr("collectors.prices.kr_trading_days", fake_days)
     assert latest_trading_day(date(2026, 11, 7)) == date(2026, 11, 6)
     assert calls == [(date(2026, 11, 7), 1)]
+
+
+EMPTY = pd.DataFrame(columns=HOLDING_COLUMNS)
+ONE_ROW = holdings_from_pykrx(pdf([("7066G1", "NVIDIA CORP", 239)]), "426030", date(2026, 11, 6))
+
+
+def test_fetch_trading_day_retries_empty_then_returns_data(monkeypatch):
+    results = [EMPTY, ONE_ROW]
+    sleeps = []
+    monkeypatch.setattr(etf_holdings, "fetch_holdings", lambda code, d: results.pop(0))
+    monkeypatch.setattr(etf_holdings.time, "sleep", sleeps.append)
+    assert len(fetch_trading_day("426030", date(2026, 11, 6))) == 1
+    assert sleeps == [5]
+
+
+def test_collect_day_reports_failure_when_still_empty(monkeypatch, capsys):
+    calls = []
+
+    def always_empty(code, d):
+        calls.append(code)
+        return EMPTY
+
+    monkeypatch.setattr(etf_holdings, "fetch_holdings", always_empty)
+    monkeypatch.setattr(etf_holdings.time, "sleep", lambda s: None)
+    assert collect_day(None, "426030", date(2026, 11, 6)) is None
+    assert len(calls) == 3
+    assert "수집 실패" in capsys.readouterr().out
+
+
+class MainConn:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def commit(self):
+        pass
+
+
+def run_today(monkeypatch, collected):
+    """main today 를 DB·KRX 없이 돌린다. collected: ETF 코드 -> collect_day 결과."""
+    monkeypatch.setenv("KRX_ID", "id")
+    monkeypatch.setenv("KRX_PW", "pw")
+    monkeypatch.setattr("db.get_conn", MainConn)
+    monkeypatch.setattr(etf_holdings, "latest_trading_day", lambda today: date(2026, 11, 6))
+    monkeypatch.setattr(etf_holdings, "collect_day", lambda conn, code, d: collected[code])
+    monkeypatch.setattr(etf_holdings, "fill_tickers", lambda conn: 0)
+    return main(["today"])
+
+
+def test_main_exits_with_failure_but_keeps_other_etf(monkeypatch, capsys):
+    assert run_today(monkeypatch, {"426030": 41, "0015B0": None}) == 1
+    assert "수집 실패 1건: 0015B0 2026-11-06" in capsys.readouterr().out
+
+
+def test_main_exits_ok_when_snapshot_already_saved(monkeypatch):
+    # 다시 돌려 새로 넣은 줄이 0 이어도 받아 온 것이므로 실패가 아니다
+    assert run_today(monkeypatch, {"426030": 0, "0015B0": 52}) == 0
