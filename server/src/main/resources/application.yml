@@ -1,0 +1,30 @@
+# 머니메이트 Spring Boot 설정. 공통 파일: A만 수정한다 (CLAUDE.md 작업 규칙 1).
+# 값은 환경변수로 바꿀 수 있고, 없으면 docker-compose.yml 기본값과 같은 값을 쓴다.
+spring:
+  application:
+    name: moneymate-server
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:moneymate}
+    username: ${POSTGRES_USER:moneymate}
+    password: ${POSTGRES_PASSWORD:moneymate}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+mybatis:
+  # SQL 은 src/main/resources/mapper/<기능>/*.xml 에 둔다
+  mapper-locations: classpath:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+
+moneymate:
+  judge:
+    # FastAPI 채점 서버 (worker/judge_api.py). docker compose 의 judge 서비스
+    url: ${JUDGE_API_URL:http://localhost:8000}
+    # 채점 서버 응답을 기다리는 최대 시간(초). Claude 채점이 길어도 이 안에 끝나야 한다
+    timeout-seconds: ${JUDGE_API_TIMEOUT_SECONDS:30}
+    # 사용자별 하루(KST) 판단 채점 횟수 상한 (기술확정안 "루브릭": 사용자별 하루 호출 제한)
+    daily-limit: ${JUDGEMENT_DAILY_LIMIT:30}
+    # 서비스 전체 하루(KST) 판단 채점 상한. 익명 userId 는 요청마다 바꿔 보낼 수 있어서, 이 상한이
+    # 채점이 월 LLM 한도(출제와 같이 씀)를 다 쓰지 않게 막는다. 실제 1회 비용을 잰 뒤 다시 정한다
+    global-daily-limit: ${JUDGEMENT_GLOBAL_DAILY_LIMIT:50}
