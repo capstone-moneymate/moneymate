@@ -13,6 +13,8 @@ import pandas as pd
 
 
 def _rsi(gain: float, loss: float) -> float:
+    if gain == 0 and loss == 0:  # 가격이 내내 같음 (거래정지 등). 과매수로 나오지 않게 중립으로 둔다
+        return 50.0
     if loss == 0:
         return 100.0
     return round(100 - 100 / (1 + gain / loss), 2)
@@ -40,7 +42,7 @@ def rsi_series(closes: list[float], period: int = 14) -> list[float | None]:
 
 
 def wilder_rsi(closes: list[float], period: int = 14) -> float:
-    """마지막 날 RSI. 손실이 0이면 100. 소수 2자리."""
+    """마지막 날 RSI. 손실이 0이면 100, 이익·손실이 모두 0이면 50. 소수 2자리."""
     if len(closes) < period + 1:
         raise ValueError(f"RSI {period}일을 계산하려면 종가가 {period + 1}개 이상 필요해요 (지금 {len(closes)}개)")
     return rsi_series(closes, period)[-1]
