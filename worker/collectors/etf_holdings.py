@@ -220,12 +220,30 @@ def fill_tickers(conn) -> int:
     return filled
 
 
-def collect_day(conn, etf_code: str, d: date) -> int:
-    """하루치를 받아 저장하고, 직전 스냅샷과 비교해 설정 단위 변경을 경고한다."""
-    df = fetch_holdings(etf_code, d)
+def fetch_trading_day(etf_code: str, d: date, retries: int = 3) -> pd.DataFrame:
+    """거래일 구성종목. 빈 표면 쉬었다가 다시 묻는다.
+
+    pykrx 는 KRX 응답이 이상해도 오류 대신 빈 표를 돌려줘서, fetch_holdings 의 재시도에 걸리지 않는다.
+    """
+    for attempt in range(1, retries + 1):
+        df = fetch_holdings(etf_code, d)
+        if not df.empty or attempt == retries:
+            return df
+        print(f"  {etf_code} {d} 결과가 비어 재시도 {attempt}/{retries - 1}")
+        time.sleep(5 * attempt)
+    return df
+
+
+def collect_day(conn, etf_code: str, d: date) -> int | None:
+    """거래일 하루치를 받아 저장하고, 직전 스냅샷과 비교해 설정 단위 변경을 경고한다. 새로 넣은 줄 수를 돌려준다.
+
+    휴장일·상장 전·로그인 실패가 모두 같은 빈 표라 응답으로는 구분할 수 없다. d 는 거래일 달력에서 고른 날이므로
+    빈 표면 수집 실패로 보고 None 을 돌려준다.
+    """
+    df = fetch_trading_day(etf_code, d)
     if df.empty:
-        print(f"  {etf_code} {d}: 결과 없음 (로그인 실패이거나 그날 데이터 없음)")
-        return 0
+        print(f"  ⚠ {etf_code} {d}: 수집 실패, 거래일인데 결과가 비어 있음 (로그인 실패·KRX 응답 오류·상장 전 날짜인지 확인)")
+        return None
     prev_date, prev = previous_snapshot(conn, etf_code, d)
     ratio = unit_change_ratio(prev, dict(zip(df["raw_code"], df["shares"])))
     if ratio is not None:
@@ -254,11 +272,13 @@ def main(argv: list[str]) -> int:
 
     from db import get_conn
 
+    failed = []  # 수집 실패한 (ETF, 날짜). 나머지는 받아 두고 마지막에 실패로 끝낸다
     with get_conn() as conn:
         if cmd == "today":
             d = latest_trading_day(today)
             for code in ETFS:
-                collect_day(conn, code, d)
+                if collect_day(conn, code, d) is None:
+                    failed.append((code, d))
             conn.commit()
         elif cmd == "backfill":
             start = date.fromisoformat(argv[1]) if len(argv) > 1 else date(2026, 9, 30)
@@ -267,7 +287,8 @@ def main(argv: list[str]) -> int:
                 todo = [d for d in days if d not in saved_dates(conn, code)]
                 print(f"[{code}] {start} 이후 거래일 {len(days)}일 중 빠진 날 {len(todo)}일")
                 for d in todo:
-                    collect_day(conn, code, d)
+                    if collect_day(conn, code, d) is None:
+                        failed.append((code, d))
                     conn.commit()  # 중간에 끊겨도 받은 날은 남긴다
                     time.sleep(1)  # KRX 서버 부담을 줄인다
         else:
@@ -275,6 +296,9 @@ def main(argv: list[str]) -> int:
             return 1
         print(f"ticker 채움: {fill_tickers(conn)}줄")
         conn.commit()
+    if failed:
+        print(f"수집 실패 {len(failed)}건: " + ", ".join(f"{code} {d}" for code, d in failed))
+        return 1
     return 0
 
 

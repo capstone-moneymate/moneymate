@@ -7,6 +7,7 @@
 
 규칙 (docs/conventions.md)
 - P2: 변화율 = (지금 - 이전) / 이전. 이전이 없거나 0이면 NULL (신규 편입)
+      단, 그 ETF 의 첫 스냅샷 날은 전일이 없어 day_chg_pct 가 전 종목 NULL 이다 (신규가 아니라 비교 대상 없음)
 - P15: 추세 기준일 = 그 스냅샷이 속한 분기의 분기 말. 그날 스냅샷이 없으면 그 이후 첫 스냅샷(수집 시작일).
        A의 overlap.py 가 ETF 기준 스냅샷을 고르는 방식과 같다
 - P6: 스냅샷 수량·코드는 건드리지 않고 계산 컬럼만 채운다
@@ -124,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             for d in targets:
                 base_date, prev_date, changes = apply_day(conn, code, d, dates)
-            print(f"[{code}] {name}: {len(targets)}일 계산. 최신 {d} (추세 기준 {base_date}, 전일 {prev_date})")
+            print(f"[{code}] {name}: {len(targets)}일 계산. 최신 {d} (추세 기준 {base_date}, 전일 {prev_date or '없음'})")
             print(f"{'':9s}{summarize(changes)}")
         if args.save:
             conn.commit()
