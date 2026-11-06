@@ -114,6 +114,35 @@ def to_score(total: int) -> int:
     return int(total * 100 / TOTAL_MAX + 0.5)
 
 
+# --- Claude 없이 쓰는 피드백 (#56). judge.py 실패·judge.py 없음·judge_api 대체 경로가 모두 이것을 쓴다 ---
+# 기술확정안 "루브릭": 피드백 문장에 금지 표현이 있거나 만들 수 없으면 고정 문구
+FIXED_GOOD = "근거 있는 선택이었어요."
+FIXED_THINK_MORE = "이런 경우도 생길 수 있어요."
+
+
+def chain_path(chain: list[dict], matched_concepts: list[str]) -> list[dict]:
+    """인과 뼈대 경로. 카드의 chain 순서 그대로, 사용자가 그 개념을 썼으면 used=True (코드가 정한다)."""
+    used = set(matched_concepts)
+    return [{"name": c["name"], "used": c["name"] in used} for c in chain]
+
+
+def fallback_comment(path: list[dict]) -> str:
+    """Claude 없이 쓰는 인과 뼈대 설명. 안 쓴 개념이 있으면 그 개념을 짚는다."""
+    if not path:
+        return ""
+    missing = [p["name"] for p in path if not p["used"]]
+    if not missing:
+        return "인과 뼈대의 개념을 모두 이어서 썼어요."
+    return f"{', '.join(missing)}까지 이어 보면 인과 뼈대가 완성돼요."
+
+
+def fallback_feedback(chain: list[dict], matched_concepts: list[str]) -> dict:
+    """문장은 고정 문구, 인과 뼈대 경로는 코드 값 그대로."""
+    path = chain_path(chain, matched_concepts)
+    return {"good": FIXED_GOOD, "think_more": FIXED_THINK_MORE, "chain": path,
+            "chain_comment": fallback_comment(path)}
+
+
 def grade(text: str, key_facts: list[dict], chain: list[dict], counter: list[dict] | None = None) -> RuleResult:
     evidence, facts = score_evidence(text, key_facts)
     reasoning, concepts = score_reasoning(text, chain)

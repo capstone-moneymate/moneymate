@@ -13,10 +13,13 @@ dependencies = [
   "pykrx>=1.2.9",  # ETF 구성종목 수집 (B, collectors/etf_holdings.py). KRX 로그인 지원 버전
   "finance-datareader>=0.9.90",  # 지수·미국 가격 (C, collectors/prices.py)
   "yfinance>=0.2.50",  # FDR 실패 시 대체 (C, collectors/prices.py)
+  "fastapi>=0.115",  # 판단 채점 서버 (A, judge_api.py)
+  "uvicorn[standard]>=0.30",  # judge_api 실행
+  "rapidfuzz>=3.0",  # 문제 중복 검사 (B, validate/validators.py)
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx>=0.27"]  # httpx: FastAPI TestClient
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
