@@ -25,3 +25,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-10-29 | B | worker/concepts/graph.py, worker/tests/test_graph.py, docs/modules/graph.md | 개념 사전 경로 탐색에 방향 계산(부호 곱)·모호성 탐지·순환 검사를 더해 작성하고 손계산 pytest, 실제 사전 실행 확인 요청 (멘토 제안 추론 엔진의 1단계) | - |
 | 2026-10-29 | B | worker/validate/validators.py, worker/tests/test_validators.py, docs/modules/validators.md | 인과 순서 문제를 개념 사전 경로·방향과 원문 인용에 대조하는 검증기 최소 버전과 정상·불량 샘플 pytest 작성 요청 | - |
 | 2026-11-01 | B | worker/collectors/etf_holdings.py, worker/tests/test_etf_holdings.py, docs/modules/etf_holdings.md | 액티브 ETF 2개 구성종목 일일 수집기(주식만 저장, 덮어쓰지 않음, cusip_map으로 ticker 채움, 설정 단위 변경 경고, 백필)와 pytest, 실제 pykrx 조회 확인 요청 | - |
+| 2026-11-06 | B | worker/collectors/etf_holdings.py, worker/tests/test_etf_holdings.py, docs/modules/etf_holdings.md | #47 리뷰 코멘트 검토와 반영 요청 (오늘 날짜를 한국 시간으로, 거래일 달력을 KS11로 통일, ticker 채울 때 종목명 비교·출력) | - |

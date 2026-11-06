@@ -2,8 +2,15 @@ from datetime import date
 from decimal import Decimal
 
 import pandas as pd
+import pytest
 
-from collectors.etf_holdings import holdings_from_pykrx, unit_change_ratio
+from collectors.etf_holdings import (
+    fill_tickers,
+    holdings_from_pykrx,
+    latest_trading_day,
+    same_company,
+    unit_change_ratio,
+)
 
 
 def pdf(rows):
@@ -79,3 +86,76 @@ def test_no_unit_change_with_too_few_common_or_no_previous():
     prev, curr = prev_curr([2, 2, 2, 2])  # 겹치는 종목 4개 < 5
     assert unit_change_ratio(prev, curr) is None
     assert unit_change_ratio({}, curr) is None
+
+
+@pytest.mark.parametrize("stock_name, issuer_name", [
+    # 왼쪽은 2026-11-05 pykrx 실제 표기, 오른쪽은 13F 에서 쓰는 약칭 형식
+    ("TESLA MOTORS", "TESLA INC"),
+    ("BROADCOM LTD", "BROADCOM INC"),
+    ("AMAZON.COM INC", "AMAZON COM INC"),
+    ("COCA-COLA CO/THE", "COCA COLA CO"),
+    ("ELI LILLY & CO", "LILLY ELI & CO"),
+    ("Meta Platforms Inc-CL A", "META PLATFORMS INC"),
+    ("TAIWAN SEMICONDUCTOR-SP ADR", "TAIWAN SEMICONDUCTOR MFG LTD"),
+    ("TEXAS INSTRUMENTS INC", "TEXAS INSTRS INC"),
+    ("APPLIED MATERIALS INC", "APPLIED MATLS INC"),
+])
+def test_same_company_allows_different_spellings(stock_name, issuer_name):
+    assert same_company(stock_name, issuer_name)
+
+
+@pytest.mark.parametrize("stock_name, issuer_name", [
+    ("NVIDIA CORP", "APPLE INC"),
+    ("ARM Holdings PLC", "NEBIUS GROUP NV"),         # 회사 형태 단어만 비슷함
+    ("SEAGATE TECHNOLOGY", "DELL TECHNOLOGIES INC"),
+    ("NVIDIA CORP", None),                           # 13F 발행사명이 없으면 확인할 수 없음
+])
+def test_same_company_rejects_other_companies(stock_name, issuer_name):
+    assert not same_company(stock_name, issuer_name)
+
+
+class FakeResult:
+    def __init__(self, rows=(), rowcount=0):
+        self._rows, self.rowcount = rows, rowcount
+
+    def fetchall(self):
+        return self._rows
+
+
+class FakeConn:
+    """fill_tickers 가 읽는 후보 줄을 돌려주고, UPDATE 인자를 모은다."""
+
+    def __init__(self, candidates):
+        self.candidates, self.updates = candidates, []
+
+    def execute(self, sql, params=None):
+        if sql.lstrip().startswith("UPDATE"):
+            self.updates.append(params)
+            return FakeResult(rowcount=21)
+        return FakeResult(self.candidates)
+
+
+def test_fill_tickers_skips_and_reports_different_company(capsys):
+    # 000123 은 ETF 에만 있는 종목이 13F 의 다른 회사와 6자리가 겹친 경우
+    conn = FakeConn([
+        ("000123", "ETF ONLY CORP", "AAPL", "APPLE INC"),
+        ("7066G1", "NVIDIA CORP", "NVDA", "NVIDIA CORPORATION"),
+    ])
+    assert fill_tickers(conn) == 21
+    assert conn.updates == [("NVDA", "7066G1", "NVIDIA CORP")]
+    out = capsys.readouterr().out
+    assert "ticker 안 채움 (종목명 다름): 000123 ETF ONLY CORP ≠ AAPL APPLE INC" in out
+    assert "ticker 채움: 7066G1 NVIDIA CORP → NVDA NVIDIA CORPORATION" in out
+
+
+def test_latest_trading_day_uses_same_calendar_as_backfill(monkeypatch):
+    # 토요일에 돌리면 달력의 마지막 거래일(금요일)
+    calls = []
+
+    def fake_days(end, n):
+        calls.append((end, n))
+        return [date(2026, 11, 6)]
+
+    monkeypatch.setattr("collectors.prices.kr_trading_days", fake_days)
+    assert latest_trading_day(date(2026, 11, 7)) == date(2026, 11, 6)
+    assert calls == [(date(2026, 11, 7), 1)]

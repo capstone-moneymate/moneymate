@@ -11,15 +11,18 @@
 규칙 (docs/conventions.md)
 - P6: 한 번 받은 날짜는 덮어쓰지 않는다 (ON CONFLICT DO NOTHING). source 컬럼에 출처를 남긴다
 - P16: 구성종목 코드(CUSIP 2~7번째 글자)는 raw_code 에 그대로, ticker 는 cusip_map 으로 맞춰 채운다(못 찾으면 NULL).
+       6자리가 다른 회사와 겹칠 수 있어 종목명도 비교해, 다르면 채우지 않고 출력한다.
        주식만 저장하고 원화현금 010010, 설정현금액 H00000, 선물은 뺀다.
        설정 단위가 바뀌면 전 종목 수량이 같은 비율로 변하므로 경고한다
 """
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -27,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # worker/ 를 i
 
 import config  # noqa: E402,F401  .env 를 읽어 KRX_ID·KRX_PW 를 환경변수로 올린다
 from common.normalize import normalize_kr_code  # noqa: E402
+
+KST = ZoneInfo("Asia/Seoul")  # 배포 서버(UTC)에서도 한국 날짜로 돌도록
 
 # 수집 대상 (분담표 B-1). KoAct 코드는 2026-10-11 pykrx ETF 목록에서 확인
 ETFS = {
@@ -39,6 +44,13 @@ HOLDING_COLUMNS = ["etf_code", "snapshot_date", "raw_code", "stock_name", "share
 # 설정 단위 변경 경고: 겹치는 종목이 이만큼 이상이고, 모든 종목의 수량 비율이 같으면 경고
 UNIT_CHANGE_MIN_COMMON = 5
 UNIT_CHANGE_TOLERANCE = 0.005  # 비율 차이 0.5% 안이면 "같은 비율"로 본다 (소수 수량 반올림 여유)
+
+# 종목명 비교에서 빼는 단어: 회사 형태·주식 종류처럼 다른 회사도 흔히 같이 쓰는 말
+GENERIC_NAME_WORDS = {
+    "INC", "CORP", "CORPORATION", "CO", "COM", "COMPANY", "LTD", "LIMITED", "PLC", "NV", "SA", "AG", "DE", "THE", "NEW",
+    "CL", "CLASS", "SP", "ADR", "HOLDING", "HOLDINGS", "GROUP", "GLOBAL", "INTERNATIONAL", "INTL",
+    "TECH", "TECHNOLOGY", "TECHNOLOGIES", "SYSTEMS",
+}
 
 
 def is_non_stock(code: str, name: str) -> bool:
@@ -108,9 +120,10 @@ def fetch_holdings(etf_code: str, d: date, retries: int = 3) -> pd.DataFrame:
 
 
 def latest_trading_day(today: date) -> date:
-    from pykrx import stock
+    """today 이전(포함) 가장 최근 거래일. trading_days_since 와 같은 달력을 써서 둘이 어긋나지 않게 한다."""
+    from collectors.prices import kr_trading_days
 
-    return datetime.strptime(stock.get_nearest_business_day_in_a_week(today.strftime("%Y%m%d")), "%Y%m%d").date()
+    return kr_trading_days(today, 1)[-1]
 
 
 def trading_days_since(start: date, end: date) -> list[date]:
@@ -158,26 +171,53 @@ def save_holdings(conn, df: pd.DataFrame, source: str = "pykrx") -> int:
     return inserted
 
 
+def name_words(name: str | None) -> set[str]:
+    """종목명 → 비교할 단어들. 대문자로 바꾸고 문장부호로 나눈 뒤 흔한 말과 한 글자(주식 종류 A 등)는 뺀다."""
+    words = re.findall(r"[A-Z0-9]+", (name or "").upper())
+    return {w for w in words if len(w) > 1 and w not in GENERIC_NAME_WORDS}
+
+
+def same_company(stock_name: str | None, issuer_name: str | None) -> bool:
+    """ETF 종목명과 13F 발행사명이 같은 회사로 보이는가. 단어가 하나라도 겹치면 같다고 본다.
+
+    표기가 제각각이라(TESLA MOTORS / TESLA INC, TEXAS INSTRUMENTS / TEXAS INSTRS) 완전히 같은지는 보지 않는다.
+    겹치는 말이 없으면 다른 회사로 보고, 채운 결과는 출력해서 사람이 확인한다.
+    """
+    return bool(name_words(stock_name) & name_words(issuer_name))
+
+
 def fill_tickers(conn) -> int:
     """ticker 가 빈 줄을 cusip_map 으로 채운다 (P16). raw_code = CUSIP 2~7번째 글자.
 
     맨 앞 글자가 빠져 있어 6자리가 다른 회사와 겹칠 수 있다. 한 raw_code 에 티커가 둘 이상 나오면 채우지 않는다.
-    cusip_map 은 A의 13F 수집이 채우므로 13F 에 없는 종목은 NULL 로 남는다.
+    ETF 에만 있는 종목이 13F 의 다른 회사와 겹치는 경우는 위 조건으로 못 막아서, 종목명까지 비교해 다르면 채우지 않는다.
+    cusip_map 은 A의 13F 수집이 채우므로 13F 에 없는 종목은 NULL 로 남는다. 채운 줄 수를 돌려준다.
     """
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE holdings_etf h SET ticker = m.ticker
-            FROM (
-                SELECT substr(cusip, 2, 6) AS raw_code, min(ticker) AS ticker
-                FROM cusip_map WHERE ticker IS NOT NULL
-                GROUP BY substr(cusip, 2, 6)
-                HAVING count(DISTINCT ticker) = 1
-            ) m
-            WHERE h.ticker IS NULL AND h.raw_code = m.raw_code
-            """
-        )
-        return cur.rowcount
+    candidates = conn.execute(
+        """
+        SELECT DISTINCT h.raw_code, h.stock_name, m.ticker, m.issuer_name
+        FROM holdings_etf h
+        JOIN (
+            SELECT substr(cusip, 2, 6) AS raw_code, min(ticker) AS ticker, min(issuer_name) AS issuer_name
+            FROM cusip_map WHERE ticker IS NOT NULL
+            GROUP BY substr(cusip, 2, 6)
+            HAVING count(DISTINCT ticker) = 1
+        ) m ON h.raw_code = m.raw_code
+        WHERE h.ticker IS NULL
+        ORDER BY h.raw_code, h.stock_name
+        """
+    ).fetchall()
+    filled = 0
+    for raw_code, stock_name, ticker, issuer_name in candidates:
+        if not same_company(stock_name, issuer_name):
+            print(f"  ⚠ ticker 안 채움 (종목명 다름): {raw_code} {stock_name} ≠ {ticker} {issuer_name}")
+            continue
+        print(f"  ticker 채움: {raw_code} {stock_name} → {ticker} {issuer_name}")
+        filled += conn.execute(
+            "UPDATE holdings_etf SET ticker = %s WHERE ticker IS NULL AND raw_code = %s AND stock_name = %s",
+            (ticker, raw_code, stock_name),
+        ).rowcount
+    return filled
 
 
 def collect_day(conn, etf_code: str, d: date) -> int:
@@ -202,7 +242,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     cmd = argv[0] if argv else "today"
-    today = datetime.now().date()
+    today = datetime.now(KST).date()
 
     if cmd == "show":
         d = date.fromisoformat(argv[1]) if len(argv) > 1 else latest_trading_day(today)
