@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * 판단해보기 근거 채점 (A, #55) + AI 분석 피드백 (#56).
  *
- * 순서: 단계 확인 → 하루 호출 제한 → 같은 답안 해시 재사용 → FastAPI 채점 → user_answers 저장.
+ * 순서: 단계 확인 → 하루 호출 제한(사용자별, 서비스 전체) → 같은 답안 해시 재사용 → FastAPI 채점 → user_answers 저장.
  * 채점·피드백 생성(루브릭·Claude·규칙 채점 전환)은 Python(worker/generate/judge.py)이 하고, 여기서는 다시 계산하지 않는다.
  * 피드백과 채점 이유는 user_answers.feedback(TEXT)에 JSON 문자열로 저장해, 재사용할 때 그대로 돌려준다.
  * FastAPI 호출이 실패하면 점수·피드백 없이 고정 문구를 돌려주고 답안은 저장한다.
@@ -58,9 +58,14 @@ public class JudgementService {
         JudgementStep step = repository.findStep(req.stepId())
                 .orElseThrow(() -> new JudgementExceptions.StepNotFound(req.stepId()));
 
-        int usedToday = repository.countJudgementsSince(userId, startOfTodayKst());
-        if (usedToday >= props.dailyLimit()) {
+        OffsetDateTime today = startOfTodayKst();
+        if (repository.countJudgementsSince(userId, today) >= props.dailyLimit()) {
             throw new JudgementExceptions.DailyLimitExceeded(props.dailyLimit());
+        }
+        // userId 는 브라우저가 만든 값이라 바꿔 보낼 수 있다. 전체 상한으로 월 LLM 한도를 지킨다
+        if (repository.countAllJudgementsSince(today) >= props.globalDailyLimit()) {
+            log.warn("서비스 전체 하루 판단 채점 상한({})에 닿았어요", props.globalDailyLimit());
+            throw new JudgementExceptions.GlobalDailyLimitExceeded();
         }
 
         repository.ensureUser(userId);

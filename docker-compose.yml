@@ -34,7 +34,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-moneymate}:${POSTGRES_PASSWORD:-moneymate}@db:5432/${POSTGRES_DB:-moneymate}
       TZ: Asia/Seoul
     ports:
-      - "${JUDGE_API_PORT:-8000}:8000"
+      # 이 컴퓨터(127.0.0.1)에서만 열린다. /judge 는 인증이 없어서 밖에 열면 누구나 Claude 비용을 쓸 수 있다
+      # 같은 compose 안의 다른 컨테이너(예: 배포 때 Spring)는 포트 공개 없이 http://judge:8000 으로 부른다
+      - "127.0.0.1:${JUDGE_API_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy

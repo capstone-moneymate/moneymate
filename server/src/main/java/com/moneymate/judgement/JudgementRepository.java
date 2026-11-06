@@ -15,6 +15,9 @@ public interface JudgementRepository {
     /** 사용자가 since 이후 낸 판단 답안 수 (하루 호출 제한). */
     int countJudgementsSince(@Param("userId") String userId, @Param("since") OffsetDateTime since);
 
+    /** 서비스 전체에서 since 이후 들어온 판단 답안 수 (전체 하루 상한). */
+    int countAllJudgementsSince(@Param("since") OffsetDateTime since);
+
     /** 같은 단계·같은 답안 해시로 Claude 가 채점한 가장 최근 결과. */
     Optional<StoredGrade> findReusable(@Param("stepId") long stepId, @Param("answerHash") String answerHash);
 

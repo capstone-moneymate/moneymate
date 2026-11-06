@@ -12,7 +12,8 @@
 채점 함수 진입점
 - generate/judge.py 의 grade() 가 있으면 그것을 부른다 (Claude 루브릭 채점, 실패하면 그 안에서 규칙 채점으로 전환).
 - judge.py 가 아직 없으면 generate/rule_judge.py 의 grade() (키워드 규칙 채점)를 부른다.
-- judge.grade() 가 예외를 올려도 이 서버가 규칙 채점으로 한 번 더 받아서, 채점 요청이 500 으로 끝나지 않게 한다.
+- judge.grade() 가 예외를 올리거나 결과 형식이 어긋나도(점수 범위·grader 값) 이 서버가 규칙 채점으로 한 번 더 받아서,
+  채점 요청이 500 으로 끝나지 않게 한다. 규칙 채점 응답에도 고정 문구 + 코드 인과 뼈대 feedback 이 늘 들어간다.
 
 이 서버는 DB를 읽지 않는다. 카드의 key_facts 와 개념 id(steps.answer 의 chain·counter)를 이름·별칭으로 풀어서
 보내는 것은 부르는 쪽(Spring /api/judgement, #55 2차)의 몫이다. 하루 호출 제한·같은 답안 해시 재사용·실패 시
@@ -111,8 +112,36 @@ def health() -> Health:
     return Health(status="ok", grader=GRADER)
 
 
-def _rule_grade(args: dict):
-    return rule_judge.grade(args["text"], args["key_facts"], args["chain"], args["counter"])
+def _rule_response(args: dict) -> JudgeResponse:
+    """규칙 채점 응답. 피드백은 고정 문구 + 코드 인과 뼈대라 judge.py 가 없어도 응답 모양이 같다."""
+    r = rule_judge.grade(args["text"], args["key_facts"], args["chain"], args["counter"])
+    return JudgeResponse(
+        rubric=Rubric(**r.rubric),
+        total=r.total,
+        score=r.score,
+        matched_facts=list(r.matched_facts),
+        matched_concepts=list(r.matched_concepts),
+        grader="rule",
+        reasons={},
+        feedback=rule_judge.fallback_feedback(args["chain"], r.matched_concepts),
+    )
+
+
+def _judge_response(result, args: dict) -> JudgeResponse:
+    """judge.grade 결과를 응답으로. 형식이 어긋나면(점수 범위·grader 값 등) pydantic 이 ValidationError 를 올린다."""
+    feedback = getattr(result, "feedback", None) or rule_judge.fallback_feedback(
+        args["chain"], list(result.matched_concepts))
+    return JudgeResponse(
+        rubric=Rubric(**result.rubric),
+        total=result.total,
+        score=result.score,
+        matched_facts=list(result.matched_facts),
+        matched_concepts=list(result.matched_concepts),
+        # judge.py 가 안에서 규칙 채점으로 넘어갔으면 grader="rule" 을 달아 준다
+        grader=getattr(result, "grader", "claude"),
+        reasons=dict(getattr(result, "reasons", None) or {}),
+        feedback=feedback,
+    )
 
 
 @app.post("/judge", response_model=JudgeResponse)
@@ -123,30 +152,11 @@ def judge(req: JudgeRequest) -> JudgeResponse:
         "chain": [c.model_dump() for c in req.chain],
         "counter": [c.model_dump() for c in req.counter],
     }
-    grader = "rule"
-    feedback = None
-    if _judge is not None:
-        try:
-            result = _judge.grade(**args, card_id=req.card_id)
-            # judge.py 가 안에서 규칙 채점으로 넘어갔으면 grader="rule" 을 달아 준다
-            grader = getattr(result, "grader", "claude")
-            feedback = getattr(result, "feedback", None) or None
-        except Exception:  # noqa: BLE001 - 어떤 실패든 규칙 채점으로 받는다
-            log.exception("judge.grade 실패, 규칙 채점으로 전환 (card_id=%s)", req.card_id)
-            result = _rule_grade(args)
-            grader = "rule"
-            make = getattr(_judge, "fallback_feedback", None)
-            feedback = make(args["chain"], result.matched_concepts) if make else None
-    else:
-        result = _rule_grade(args)
-
-    return JudgeResponse(
-        rubric=Rubric(**result.rubric),
-        total=result.total,
-        score=result.score,
-        matched_facts=list(result.matched_facts),
-        matched_concepts=list(result.matched_concepts),
-        grader=grader,
-        reasons=dict(getattr(result, "reasons", None) or {}),
-        feedback=feedback,
-    )
+    if _judge is None:
+        return _rule_response(args)
+    try:
+        # 응답 만들기(검증)까지 try 안에서: judge.py 결과가 형식에 안 맞아도 500 대신 규칙 채점으로
+        return _judge_response(_judge.grade(**args, card_id=req.card_id), args)
+    except Exception:  # noqa: BLE001 - 어떤 실패든 규칙 채점으로 받는다
+        log.exception("judge.grade 실패 또는 결과 형식 오류, 규칙 채점으로 전환 (card_id=%s)", req.card_id)
+        return _rule_response(args)

@@ -17,6 +17,13 @@ public class JudgementExceptions {
         }
     }
 
+    /** 서비스 전체 하루 판단 채점 상한에 닿았다 → 429. */
+    public static class GlobalDailyLimitExceeded extends RuntimeException {
+        public GlobalDailyLimitExceeded() {
+            super("오늘은 채점 요청이 많아 더 받을 수 없어요. 내일 다시 해 주세요.");
+        }
+    }
+
     /** 없는 단계이거나 판단해보기 단계가 아니다 → 404. */
     public static class StepNotFound extends RuntimeException {
         public StepNotFound(long stepId) {
@@ -26,6 +33,11 @@ public class JudgementExceptions {
 
     @ExceptionHandler(DailyLimitExceeded.class)
     ResponseEntity<Map<String, String>> dailyLimit(DailyLimitExceeded e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", e.getMessage()));
+    }
+
+    @ExceptionHandler(GlobalDailyLimitExceeded.class)
+    ResponseEntity<Map<String, String>> globalDailyLimit(GlobalDailyLimitExceeded e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", e.getMessage()));
     }
 

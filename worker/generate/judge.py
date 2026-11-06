@@ -15,7 +15,7 @@
 - 범위 자르기·합계·100점 환산: 코드. Claude 가 준 점수는 0~배점으로 자르고 총점은 합계로 계산한다
 - 인과 뼈대 경로: 코드. 카드의 chain 개념 순서 + 사용자가 그 개념을 썼는지(used)
 
-실패하면 (같은 함수 안에서) rule_judge.grade 로 전환하고 피드백은 고정 문구로 채운다 (fallback_feedback):
+실패하면 (같은 함수 안에서) rule_judge.grade 로 전환하고 피드백은 고정 문구로 채운다 (rule_judge.fallback_feedback):
 API 오류·연결 오류, 월 한도 초과(BudgetExceeded), 응답이 끝나지 않음, JSON 파싱·필드 오류.
 
 이유·피드백 문장에 금지 표현(B의 validators.find_banned, 목록은 validate/banned_terms.txt)이 있으면
@@ -36,9 +36,9 @@ PROMPT = (Path(__file__).parent / "prompts" / "judge.md").read_text(encoding="ut
 MODEL = SONNET
 EFFORT = "low"  # 사용자가 결과 화면을 기다리므로 짧게. κ(8주차)가 낮으면 올려 본다
 MAX_TOKENS = 2048
-# 기술확정안 "루브릭": 피드백 문장에 금지 표현이 있으면 고정 문구로 대체
-FIXED_GOOD = "근거 있는 선택이었어요."
-FIXED_THINK_MORE = "이런 경우도 생길 수 있어요."
+# 기술확정안 "루브릭": 피드백 문장에 금지 표현이 있으면 고정 문구로 대체 (고정 피드백은 rule_judge 에 있다)
+FIXED_GOOD = rule_judge.FIXED_GOOD
+FIXED_THINK_MORE = rule_judge.FIXED_THINK_MORE
 FIXED_REASON = f"{FIXED_GOOD} {FIXED_THINK_MORE}"
 LLM_KEYS = ("reasoning", "rebuttal")  # Claude 가 매기는 기준
 TEXT_KEYS = ("reasoning_reason", "rebuttal_reason", "good", "think_more", "chain_comment")
@@ -75,27 +75,9 @@ def clean_text(text, fixed: str = FIXED_REASON) -> str:
 clean_reason = clean_text  # 이전 이름 (#55)
 
 
-def chain_path(chain: list[dict], matched_concepts: list[str]) -> list[dict]:
-    """인과 뼈대 경로. 카드의 chain 순서 그대로, 사용자가 그 개념을 썼으면 used=True (코드가 정한다)."""
-    used = set(matched_concepts)
-    return [{"name": c["name"], "used": c["name"] in used} for c in chain]
-
-
-def fallback_comment(path: list[dict]) -> str:
-    """Claude 없이 쓰는 인과 뼈대 설명. 안 쓴 개념이 있으면 그 개념을 짚는다."""
-    if not path:
-        return ""
-    missing = [p["name"] for p in path if not p["used"]]
-    if not missing:
-        return "인과 뼈대의 개념을 모두 이어서 썼어요."
-    return f"{', '.join(missing)}까지 이어 보면 인과 뼈대가 완성돼요."
-
-
-def fallback_feedback(chain: list[dict], matched_concepts: list[str]) -> dict:
-    """Claude 를 못 쓸 때의 피드백: 문장은 고정 문구, 인과 뼈대 경로는 코드 값 그대로."""
-    path = chain_path(chain, matched_concepts)
-    return {"good": FIXED_GOOD, "think_more": FIXED_THINK_MORE, "chain": path,
-            "chain_comment": fallback_comment(path)}
+chain_path = rule_judge.chain_path
+fallback_comment = rule_judge.fallback_comment
+fallback_feedback = rule_judge.fallback_feedback
 
 
 def output_schema() -> dict:

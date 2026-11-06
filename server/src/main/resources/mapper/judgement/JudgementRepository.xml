@@ -41,6 +41,14 @@
            AND ua.created_at &gt;= #{since}
     </select>
 
+    <select id="countAllJudgementsSince" resultType="int">
+        SELECT count(*)
+          FROM user_answers ua
+          JOIN steps s ON s.id = ua.step_id
+         WHERE s.kind = 'judgement'
+           AND ua.created_at &gt;= #{since}
+    </select>
+
     <!-- Claude 채점 결과만 재사용한다. 규칙 채점 결과는 Claude 가 실패했을 때 것이라 다음에 다시 채점해 본다 -->
     <resultMap id="gradeMap" type="com.moneymate.judgement.StoredGrade">
         <constructor>

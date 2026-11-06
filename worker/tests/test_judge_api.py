@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import judge_api
+from generate import rule_judge
 
 CHAIN = [
     {"name": "기준금리 동결", "aliases": ["동결"]},
@@ -95,3 +96,47 @@ def test_falls_back_to_rule_when_judge_raises(monkeypatch):
     d = TestClient(judge_api.app).post("/judge", json=body(FULL)).json()
     assert d["grader"] == "rule"
     assert d["score"] == 100
+
+
+# --- 리뷰 반영: 결과 형식 오류도 500 이 아니라 규칙 채점, 규칙 채점에도 feedback ---
+
+def _fake_judge(**fields):
+    base = dict(rubric={"evidence": 1, "reasoning": 3, "rebuttal": 2}, total=6, score=67,
+                matched_facts=[], matched_concepts=[], grader="claude", reasons={}, feedback=None)
+    base.update(fields)
+    return SimpleNamespace(grade=lambda **_: SimpleNamespace(**base))
+
+
+@pytest.mark.parametrize("bad", [
+    {"rubric": {"evidence": 3, "reasoning": 3, "rebuttal": 2}},   # 증거 배점(2) 초과
+    {"score": 120},                                                # 100점 초과
+    {"grader": "gpt"},                                             # claude/rule 이 아닌 값
+    {"rubric": {"evidence": 1}},                                   # 기준 빠짐
+])
+def test_bad_judge_result_falls_back_to_rule_200(monkeypatch, bad):
+    monkeypatch.setattr(judge_api, "_judge", _fake_judge(**bad))
+    r = TestClient(judge_api.app).post("/judge", json=body(FULL))
+    assert r.status_code == 200
+    d = r.json()
+    # 손계산 규칙 채점: 2·4·3 -> 100
+    assert d["grader"] == "rule" and d["score"] == 100
+    assert d["feedback"]["good"] == rule_judge.FIXED_GOOD
+
+
+def test_rule_only_path_has_feedback(client):
+    # judge.py 가 없을 때(client 픽스처)도 feedback 이 null 이 아니다
+    d = client.post("/judge", json=body("금리가 동결돼서 은행 실적이 좋아질 것 같다.")).json()
+    assert d["feedback"] == {
+        "good": rule_judge.FIXED_GOOD,
+        "think_more": rule_judge.FIXED_THINK_MORE,
+        "chain": [{"name": "기준금리 동결", "used": True}, {"name": "예대금리차", "used": False},
+                  {"name": "은행 실적", "used": True}],
+        "chain_comment": "예대금리차까지 이어 보면 인과 뼈대가 완성돼요.",
+    }
+
+
+def test_judge_result_without_feedback_gets_code_feedback(monkeypatch):
+    monkeypatch.setattr(judge_api, "_judge", _fake_judge(matched_concepts=["기준금리 동결"]))
+    d = TestClient(judge_api.app).post("/judge", json=body(FULL)).json()
+    assert d["grader"] == "claude"
+    assert [c["used"] for c in d["feedback"]["chain"]] == [True, False, False]

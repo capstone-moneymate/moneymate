@@ -25,3 +25,6 @@ moneymate:
     timeout-seconds: ${JUDGE_API_TIMEOUT_SECONDS:30}
     # 사용자별 하루(KST) 판단 채점 횟수 상한 (기술확정안 "루브릭": 사용자별 하루 호출 제한)
     daily-limit: ${JUDGEMENT_DAILY_LIMIT:30}
+    # 서비스 전체 하루(KST) 판단 채점 상한. 익명 userId 는 요청마다 바꿔 보낼 수 있어서, 이 상한이
+    # 채점이 월 LLM 한도(출제와 같이 씀)를 다 쓰지 않게 막는다. 실제 1회 비용을 잰 뒤 다시 정한다
+    global-daily-limit: ${JUDGEMENT_GLOBAL_DAILY_LIMIT:50}

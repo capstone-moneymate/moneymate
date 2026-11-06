@@ -52,7 +52,7 @@ class JudgementServiceTest {
     void setUp() {
         repo = mock(JudgementRepository.class);
         client = mock(JudgeClient.class);
-        service = new JudgementService(repo, client, new JudgeProperties("http://judge", 30, 5), CLOCK);
+        service = new JudgementService(repo, client, new JudgeProperties("http://judge", 30, 5, 100), CLOCK);
         when(repo.findStep(7L)).thenReturn(Optional.of(STEP));
         when(repo.findReusable(anyLong(), anyString())).thenReturn(Optional.empty());
     }
@@ -181,6 +181,29 @@ class JudgementServiceTest {
         verify(client, never()).judge(any());
         verify(repo, never()).insertAnswer(any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(),
                 any());
+    }
+
+    @Test
+    void globalDailyLimitBlocksEvenNewUser() {
+        // 사용자는 오늘 처음이지만(0번), 서비스 전체가 상한(100)에 닿음 -> userId 를 바꿔도 막힌다
+        OffsetDateTime startKst = OffsetDateTime.parse("2026-11-05T00:00+09:00");
+        when(repo.countJudgementsSince(anyString(), any())).thenReturn(0);
+        when(repo.countAllJudgementsSince(startKst)).thenReturn(100);
+
+        assertThatThrownBy(() -> service.judge(req(ANSWER)))
+                .isInstanceOf(JudgementExceptions.GlobalDailyLimitExceeded.class);
+        verify(client, never()).judge(any());
+        verify(repo, never()).insertAnswer(any(), anyLong(), anyLong(), any(), any(), any(), any(), any(), any(), any(),
+                any());
+    }
+
+    @Test
+    void underGlobalLimitPasses() {
+        when(repo.countAllJudgementsSince(any())).thenReturn(99);
+        when(client.judge(any())).thenReturn(new JudgeApiResponse(new Rubric(2, 3, 1), 6, 67, "claude",
+                REASONS, FEEDBACK));
+
+        assertThat(service.judge(req(ANSWER)).score()).isEqualTo(67);
     }
 
     @Test
