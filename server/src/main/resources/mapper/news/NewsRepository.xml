@@ -103,18 +103,22 @@
          ORDER BY s.step_no
     </select>
 
-    <!-- 카드의 단계 수만큼 서로 다른 단계에 답을 냈으면 학습을 끝낸 카드 -->
+    <!-- 답을 내는 단계(concept 제외)에 모두 답을 1개 이상 냈으면 학습을 끝낸 카드.
+         개념 학습(concept)은 읽기만 하는 단계라 화면이 답을 보내지 않는다 -->
     <select id="findCompletedCardIds" resultType="long">
         SELECT c.id
           FROM cards c
          WHERE c.id IN
          <foreach collection="cardIds" item="id" open="(" separator="," close=")">#{id}</foreach>
-           AND (SELECT count(DISTINCT ua.step_id)
-                  FROM user_answers ua
-                 WHERE ua.card_id = c.id
-                   AND ua.user_id = CAST(#{userId} AS uuid))
-               = (SELECT count(*) FROM steps s WHERE s.card_id = c.id)
-           AND EXISTS (SELECT 1 FROM steps s WHERE s.card_id = c.id)
+           AND EXISTS (SELECT 1 FROM steps s WHERE s.card_id = c.id AND s.kind &lt;&gt; 'concept')
+           AND NOT EXISTS (SELECT 1
+                             FROM steps s
+                            WHERE s.card_id = c.id
+                              AND s.kind &lt;&gt; 'concept'
+                              AND NOT EXISTS (SELECT 1
+                                                FROM user_answers ua
+                                               WHERE ua.step_id = s.id
+                                                 AND ua.user_id = CAST(#{userId} AS uuid)))
          ORDER BY c.id
     </select>
 </mapper>

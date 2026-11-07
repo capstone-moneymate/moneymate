@@ -27,6 +27,6 @@ public interface NewsRepository {
     /** 카드의 단계들 (step_no 순). steps.answer 는 읽지 않는다. */
     List<StepRow> findSteps(@Param("cardId") long cardId);
 
-    /** cardIds 중 이 사용자가 모든 단계에 답을 낸 카드 id. */
+    /** cardIds 중 이 사용자가 답을 내는 단계(concept 제외)에 모두 답을 낸 카드 id. */
     List<Long> findCompletedCardIds(@Param("userId") String userId, @Param("cardIds") List<Long> cardIds);
 }
