@@ -51,6 +51,9 @@ export interface ChartStep extends StepBase {
   question: string
   ticker: string
   options: string[]
+  /** 차트에 그릴 기간 (YYYY-MM-DD) ← steps.content.start_date·end_date. #71 이전에 만든 카드에는 없다 */
+  startDate?: string
+  endDate?: string
 }
 
 /**
@@ -74,7 +77,7 @@ export interface CardDetail {
   theme: string | null
   sourceName: string
   sourceUrl: string
-  sourcePublishedAt: string
+  sourcePublishedAt: string | null
   /** 유형 3 연결 종목 ← cards.ticker */
   ticker: string | null
   slides: Slide[]

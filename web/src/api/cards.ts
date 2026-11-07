@@ -1,13 +1,21 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { apiClient, DailyLimitError, USE_MOCK } from '@/api/client'
 import { answerMocks, cardDetailMocks } from '@/api/mocks/cardDetail'
 import { mockJudgement } from '@/api/mocks/judgement'
+import { NEWS_HOME_KEY } from '@/api/news'
 import { getUserId } from '@/lib/userId'
 import type { AnswerInput, AnswerResult, CardDetail, JudgementGrade } from '@/types/card'
 
-/** 카드 한 건(카드뉴스 + 단계). 서버가 생기면 apiClient.get(`/api/cards/${cardId}`)로 바꾼다. */
+/**
+ * 카드 한 건(카드뉴스 + 단계): C의 GET /api/cards/{id} (docs/modules/news_api.md).
+ * 정답은 서버가 내려보내지 않는다. VITE_USE_MOCK 이 'false' 가 아니면 목 데이터.
+ */
 const fetchCard = async (cardId: string): Promise<CardDetail> => {
+  if (!USE_MOCK) {
+    const { data } = await apiClient.get<CardDetail>(`/api/cards/${encodeURIComponent(cardId)}`)
+    return data
+  }
   const card = cardDetailMocks[cardId]
   if (!card) throw new Error(`카드를 찾을 수 없어요: ${cardId}`)
   return card
@@ -55,7 +63,7 @@ const submitJudgement = async (
 /**
  * 답안 제출.
  * - 판단해보기: A의 /api/judgement (루브릭 채점). VITE_USE_MOCK 이 'false' 가 아니면 목 채점
- * - 퀴즈·인과 순서·차트: 서버가 생기면 apiClient.post('/api/answers', …) (C, 코드 채점). 지금은 목 정답
+ * - 퀴즈·인과 순서·차트: C의 /api/answers (코드 채점, docs/modules/answers_api.md). 목이면 목 정답
  */
 const submitAnswer = async ({
   stepId,
@@ -67,6 +75,14 @@ const submitAnswer = async ({
   if (answer.kind === 'judgement') {
     return { stepId, isCorrect: null, grade: await submitJudgement(stepId, answer) }
   }
+  if (!USE_MOCK) {
+    const { data } = await apiClient.post<AnswerResult>('/api/answers', {
+      userId: getUserId(),
+      stepId: Number(stepId),
+      answer,
+    })
+    return data
+  }
   const key = answerMocks[stepId]
   if (!key) throw new Error(`정답이 없는 단계예요: ${stepId}`)
   const isCorrect =
@@ -76,6 +92,11 @@ const submitAnswer = async ({
   return { stepId, isCorrect, explanation: key.explanation, correct: key.correct }
 }
 
+/** 답을 내면 홈의 "학습 완료" 표시(completedCardIds)가 바뀔 수 있어 홈을 다시 불러오게 한다. */
 export const useSubmitAnswer = () => {
-  return useMutation({ mutationFn: submitAnswer })
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: submitAnswer,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: NEWS_HOME_KEY }),
+  })
 }
