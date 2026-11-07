@@ -19,6 +19,13 @@ export const useCard = (cardId: string) => {
 
 type JudgementAnswer = Extract<AnswerInput, { kind: 'judgement' }>
 
+/**
+ * 판단 채점 요청만 기다리는 시간(ms). Spring 이 채점 서버를 최대 33초(연결 3초 + 응답
+ * JUDGE_API_TIMEOUT_SECONDS 기본 30초) 기다린 뒤 결과나 고정 문구를 주므로, 그보다 길게 둔다.
+ * 기본 10초면 Claude 채점이 길 때 화면만 먼저 실패해 같은 답을 다시 내게 된다 (#72 리뷰).
+ */
+const JUDGEMENT_TIMEOUT_MS = 40_000
+
 /** 판단해보기 근거 채점: A의 POST /api/judgement (docs/modules/judgement_api.md) */
 const submitJudgement = async (
   stepId: string,
@@ -26,12 +33,16 @@ const submitJudgement = async (
 ): Promise<JudgementGrade> => {
   if (USE_MOCK) return mockJudgement(stepId, answer.reason)
   try {
-    const { data } = await apiClient.post<JudgementGrade>('/api/judgement', {
-      userId: getUserId(),
-      stepId: Number(stepId),
-      choice: answer.choice, // 채점하지 않고 저장만 한다
-      answer: answer.reason,
-    })
+    const { data } = await apiClient.post<JudgementGrade>(
+      '/api/judgement',
+      {
+        userId: getUserId(),
+        stepId: Number(stepId),
+        choice: answer.choice, // 채점하지 않고 저장만 한다
+        answer: answer.reason,
+      },
+      { timeout: JUDGEMENT_TIMEOUT_MS },
+    )
     return data
   } catch (e) {
     if (axios.isAxiosError<{ message?: string }>(e) && e.response?.status === 429) {
