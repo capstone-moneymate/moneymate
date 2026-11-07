@@ -167,7 +167,7 @@ def test_step_rows(offline):
     assert [i["concept_id"] for i in order["content"]["items"]] == ["growth_valuation", "rate_hold"]  # 정답과 다르게 섞임
     assert order["answer"]["correct"] == ["rate_hold", "growth_valuation"]
     assert rows[3]["content"]["ticker"] == "KS11" and rows[3]["answer"]["check"]["metric"] == "volume_ratio"
-    # 차트 표시 기간 (B 요청 5): 끝 = 확인한 날, 시작 = 90일 앞 (start_date 없음)
+    # 차트 표시 기간 (B 요청 5): 하루 문제(volume_ratio)라 끝 = 확인한 날, 시작 = 90일 앞
     last = date.fromisoformat(str(offline.iloc[-1].market_date))
     assert rows[3]["content"]["end_date"] == last.isoformat()
     assert rows[3]["content"]["start_date"] == (last - timedelta(days=90)).isoformat()
@@ -176,11 +176,12 @@ def test_step_rows(offline):
 
 
 @pytest.mark.parametrize("check, want", [
-    # 확인 기간이 짧으면 90일 앞부터
-    ({"start_date": "2026-10-01", "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
-    # 확인 기간이 90일보다 길면 확인 기간 시작부터
-    ({"start_date": "2026-05-01", "end_date": "2026-10-08"}, ("2026-05-01", "2026-10-08")),
-    ({"start_date": None, "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
+    # 기간 문제는 문제 기간만 그린다 (더 넓으면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
+    ({"metric": "top_volume_date", "start_date": "2026-10-06", "end_date": "2026-10-08"}, ("2026-10-06", "2026-10-08")),
+    ({"metric": "return_pct", "start_date": "2026-05-01", "end_date": "2026-10-08"}, ("2026-05-01", "2026-10-08")),
+    # 하루 문제는 90일 앞부터 (start_date 가 있어도 쓰지 않는다)
+    ({"metric": "volume_ratio", "start_date": None, "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
+    ({"metric": "rsi", "start_date": "2026-10-01", "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
 ])
 def test_chart_display_range(check, want):
     r = cp.chart_display_range(check)

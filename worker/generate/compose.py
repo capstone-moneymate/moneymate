@@ -42,8 +42,10 @@ STEP_ORDER = {
 # 중복 검사: 최근 며칠 치 quiz·chart 문제와 비교한다 (B의 find_duplicates, docs/modules/validators.md)
 DUPLICATE_DAYS = 30
 DUPLICATE_KINDS = ("quiz", "chart")  # 판단해보기 질문은 틀이 비슷해 다른 사건도 걸리므로 뺀다 (B와 합의)
-# 차트 화면이 그릴 기간: 확인 기간보다 넉넉하게, end_date 에서 이만큼 앞부터 (달력일)
+# 차트 화면이 그릴 기간: 하루를 보는 문제(volume_ratio·rsi)는 end_date 에서 이만큼 앞부터 (달력일)
 CHART_DISPLAY_DAYS = 90
+# 기간을 보는 문제: 화면도 문제 기간만 그린다 (더 넓게 그리면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
+PERIOD_METRICS = ("top_volume_date", "return_pct")
 
 
 class ComposeError(RuntimeError):
@@ -457,12 +459,14 @@ def _shuffled(items: list[dict], answer: list[str], seed: str) -> list[dict]:
 
 
 def chart_display_range(check: dict) -> dict:
-    """차트 화면이 그릴 기간 (B의 ChartStep.tsx 가 읽는다). 끝은 확인한 날(end_date), 시작은
-    end_date 에서 CHART_DISPLAY_DAYS 앞과 확인 기간 시작(start_date) 중 이른 날. 날짜는 'YYYY-MM-DD'."""
+    """차트 화면이 그릴 기간 (B의 ChartStep.tsx 가 읽는다). 끝은 확인한 날(end_date).
+    기간 문제(PERIOD_METRICS)는 시작 = 문제 기간 시작(start_date) 그대로라 화면에 문제 기간만 보인다.
+    하루 문제(volume_ratio·rsi)는 시작 = end_date 에서 CHART_DISPLAY_DAYS 앞. 날짜는 'YYYY-MM-DD'."""
     end = date.fromisoformat(check["end_date"])
-    start = end - timedelta(days=CHART_DISPLAY_DAYS)
-    if check.get("start_date"):
-        start = min(start, date.fromisoformat(check["start_date"]))
+    if check.get("metric") in PERIOD_METRICS and check.get("start_date"):
+        start = date.fromisoformat(check["start_date"])
+    else:
+        start = end - timedelta(days=CHART_DISPLAY_DAYS)
     return {"start_date": start.isoformat(), "end_date": end.isoformat()}
 
 
