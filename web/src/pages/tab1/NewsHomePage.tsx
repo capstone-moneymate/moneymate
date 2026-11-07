@@ -67,7 +67,11 @@ const IndexTile = ({ index }: { index: MarketIndex }) => {
           maximumFractionDigits: 2,
         })}
       </p>
-      <ChangeRate value={index.chgPct} className="text-xs tabular-nums" />
+      {index.chgPct === null ? (
+        <span className="text-xs text-slate-400">-</span>
+      ) : (
+        <ChangeRate value={index.chgPct} className="text-xs tabular-nums" />
+      )}
     </div>
   )
 }
@@ -120,7 +124,13 @@ const NewsCard = ({ card, order, completed }: NewsCardProps) => {
       </h3>
       <p className="mt-1 line-clamp-2 text-sm text-slate-600">{card.summary}</p>
       <p className="mt-2 text-xs text-slate-400">
-        {card.sourceName} · {formatTime(card.sourcePublishedAt)} · {card.stepCount}단계
+        {[
+          card.sourceName,
+          card.sourcePublishedAt && formatTime(card.sourcePublishedAt),
+          `${card.stepCount}단계`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </p>
     </Link>
   )
