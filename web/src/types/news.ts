@@ -8,8 +8,8 @@ export interface MarketIndex {
   code: string
   name: string
   value: number
-  /** 전 거래일 대비 변화율, 소수 (0.012 = +1.2%) */
-  chgPct: number
+  /** 전 거래일 대비 변화율, 소수 (0.012 = +1.2%). 전 거래일 종가가 없으면 null */
+  chgPct: number | null
   /** 그 시장의 거래일 (YYYY-MM-DD) */
   date: string
 }
@@ -35,9 +35,10 @@ export interface NewsCardSummary {
   sourceUrl: string
   /**
    * 1차 자료가 발표된 시각 (ISO, UTC). 화면에서 KST로 표시.
-   * cards.published_at(팀 확인 후 게시된 시각)과 다르다.
+   * cards.published_at(팀 확인 후 게시된 시각)과 다르다. 시각을 모르는 DART 는 그 날짜 0시 KST,
+   * 1차 자료가 없으면 null.
    */
-  sourcePublishedAt: string
+  sourcePublishedAt: string | null
   /** 학습 단계 수 ← 그 카드의 steps 개수 */
   stepCount: number
 }
