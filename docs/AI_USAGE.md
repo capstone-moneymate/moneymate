@@ -44,3 +44,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-06 | B | worker/validate/banned_terms.txt, tests/test_banned.py, docs/modules/validators.md | #60 #53 리뷰 코멘트 검토와 반영 요청 (금지 표현 오탐 패턴 3개 수정·테스트 추가, 짧은 질문 중복 점수와 입력 형식 명세 보완) | - |
 | 2026-11-07 | C | web/src/api/cards.ts, api/client.ts, api/mocks/judgement.ts, types/card.ts, pages/tab1/steps/ReasonView.tsx·AiAnalysis.tsx, ResultPage.tsx | 판단해보기 제출을 A의 /api/judgement 응답(#56 feedback·message·429)에 맞추기, 결과 화면 AI 분석(인과 뼈대 used 표시·고정 문구), 서버 전까지 VITE_USE_MOCK 목 채점 | - |
 | 2026-11-07 | C | web/src/api/cards.ts | #72 코드래빗 리뷰(판단 채점 요청 타임아웃 10초 → 서버 대기 33초보다 짧음) 검토와 반영 요청 | - |
+| 2026-11-07 | C | web/src/api/news.ts·cards.ts, types/news.ts·card.ts, pages/tab1/NewsHomePage.tsx, vite.config.ts, .env.example, docs/modules/tab1_learn_screens.md | 탭1 화면을 실제 API(/api/news/home, /api/cards/{id}, /api/answers)에 연결(VITE_USE_MOCK=false), 개발 서버 /api 프록시, null 값 처리, 답 제출 후 홈 갱신, 브라우저로 실제 서버 확인 요청 | - |
