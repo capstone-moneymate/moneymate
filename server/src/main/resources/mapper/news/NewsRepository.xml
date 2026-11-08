@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.news.NewsRepository">
+
+    <!-- ===== 지수 ===== -->
+    <resultMap id="indexMap" type="com.moneymate.news.IndexRow">
+        <constructor>
+            <arg column="ticker" javaType="String"/>
+            <arg column="market_date" javaType="java.time.LocalDate"/>
+            <arg column="close" javaType="java.math.BigDecimal"/>
+            <arg column="prev_close" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 지수마다 가장 최근 거래일 1줄 + 그 전 거래일 종가(LAG). 휴장일은 행이 없어서 자연히 건너뛴다 -->
+    <select id="findLatestIndices" resultMap="indexMap">
+        SELECT ticker, market_date, close, prev_close
+          FROM (SELECT ticker, market_date, close,
+                       LAG(close) OVER (PARTITION BY ticker ORDER BY market_date)          AS prev_close,
+                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY market_date DESC) AS rn
+                  FROM prices
+                 WHERE ticker IN
+                 <foreach collection="tickers" item="t" open="(" separator="," close=")">#{t}</foreach>
+               ) p
+         WHERE rn = 1
+    </select>
+
+    <!-- ===== 카드 ===== -->
+    <!-- 보여 줄 상태: published, 설정(NEWS_INCLUDE_PENDING)이 켜져 있으면 pending 도. rejected 는 항상 뺀다 -->
+    <sql id="visibleStatus">
+        c.status IN ('published'<if test="includePending">, 'pending'</if>)
+    </sql>
+
+    <resultMap id="cardMap" type="com.moneymate.news.CardRow">
+        <constructor>
+            <arg column="id" javaType="_long"/>
+            <arg column="card_type" javaType="_int"/>
+            <arg column="card_date" javaType="java.time.LocalDate"/>
+            <arg column="title" javaType="String"/>
+            <arg column="theme" javaType="String"/>
+            <arg column="ticker" javaType="String"/>
+            <arg column="slides_json" javaType="String"/>
+            <arg column="source_type" javaType="String"/>
+            <arg column="issuer_name" javaType="String"/>
+            <arg column="source_url" javaType="String"/>
+            <arg column="source_published_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="source_published_date" javaType="java.time.LocalDate"/>
+            <arg column="step_count" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 출처는 대표 자료(card_sources.is_main → raw_sources). 없으면 cards.source_links 첫 번째로 채운다 -->
+    <sql id="cardColumns">
+        SELECT c.id, c.card_type, c.card_date, c.title, k.theme, c.ticker,
+               c.slides::text AS slides_json,
+               rs.source_type,
+               COALESCE(rs.issuer_name, c.source_links -> 0 ->> 'name') AS issuer_name,
+               COALESCE(rs.url, c.source_links -> 0 ->> 'url')          AS source_url,
+               rs.published_at   AS source_published_at,
+               rs.published_date AS source_published_date,
+               (SELECT count(*) FROM steps s WHERE s.card_id = c.id)    AS step_count
+          FROM cards c
+          LEFT JOIN concepts k      ON k.id = c.start_concept
+          LEFT JOIN card_sources cs ON cs.card_id = c.id AND cs.is_main
+          LEFT JOIN raw_sources rs  ON rs.id = cs.source_id
+    </sql>
+
+    <select id="findLatestCardDate" resultType="java.time.LocalDate">
+        SELECT max(c.card_date)
+          FROM cards c
+         WHERE c.card_date &lt;= #{today}
+           AND <include refid="visibleStatus"/>
+    </select>
+
+    <select id="findCardsByDate" resultMap="cardMap">
+        <include refid="cardColumns"/>
+         WHERE c.card_date = #{cardDate}
+           AND <include refid="visibleStatus"/>
+         ORDER BY c.id
+    </select>
+
+    <select id="findCard" resultMap="cardMap">
+        <include refid="cardColumns"/>
+         WHERE c.id = #{cardId}
+           AND <include refid="visibleStatus"/>
+    </select>
+
+    <!-- ===== 단계 ===== -->
+    <!-- steps.answer(정답)는 SELECT 하지 않는다 -->
+    <resultMap id="stepMap" type="com.moneymate.news.StepRow">
+        <constructor>
+            <arg column="id" javaType="_long"/>
+            <arg column="step_no" javaType="_int"/>
+            <arg column="kind" javaType="String"/>
+            <arg column="content_json" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findSteps" resultMap="stepMap">
+        SELECT s.id, s.step_no, s.kind, s.content::text AS content_json
+          FROM steps s
+         WHERE s.card_id = #{cardId}
+         ORDER BY s.step_no
+    </select>
+
+    <!-- 답을 내는 단계(concept 제외)에 모두 답을 1개 이상 냈으면 학습을 끝낸 카드.
+         개념 학습(concept)은 읽기만 하는 단계라 화면이 답을 보내지 않는다 -->
+    <select id="findCompletedCardIds" resultType="long">
+        SELECT c.id
+          FROM cards c
+         WHERE c.id IN
+         <foreach collection="cardIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+           AND EXISTS (SELECT 1 FROM steps s WHERE s.card_id = c.id AND s.kind &lt;&gt; 'concept')
+           AND NOT EXISTS (SELECT 1
+                             FROM steps s
+                            WHERE s.card_id = c.id
+                              AND s.kind &lt;&gt; 'concept'
+                              AND NOT EXISTS (SELECT 1
+                                                FROM user_answers ua
+                                               WHERE ua.step_id = s.id
+                                                 AND ua.user_id = CAST(#{userId} AS uuid)))
+         ORDER BY c.id
+    </select>
+</mapper>
