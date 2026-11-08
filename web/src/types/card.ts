@@ -85,18 +85,42 @@ export interface CardDetail {
 export type AnswerInput =
   | { kind: 'quiz' | 'chart'; optionIndex: number }
   | { kind: 'causal_order'; order: string[] }
-  | { kind: 'judgement'; choiceIndex: number; reason: string }
+  /** choice: 고른 선택지 문장 (채점하지 않고 저장만), reason: 근거 (채점 대상) */
+  | { kind: 'judgement'; choiceIndex: number; choice: string; reason: string }
 
-/** 루브릭 채점 결과 (증거 0~2 · 추론 0~4 · 반박 0~3, 9점 → 100점 환산) ← user_answers.rubric·score·feedback */
-export interface RubricGrade {
-  score: number
-  rubric: { evidence: number; reasoning: number; rebuttal: number }
-  feedback: {
-    good: string
-    consider: string
-    /** 인과 뼈대 (개념 이름 순서) */
-    skeleton: string[]
-  }
+/** 루브릭 기준별 점수 (증거 0~2 · 추론 0~4 · 반박 0~3, 9점 → 100점 환산) */
+export interface Rubric {
+  evidence: number
+  reasoning: number
+  rebuttal: number
+}
+
+/** AI 분석 피드백 (A #56). 인과 뼈대는 카드의 chain 순서, used = 근거에 그 개념을 썼는지 */
+export interface JudgementFeedback {
+  good: string
+  thinkMore: string
+  chain: { name: string; used: boolean }[]
+  chainComment: string
+}
+
+/**
+ * 판단해보기 채점 결과 = A의 POST /api/judgement 응답 (docs/modules/judgement_api.md).
+ * 채점 서버가 실패하면 score·correct·rubric·feedback 이 null 이고 message(고정 문구)만 온다.
+ */
+export interface JudgementGrade {
+  /** 100점 환산. 채점하지 못했으면 null */
+  score: number | null
+  /** 60점 이상이면 true (conventions P17) */
+  correct: boolean | null
+  rubric: Rubric | null
+  /** Claude 채점 이유 {reasoning, rebuttal}. 규칙 채점이면 빈 객체 */
+  reasons: Partial<Record<'reasoning' | 'rebuttal', string>>
+  grader: 'claude' | 'rule' | null
+  /** 같은 답안의 이전 채점 결과를 다시 쓴 경우 */
+  reused: boolean
+  /** 채점하지 못했을 때 보여 줄 고정 문구 */
+  message: string | null
+  feedback: JudgementFeedback | null
 }
 
 /** 채점 결과. 코드 채점(퀴즈·순서·차트)은 isCorrect, 루브릭 채점(판단·주관식)은 grade */
@@ -107,5 +131,5 @@ export interface AnswerResult {
   explanation?: string
   /** 정답 보기 번호 또는 순서 (틀렸을 때 보여 줌) */
   correct?: number | string[]
-  grade?: RubricGrade
+  grade?: JudgementGrade
 }

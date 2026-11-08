@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
+import { DailyLimitError } from '@/api/client'
 import type { AnswerResult, JudgementStep } from '@/types/card'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
@@ -18,11 +19,35 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
   const submit = useSubmitAnswer()
   const ready = choice !== null && reason.trim().length >= MIN_REASON
 
+  const limited = submit.error instanceof DailyLimitError ? submit.error.message : null
+
   const send = () => {
     if (choice === null) return
-    const answer = { kind: 'judgement' as const, choiceIndex: choice, reason: reason.trim() }
+    const answer = {
+      kind: 'judgement' as const,
+      choiceIndex: choice,
+      choice: step.choices[choice],
+      reason: reason.trim(),
+    }
     submit.mutate({ stepId: step.id, answer }, { onSuccess: onNext })
   }
+
+  // 하루 채점 횟수를 다 쓰면 채점 없이 결과 화면으로 넘어간다 (결과 화면은 message 만 보여 준다)
+  const skipGrading = (message: string) =>
+    onNext({
+      stepId: step.id,
+      isCorrect: null,
+      grade: {
+        score: null,
+        correct: null,
+        rubric: null,
+        reasons: {},
+        grader: null,
+        reused: false,
+        message,
+        feedback: null,
+      },
+    })
 
   return (
     <StepFrame
@@ -67,8 +92,21 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
           {reason.trim().length} / 최소 {MIN_REASON}자
         </span>
       </label>
-      {submit.isError && (
-        <p className="text-up mt-2 text-sm">채점하지 못했어요. 다시 눌러 주세요.</p>
+      {limited ? (
+        <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <p>{limited}</p>
+          <button
+            type="button"
+            onClick={() => skipGrading(limited)}
+            className="text-primary mt-1.5 font-semibold"
+          >
+            채점 없이 결과 보기 ›
+          </button>
+        </div>
+      ) : (
+        submit.isError && (
+          <p className="text-up mt-2 text-sm">채점하지 못했어요. 다시 눌러 주세요.</p>
+        )
       )}
     </StepFrame>
   )

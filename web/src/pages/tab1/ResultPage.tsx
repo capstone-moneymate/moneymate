@@ -31,7 +31,8 @@ export const ResultPage = () => {
   const grade = values.find((r) => r.grade)?.grade
   const judgement = grade?.score ?? null
   const parts = [concept, judgement].filter((v): v is number => v !== null)
-  const total = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : 0
+  // 채점된 단계가 하나도 없으면(판단 채점 실패·한도 초과뿐인 유형 3 등) 점수 대신 '-'
+  const total = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null
 
   return (
     <div className="flex min-h-full flex-col px-5 pt-5 pb-5">
@@ -43,7 +44,7 @@ export const ResultPage = () => {
 
       <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-5 text-center">
         <p className="text-sm text-slate-500">종합 점수</p>
-        <p className="text-primary mt-1 text-4xl font-bold tabular-nums">{total}</p>
+        <p className="text-primary mt-1 text-4xl font-bold tabular-nums">{total ?? '-'}</p>
       </div>
       <dl className="mt-2 grid grid-cols-2 gap-2">
         <Score label="개념 이해도" value={concept} />
