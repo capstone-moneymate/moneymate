@@ -75,8 +75,10 @@ def test_seed_dictionary():
     assert find_cycle(g) is None
     # 인하 → 국채 금리 ▼ → 성장주 ▲ : (-1) × (-1) = +1
     assert effect(g, "rate_cut", "growth_valuation").direction == UP
-    # 인상 → 성장주: 직접 ▼, 국채 금리 경로 (+1) × (-1) = ▼ → 두 경로가 같은 방향
+    # 인상 → 국채 금리 ▲ → 성장주 ▼ : (+1) × (-1) = -1. 직접 연결은 지워서 경로는 하나다
     e = effect(g, "rate_hike", "growth_valuation")
-    assert e.direction == DOWN and len(e.paths) == 2
+    assert e.direction == DOWN and len(e.paths) == 1
+    # 금리와 AI 테마를 잇던 연결은 근거가 없어 지웠다
+    assert effect(g, "rate_cut", "ai_investment").direction is None
     # HBM 공급 확대 → 범용 메모리 가격 ▲ → 반도체 기업 실적 ▲
     assert effect(g, "hbm_supply", "semi_earnings").direction == UP

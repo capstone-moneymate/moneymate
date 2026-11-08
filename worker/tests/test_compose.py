@@ -119,6 +119,36 @@ def test_bad_cards_fail(offline, ids, break_it, expect):
     assert any(expect in e for e in errors), errors
 
 
+@pytest.mark.parametrize("text", [
+    "메모리를 만드는 회사라.",            # 예전 FORBIDDEN 의 '사라' 오탐 (B 요청 1)
+    "한국은행의 목표가 물가 안정이에요.",  # '목표가' 오탐
+])
+def test_banned_uses_validators_no_false_positive(offline, ids, text):
+    card = good_card(offline)
+    card["slides"][0]["body"] = text
+    assert cp.validate_card(card, 2, ids, CTX) == []
+
+
+def test_problem_text_is_question_plus_options():
+    assert cp.problem_text("동결은?", ["올림", "내림", "그대로"]) == "동결은? 올림 내림 그대로"
+
+
+def test_duplicate_quiz_fails(offline, ids):
+    card = good_card(offline)
+    past = [cp.problem_text("동결은?", ["올림", "내림", "그대로"])]
+    errors = cp.validate_card(card, 2, ids, CTX, past)
+    assert any("거의 같아요" in e and "동결은?" in e for e in errors), errors
+
+
+def test_judgement_question_not_checked_for_duplicates(offline, ids):
+    card = good_card(offline)
+    # 판단해보기 질문과 똑같은 예전 문장이 있어도 걸리지 않는다 (B와 합의: 판단 질문은 빼고 넘긴다)
+    past = [card["steps"][4]["question"], "전혀 다른 퀴즈 질문 하나 둘 셋"]
+    assert cp.validate_card(card, 2, ids, CTX, past) == []
+    assert cp.card_problem_texts(card) == ["동결은? 올림 내림 그대로",
+                                          "평균의 몇 배? 1배 2배 3배"]
+
+
 def test_type3_order(offline, ids):
     card = good_card(offline)
     card["steps"] = [card["steps"][0], card["steps"][4]]
@@ -137,8 +167,25 @@ def test_step_rows(offline):
     assert [i["concept_id"] for i in order["content"]["items"]] == ["growth_valuation", "rate_hold"]  # 정답과 다르게 섞임
     assert order["answer"]["correct"] == ["rate_hold", "growth_valuation"]
     assert rows[3]["content"]["ticker"] == "KS11" and rows[3]["answer"]["check"]["metric"] == "volume_ratio"
+    # 차트 표시 기간 (B 요청 5): 하루 문제(volume_ratio)라 끝 = 확인한 날, 시작 = 90일 앞
+    last = date.fromisoformat(str(offline.iloc[-1].market_date))
+    assert rows[3]["content"]["end_date"] == last.isoformat()
+    assert rows[3]["content"]["start_date"] == (last - timedelta(days=90)).isoformat()
     assert rows[4]["answer"] == {"chain": ["rate_hold", "growth_valuation"], "counter": []}
     assert rows[0]["answer"] is None
+
+
+@pytest.mark.parametrize("check, want", [
+    # 기간 문제는 문제 기간만 그린다 (더 넓으면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
+    ({"metric": "top_volume_date", "start_date": "2026-10-06", "end_date": "2026-10-08"}, ("2026-10-06", "2026-10-08")),
+    ({"metric": "return_pct", "start_date": "2026-05-01", "end_date": "2026-10-08"}, ("2026-05-01", "2026-10-08")),
+    # 하루 문제는 90일 앞부터 (start_date 가 있어도 쓰지 않는다)
+    ({"metric": "volume_ratio", "start_date": None, "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
+    ({"metric": "rsi", "start_date": "2026-10-01", "end_date": "2026-10-08"}, ("2026-07-10", "2026-10-08")),
+])
+def test_chart_display_range(check, want):
+    r = cp.chart_display_range(check)
+    assert (r["start_date"], r["end_date"]) == want
 
 
 def test_card_schema_kinds():
