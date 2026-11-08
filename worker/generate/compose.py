@@ -17,8 +17,9 @@
 import json
 import random
 import re
+import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import psycopg
@@ -28,7 +29,7 @@ from db import get_conn
 from generate import tools
 from generate.classify import ClassifyResult, Concept, load_concepts
 from generate.llm_client import SONNET, cost_usd, create
-from validate.validators import verify
+from validate.validators import find_banned, find_duplicates, verify
 
 PROMPT = (Path(__file__).parent / "prompts" / "compose.md").read_text(encoding="utf-8")
 MAX_CALLS = 15  # 출제 1건에 쓰는 Sonnet 호출 상한 (수정 포함)
@@ -38,12 +39,13 @@ STEP_ORDER = {
     2: ["concept", "quiz", "causal_order", "chart", "judgement"],
     3: ["concept", "judgement"],
 }
-# 매수·매도 권유, 수익 예측. 걸린 표현은 계속 추가한다 (B의 금지 표현 검증기가 생기면 그쪽으로 옮긴다)
-FORBIDDEN = re.compile(
-    r"매수\s*(?:추천|하세요|하라|타이밍)|매도\s*(?:추천|하세요|하라|타이밍)|사세요|파세요|팔아라|사라\b|담으세요|담아라"
-    r"|추천\s*종목|목표\s*(?:주)?가|오를\s*것|내릴\s*것|떨어질\s*것|상승할\s*(?:것|전망)|하락할\s*(?:것|전망)"
-    r"|수익(?:이|을)?\s*(?:기대|보장)|반드시\s*오"
-)
+# 중복 검사: 최근 며칠 치 quiz·chart 문제와 비교한다 (B의 find_duplicates, docs/modules/validators.md)
+DUPLICATE_DAYS = 30
+DUPLICATE_KINDS = ("quiz", "chart")  # 판단해보기 질문은 틀이 비슷해 다른 사건도 걸리므로 뺀다 (B와 합의)
+# 차트 화면이 그릴 기간: 하루를 보는 문제(volume_ratio·rsi)는 end_date 에서 이만큼 앞부터 (달력일)
+CHART_DISPLAY_DAYS = 90
+# 기간을 보는 문제: 화면도 문제 기간만 그린다 (더 넓게 그리면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
+PERIOD_METRICS = ("top_volume_date", "return_pct")
 
 
 class ComposeError(RuntimeError):
@@ -358,7 +360,31 @@ def option_errors(options: list[str], answer_index: int, metric: str, expected) 
     return []
 
 
-def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.ToolContext) -> list[str]:
+def problem_text(question: str, options: list[str]) -> str:
+    """중복 비교용 문장: question + 보기 문장. 새 문제와 예전 문제를 같은 형식으로 만든다 (#53 리뷰, B와 합의)."""
+    return " ".join([question, *options]).strip()
+
+
+def card_problem_texts(card: dict) -> list[str]:
+    return [problem_text(s["question"], s["options"]) for s in card.get("steps", [])
+            if s.get("kind") in DUPLICATE_KINDS]
+
+
+def load_past_problems(card_date: date, days: int = DUPLICATE_DAYS) -> list[str]:
+    """steps 에서 card_date 이전 days 일 동안 낸 quiz·chart 문제 (rejected 카드 제외)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT s.content FROM steps s JOIN cards c ON c.id = s.card_id
+               WHERE s.kind = ANY(%s) AND c.status <> 'rejected'
+                 AND c.card_date >= %s AND c.card_date <= %s""",
+            (list(DUPLICATE_KINDS), card_date - timedelta(days=days), card_date),
+        ).fetchall()
+    return [problem_text(r[0].get("question", ""), r[0].get("options", [])) for r in rows]
+
+
+def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.ToolContext,
+                  past_problems: list[str] | None = None) -> list[str]:
+    """past_problems: 중복 검사용 예전 문제 문장 (load_past_problems). None 이면 중복 검사를 하지 않는다."""
     errors = shape_errors(card, card_schema())
     if errors:
         return errors[:10]  # 모양이 틀리면 내용 검사는 하지 않는다
@@ -373,9 +399,12 @@ def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.
     if not 2 <= len(facts) <= 4 or any(not f["keywords"] for f in facts):
         errors.append("key_facts 는 2~4개이고 각각 keywords 가 1개 이상 있어야 해요")
 
-    hits = sorted({m.group(0) for s in _strings(card) for m in FORBIDDEN.finditer(s)})
+    # 금지 표현은 B의 검증기 하나로 본다 (목록: validate/banned_terms.txt)
+    hits = find_banned(_strings(card))
     if hits:
         errors.append(f"매수·매도 권유나 예측 표현이 있어요: {', '.join(hits)}")
+    if past_problems:
+        errors += find_duplicates(card_problem_texts(card), past_problems)
 
     for no, s in enumerate(steps, 1):
         where = f"{no}단계({s['kind']})"
@@ -429,6 +458,18 @@ def _shuffled(items: list[dict], answer: list[str], seed: str) -> list[dict]:
     return out
 
 
+def chart_display_range(check: dict) -> dict:
+    """차트 화면이 그릴 기간 (B의 ChartStep.tsx 가 읽는다). 끝은 확인한 날(end_date).
+    기간 문제(PERIOD_METRICS)는 시작 = 문제 기간 시작(start_date) 그대로라 화면에 문제 기간만 보인다.
+    하루 문제(volume_ratio·rsi)는 시작 = end_date 에서 CHART_DISPLAY_DAYS 앞. 날짜는 'YYYY-MM-DD'."""
+    end = date.fromisoformat(check["end_date"])
+    if check.get("metric") in PERIOD_METRICS and check.get("start_date"):
+        start = date.fromisoformat(check["start_date"])
+    else:
+        start = end - timedelta(days=CHART_DISPLAY_DAYS)
+    return {"start_date": start.isoformat(), "end_date": end.isoformat()}
+
+
 def step_rows(card: dict, seed: str) -> list[dict]:
     """steps 테이블 행 (content 는 화면에 내려보내는 부분, answer 는 서버만 보는 정답)."""
     rows = []
@@ -440,6 +481,7 @@ def step_rows(card: dict, seed: str) -> list[dict]:
             content |= {"question": s["question"], "options": s["options"]}
             if kind == "chart":
                 content["ticker"] = s["ticker"]
+                content |= chart_display_range(s["chart_check"])
             answer = {"correct": s["answer_index"], "explanation": s["explanation"]}
             if kind == "chart":
                 answer["check"] = s["chart_check"]
@@ -498,9 +540,15 @@ def compose(source: dict, cls: ClassifyResult, card_date: date, concepts: list[C
     )
     res = run.result
     try:
+        past = load_past_problems(card_date)
+    except psycopg.Error as e:
+        # DB 를 못 읽어도 출제는 계속한다. 중복 검사만 건너뛴다
+        print(f"예전 문제를 읽지 못해 중복 검사를 건너뜁니다 ({e.__class__.__name__})", file=sys.stderr)
+        past = None
+    try:
         card = _next_card(run)
         while True:
-            errors = validate_card(card, cls.card_type, set(ids), run.ctx)
+            errors = validate_card(card, cls.card_type, set(ids), run.ctx, past)
             if not errors and review:
                 errors = review(card)
             res.card, res.errors = card, errors

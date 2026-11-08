@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.answer.AnswerRepository">
+
+    <resultMap id="stepMap" type="com.moneymate.answer.AnswerStep">
+        <constructor>
+            <arg column="step_id" javaType="_long"/>
+            <arg column="card_id" javaType="_long"/>
+            <arg column="kind" javaType="String"/>
+            <arg column="answer_json" javaType="String"/>
+            <arg column="option_count" javaType="_int"/>
+            <arg column="concept_ids" javaType="[Ljava.lang.String;"
+                 typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 카드가 rejected 이거나 (설정이 꺼져 있을 때) pending 이면 답을 받지 않는다. 뉴스 API 와 같은 규칙 -->
+    <select id="findStep" resultMap="stepMap">
+        SELECT s.id      AS step_id,
+               s.card_id AS card_id,
+               s.kind,
+               s.answer::text AS answer_json,
+               CASE WHEN jsonb_typeof(s.content -> 'options') = 'array'
+                    THEN jsonb_array_length(s.content -> 'options') ELSE 0 END AS option_count,
+               ARRAY(SELECT jsonb_array_elements_text(
+                        CASE WHEN jsonb_typeof(s.content -> 'concept_ids') = 'array'
+                             THEN s.content -> 'concept_ids' ELSE '[]'::jsonb END)) AS concept_ids
+          FROM steps s
+          JOIN cards c ON c.id = s.card_id
+         WHERE s.id = #{stepId}
+           AND c.status IN ('published'<if test="includePending">, 'pending'</if>)
+    </select>
+
+    <insert id="ensureUser">
+        INSERT INTO users (id) VALUES (CAST(#{userId} AS uuid))
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <insert id="insertAnswer">
+        INSERT INTO user_answers (user_id, card_id, step_id, answer, is_correct, graded_by)
+        VALUES (CAST(#{userId} AS uuid), #{cardId}, #{stepId}, CAST(#{answerJson} AS jsonb), #{isCorrect}, 'code')
+    </insert>
+</mapper>
