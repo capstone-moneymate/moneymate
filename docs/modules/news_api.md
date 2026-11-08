@@ -1,0 +1,11 @@
+> **초안 (Claude 작성, 2026-11-07).** 담당자 C가 읽고 고쳐서 확정한다.
+
+# server: GET /api/news/home, GET /api/cards/{id} (com.moneymate.news)
+
+- **한 줄 설명**: 탭1 뉴스 홈(지수 4개 + 오늘의 카드)과 카드 상세(카드뉴스 slides + 학습 steps)를 DB에서 읽어 web 타입(`web/src/types/news.ts`, `card.ts`) 모양으로 돌려준다. **정답(`steps.answer`)은 내려보내지 않는다.**
+- **입력**: 홈은 `?userId=<UUID>`(선택, 있으면 `completedCardIds`를 채운다. UUID가 아니면 400). 카드는 경로의 카드 id(숫자).
+- **하는 일** (`NewsService`): ① 지수: `prices`에서 KS11·KQ11·IXIC·US500 마다 가장 최근 거래일 종가와 그 전 거래일 종가(LAG)로 `chgPct = (오늘-전날)/전날`, 전날이 없거나 0이면 null(P2) ② 홈 카드: 오늘(KST) 이하에서 보여 줄 카드가 있는 가장 최근 `card_date`의 카드(id 순). 없으면 날짜는 오늘, 카드는 빈 목록 ③ 요약은 첫 슬라이드 `body`를 80자에서 자르고 `…` ④ 출처는 대표 자료(`card_sources.is_main` → `raw_sources`), 없으면 `cards.source_links[0]`. 이름은 거시 발표면 기관 이름, 공시면 `DART · 회사`·`SEC 8-K · 회사`. 발표 시각은 UTC ISO, 시각이 없는 DART는 그 날짜 0시 KST ⑤ 완료 카드: 답을 내는 단계(개념 학습 concept 제외, 화면이 답을 보내지 않음)에 모두 답을 1개 이상 낸 카드 ⑥ 카드 상세: `slides`·`steps.content`의 키를 모두 camelCase로 바꾸고(`concept_ids`→`conceptIds`, `items[].concept_id`→`conceptId`, 차트 `start_date`·`end_date`→`startDate`·`endDate`), 단계마다 `id`(문자열)·`no`·`kind`를 붙인다.
+- **출력**: 홈 `{date, indices[{code,name,value,chgPct,date}], cards[{id,type,title,summary,theme,sourceName,sourceUrl,sourcePublishedAt,stepCount}], completedCardIds}`. 카드 `{id,type,title,theme,sourceName,sourceUrl,sourcePublishedAt,ticker,slides[...],steps[...]}`. 없는 카드·보여 줄 상태가 아닌 카드는 404 `{"message": ...}`.
+- **카드 상태**: 기본은 `published`만(conventions P8). 환경변수 `NEWS_INCLUDE_PENDING=true`로 서버를 띄우면 `pending`도 보인다(데모·검수용). `rejected`는 항상 안 보인다. application.yml(A 파일)은 건드리지 않고 `@Value` 기본값으로 읽는다.
+- **주의할 점**: 정답은 두 겹으로 막는다. SQL이 `steps.answer`를 읽지 않고, `content`에 정답 키(`answer_index`, `explanation`, `chart_check`, `chain`, `counter` 등 `NewsService.ANSWER_KEYS`)가 섞여 와도 지운다. id는 web 타입에 맞춰 문자열이다. web `ChartStep` 타입에는 아직 `startDate`·`endDate`가 없다(web 연결 때 추가). DB 읽기 전용이라 이 API는 아무것도 쓰지 않는다.
+- **테스트**: `cd server; .\gradlew.bat test` (DB 없이 가짜 Repository) `NewsServiceTest` 12개: KST 기준 최근 카드 날짜, 카드 없을 때, 완료 카드 id 문자열, pending 설정 전달, 지수 순서·등락률 손계산(2987.42/2951.12 → 0.0123004), 전날 0이면 null, 요약 80자, 출처 이름·시각 대체, camelCase 변환과 정답 키 숨김, conceptIds 기본값, 없는 카드 404, toCamel. **실제 DB로 SQL 확인은 아직 안 함** (Docker를 띄운 뒤 `curl localhost:8080/api/news/home`, `/api/cards/<id>`).
