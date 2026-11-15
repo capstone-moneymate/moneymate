@@ -2,6 +2,7 @@
  * 탭1 카드뉴스·단계형 학습에서 쓰는 타입. 서버 카드 API(Spring Boot) 응답도 이 모양에 맞춘다.
  * "← "는 서버가 값을 가져올 테이블·컬럼이다. 정답(steps.answer)은 서버가 내려보내지 않는다.
  */
+import type { ChartData } from '@/types/chart'
 import type { CardType } from '@/types/news'
 
 /** 카드뉴스 한 장 ← cards.slides[i] */
@@ -54,6 +55,8 @@ export interface ChartStep extends StepBase {
   /** 차트에 그릴 기간 (YYYY-MM-DD) ← steps.content.start_date·end_date. #71 이전에 만든 카드에는 없다 */
   startDate?: string
   endDate?: string
+  /** 차트에 그릴 값 ← steps.content.chart (compose 가 출제 때 계산해 저장). 이 기능 전에 만든 카드에는 없다 */
+  chart?: ChartData
 }
 
 /**
