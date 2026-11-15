@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
-import type { AnswerResult, ChartStep, QuizStep } from '@/types/card'
+import type { AnswerResult, ChartStep as ChartStepData, QuizStep } from '@/types/card'
 import { AnswerFeedback } from '@/pages/tab1/steps/AnswerFeedback'
+import { ChartStep } from '@/pages/tab1/steps/ChartStep'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 interface QuizViewProps {
-  step: QuizStep | ChartStep
+  step: QuizStep | ChartStepData
   onNext: (result: AnswerResult) => void
 }
 
@@ -28,7 +29,7 @@ export const QuizView = ({ step, onNext }: QuizViewProps) => {
       buttonDisabled={picked === null || submit.isPending}
       onButton={() => (result ? onNext(result) : check())}
     >
-      {step.kind === 'chart' && <ChartSlot ticker={step.ticker} />}
+      {step.kind === 'chart' && <ChartStep stepId={step.id} ticker={step.ticker} />}
       <ul className="flex flex-col gap-2">
         {step.options.map((option, i) => (
           <li key={option}>
@@ -67,15 +68,4 @@ const optionClass = (i: number, picked: number | null, result?: AnswerResult) =>
   return i === picked
     ? 'border-primary bg-blue-50 font-semibold text-primary'
     : 'border-slate-200 text-slate-800'
-}
-
-/**
- * 차트 자리. B가 pages/tab1/steps/ChartStep.tsx (lightweight-charts, 지표 데이터 연결)를 만들면 이 자리를 바꾼다.
- */
-const ChartSlot = ({ ticker }: { ticker: string }) => {
-  return (
-    <div className="mb-5 flex h-40 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
-      {ticker} 가격·거래량 차트 (B의 ChartStep 연결 예정)
-    </div>
-  )
 }

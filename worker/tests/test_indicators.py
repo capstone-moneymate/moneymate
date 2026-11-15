@@ -25,6 +25,17 @@ def test_rsi_no_loss_is_100():
     assert wilder_rsi([1, 2, 3, 4], period=2) == 100.0
 
 
+def test_rsi_flat_prices_is_neutral():
+    # 종가가 15일 내내 같으면(거래정지 등) 이익·손실이 모두 0 → 과매수(100)가 아니라 중립 50
+    assert wilder_rsi([100.0] * 15) == 50.0
+    assert rsi_series([100.0] * 4, period=2) == [None, None, 50.0, 50.0]
+
+
+def test_rsi_flat_after_rise_stays_100():
+    # 오른 뒤 멈추면 이익 평균이 남아 있어 손실 0 규칙(100)을 따른다
+    assert wilder_rsi([1, 2, 3, 3], period=2) == 100.0
+
+
 def test_rsi_too_short():
     with pytest.raises(ValueError):
         wilder_rsi([1, 2], period=2)
