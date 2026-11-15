@@ -16,6 +16,7 @@ dependencies = [
   "fastapi>=0.115",  # 판단 채점 서버 (A, judge_api.py)
   "uvicorn[standard]>=0.30",  # judge_api 실행
   "rapidfuzz>=3.0",  # 문제 중복 검사 (B, validate/validators.py)
+  "apscheduler>=3.10,<4",  # 매일 실행 (C, run_daily.py --schedule)
 ]
 
 [project.optional-dependencies]
