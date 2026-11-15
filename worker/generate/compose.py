@@ -533,6 +533,9 @@ def step_rows(card: dict, seed: str) -> list[dict]:
 
 
 def save_pending(card: dict, cls: ClassifyResult, source: dict, card_date: date, result: ComposeResult) -> int:
+    """카드·출처·단계를 한 트랜잭션으로 저장한다. 단계 행(차트 데이터는 가격 DB 를 읽는다)은 트랜잭션을 열기 전에
+    만든다. 그래서 가격을 못 읽으면 아무것도 쓰지 않고 ToolError·psycopg.Error 가 올라간다 (compose 가 errors 로 바꾼다)."""
+    rows = step_rows(card, seed=str(source.get("source_key") or source["id"]))
     ticker = source.get("ticker") if cls.card_type == 3 else None
     links = [{"name": source.get("issuer_name") or source.get("source_type"), "url": source["url"],
               "published_date": str(source.get("published_date"))}]
@@ -548,7 +551,7 @@ def save_pending(card: dict, cls: ClassifyResult, source: dict, card_date: date,
         ).fetchone()[0]
         conn.execute("INSERT INTO card_sources (card_id, source_id, is_main) VALUES (%s, %s, true)",
                      (card_id, source["id"]))
-        for r in step_rows(card, seed=str(source.get("source_key") or source["id"])):
+        for r in rows:
             conn.execute("INSERT INTO steps (card_id, step_no, kind, content, answer) VALUES (%s, %s, %s, %s, %s)",
                          (card_id, r["step_no"], r["kind"], Jsonb(r["content"]),
                           Jsonb(r["answer"]) if r["answer"] is not None else None))
@@ -595,5 +598,11 @@ def compose(source: dict, cls: ClassifyResult, card_date: date, concepts: list[C
     except ComposeError as e:
         res.errors = [str(e)]
     if save and res.card and not res.errors:
-        res.card_id = save_pending(res.card, cls, source, card_date, res)
+        # 검증까지 통과한 카드가 저장에서 실패해도 예외로 끝내지 않고 이유를 남긴다 (run_daily 가 다음 자료로 넘어간다)
+        try:
+            res.card_id = save_pending(res.card, cls, source, card_date, res)
+        except tools.ToolError as e:
+            res.errors = [f"차트 데이터를 만들지 못해 저장하지 않았어요 ({e})"]
+        except psycopg.Error as e:
+            res.errors = [f"DB 에 저장하지 못했어요 ({e.__class__.__name__}: {e})"]
     return res

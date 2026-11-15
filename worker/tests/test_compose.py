@@ -271,6 +271,36 @@ def test_repair_then_pass(offline, monkeypatch):
     assert "코드가 계산한 값은 3.0" in feedback["content"]
 
 
+def test_chart_data_failure_on_save_is_error_not_exception(offline, monkeypatch):
+    # 검증은 통과했는데 저장할 때 가격을 못 읽으면: 트랜잭션을 열지 않고 errors 로 돌려준다 (#83 리뷰)
+    card = good_card(offline)
+    fake(monkeypatch, [resp("tool_use", submit(card))])
+
+    def no_prices(ticker, check):
+        raise tools.ToolError("KS11 가격이 없어요")
+
+    monkeypatch.setattr(cp, "chart_data", no_prices)
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=True)
+    # DB 가 없는 테스트라 트랜잭션을 먼저 열었다면 "DB 에 저장하지 못했어요"가 나왔을 것이다.
+    # 차트 오류가 나왔다는 것은 단계 행을 트랜잭션을 열기 전에 만들었다는 뜻이다
+    assert r.card_id is None and r.card == card
+    assert r.errors == ["차트 데이터를 만들지 못해 저장하지 않았어요 (KS11 가격이 없어요)"]
+
+
+def test_db_failure_on_save_is_error_not_exception(offline, monkeypatch):
+    import psycopg
+
+    card = good_card(offline)
+    fake(monkeypatch, [resp("tool_use", submit(card))])
+
+    def down():
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(cp, "get_conn", down)
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=True)
+    assert r.card_id is None and r.errors[0].startswith("DB 에 저장하지 못했어요 (OperationalError")
+
+
 def test_gives_up_after_max_repairs(offline, monkeypatch):
     bad = good_card(offline)
     bad["slides"][0]["body"] = "지금 사세요."
