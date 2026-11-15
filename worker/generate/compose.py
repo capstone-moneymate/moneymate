@@ -25,6 +25,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
+from compute import indicators
 from db import get_conn
 from generate import tools
 from generate.classify import ClassifyResult, Concept, load_concepts
@@ -470,8 +471,41 @@ def chart_display_range(check: dict) -> dict:
     return {"start_date": start.isoformat(), "end_date": end.isoformat()}
 
 
+# 하이라이트(파란 막대)는 문제가 직접 가리키는 하루에만 둔다. 기간 문제에 두면 정답(가장 많은 날 등)을 드러낼 수 있다
+HIGHLIGHT_METRICS = ("volume_ratio", "rsi")
+HIGHLIGHT_LABEL = "문제의 날"
+
+
+def chart_data(ticker: str, check: dict) -> dict:
+    """차트 화면이 그릴 값 (B의 web/src/types/chart.ts ChartData 모양). 출제 때 저장해 정답 확인 값과 화면이 같게 한다.
+
+    points: 표시 기간(chart_display_range)의 날짜·종가·거래량. RSI 는 rsi 문제에만 넣는다.
+    RSI 는 calc_rsi 와 같은 범위(마지막 252거래일)로 indicators.rsi_series 를 돌려 잘라서, 확인한 날 값이 정답과 같다.
+    highlight: 하루 문제(volume_ratio·rsi)만 그날(데이터의 마지막 거래일).
+    """
+    metric = check.get("metric")
+    rng = chart_display_range(check)
+    start, end = date.fromisoformat(rng["start_date"]), date.fromisoformat(rng["end_date"])
+    n = tools.AVG_DAYS if metric == "rsi" else tools.AVG_DAYS * 2
+    df = tools.load_prices(ticker, end, n)
+    rsi = indicators.rsi_series(df["close"].astype(float).tolist()) if metric == "rsi" else None
+    points = []
+    for i, r in enumerate(df.itertuples()):
+        if r.market_date < start:
+            continue
+        point = {"date": str(r.market_date), "close": float(r.close), "volume": int(r.volume)}
+        if rsi is not None:
+            point["rsi"] = rsi[i]
+        points.append(point)
+    out = {"points": points}
+    if metric in HIGHLIGHT_METRICS and points:
+        out["highlight"] = {"date": points[-1]["date"], "label": HIGHLIGHT_LABEL}
+    return out
+
+
 def step_rows(card: dict, seed: str) -> list[dict]:
-    """steps 테이블 행 (content 는 화면에 내려보내는 부분, answer 는 서버만 보는 정답)."""
+    """steps 테이블 행 (content 는 화면에 내려보내는 부분, answer 는 서버만 보는 정답).
+    chart 단계는 가격을 읽어 content.chart 를 채운다 (DB 필요)."""
     rows = []
     for no, s in enumerate(card["steps"], 1):
         kind, content, answer = s["kind"], {"concept_ids": s["concept_ids"]}, None
@@ -482,6 +516,7 @@ def step_rows(card: dict, seed: str) -> list[dict]:
             if kind == "chart":
                 content["ticker"] = s["ticker"]
                 content |= chart_display_range(s["chart_check"])
+                content["chart"] = chart_data(s["ticker"], s["chart_check"])
             answer = {"correct": s["answer_index"], "explanation": s["explanation"]}
             if kind == "chart":
                 answer["check"] = s["chart_check"]
