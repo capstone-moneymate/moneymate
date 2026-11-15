@@ -37,7 +37,7 @@ def fake_pipeline(monkeypatch, tmp_path, *, etf_code=0, picked_titles=("A", "B")
     monkeypatch.setattr(rd, "LOG_PATH", tmp_path / "run_daily.jsonl")
     monkeypatch.setattr(rd, "collect_prices", lambda d: calls.append("prices") or "ok")
     monkeypatch.setattr(rd, "collect_sources", lambda d: calls.append("sources") or 0)
-    monkeypatch.setattr(rd, "collect_etf", lambda: calls.append("etf") or etf_code)
+    monkeypatch.setattr(rd, "collect_etf", lambda d: calls.append(("etf", d)) or etf_code)
     monkeypatch.setattr(rd, "compute_etf_trend", lambda d: calls.append("trend") or 0)
     cands = [Candidate(str(i), t, datetime(2026, 11, 13, tzinfo=KST), vol_score=2, start_concept="rate_hold",
                        extra={"source": {"title": t}}) for i, t in enumerate(picked_titles)]
@@ -50,7 +50,8 @@ def fake_pipeline(monkeypatch, tmp_path, *, etf_code=0, picked_titles=("A", "B")
 def test_run_continues_after_etf_failure_and_logs(monkeypatch, tmp_path):
     calls = fake_pipeline(monkeypatch, tmp_path, etf_code=1)
     report = rd.run(date(2026, 11, 13), date(2026, 11, 14))
-    assert calls[:5] == ["prices", "sources", "etf", "trend", "score"]  # ETF 가 실패해도 다음 단계로
+    # ETF 가 실패해도 다음 단계로. ETF 도 기준일을 받는다 (#87 리뷰)
+    assert calls[:5] == ["prices", "sources", ("etf", date(2026, 11, 13)), "trend", "score"]
     assert ("compose", 2, date(2026, 11, 14)) in calls and report.card_ids == [7, 8]
     assert not report.ok  # 하지만 하루 결과는 실패로 남는다 → 종료 코드 1
     log = (tmp_path / "run_daily.jsonl").read_text(encoding="utf-8")
@@ -61,6 +62,55 @@ def test_no_llm_stops_before_classify(monkeypatch, tmp_path):
     calls = fake_pipeline(monkeypatch, tmp_path)
     report = rd.run(date(2026, 11, 13), date(2026, 11, 14), collect=False, llm=False)
     assert calls == ["score"] and report.ok and report.card_ids == []
+
+
+def test_collect_etf_backfills_from_target(monkeypatch):
+    # --date 로 다시 돌리거나 전날 수집이 실패해도 그날부터 빠진 스냅샷을 채운다 (#87 리뷰)
+    import collectors.etf_holdings as etf
+
+    seen = []
+    monkeypatch.setattr(etf, "main", lambda argv: seen.append(argv) or 1)
+    assert rd.collect_etf(date(2026, 11, 13)) == 1  # 실패 코드는 그대로 돌려준다 (B 요청 4)
+    assert seen == [["backfill", "2026-11-13"]]
+
+
+class FakeCursor:
+    def __init__(self, rows, cols):
+        self.rows, self.description = rows, [type("C", (), {"name": c}) for c in cols]
+
+    def fetchone(self):
+        return self.rows[0]
+
+    def fetchall(self):
+        return self.rows
+
+
+class SourcesConn:
+    """raw_sources·card_sources 를 들고 있는 가짜 연결. 자료 쿼리의 카드 제외 조건을 파이썬으로 흉내 낸다."""
+    COLS = ["id", "source_type", "source_key", "category", "title", "url", "issuer_name", "ticker", "market",
+            "published_date", "published_at", "numbers"]
+
+    def __init__(self, sources, carded_ids):
+        self.sources, self.carded, self.sql = sources, set(carded_ids), []
+
+    def execute(self, sql, params):
+        self.sql.append(" ".join(sql.split()))
+        if "FROM prices" in sql:
+            return FakeCursor([(date(2026, 11, 12),)], ["max"])
+        prev, target = params
+        excluded = self.carded if "NOT EXISTS (SELECT 1 FROM card_sources cs WHERE cs.source_id = r.id)" in self.sql[-1] else set()
+        rows = [tuple(s.get(c) for c in self.COLS) for s in self.sources
+                if prev < s["published_date"] <= target and s["id"] not in excluded]
+        return FakeCursor(rows, self.COLS)
+
+
+def test_sources_already_made_into_cards_are_skipped():
+    # 같은 --date 로 다시 돌려도 이미 카드가 된 자료는 후보에서 빠진다 (#87 리뷰)
+    d = date(2026, 11, 13)
+    conn = SourcesConn([{"id": 1, "published_date": d, "title": "카드 된 자료"},
+                        {"id": 2, "published_date": d, "title": "새 자료"},
+                        {"id": 3, "published_date": date(2026, 11, 12), "title": "전 거래일 자료"}], carded_ids=[1])
+    assert [s["id"] for s in rd.load_day_sources(conn, d)] == [2]
 
 
 # --- 선별 점수 ---

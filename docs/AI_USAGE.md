@@ -53,3 +53,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-07 | C | web/src/api/cards.ts | #72 코드래빗 리뷰(판단 채점 요청 타임아웃 10초 → 서버 대기 33초보다 짧음) 검토와 반영 요청 | - |
 | 2026-11-07 | C | web/src/api/news.ts·cards.ts, types/news.ts·card.ts, pages/tab1/NewsHomePage.tsx, vite.config.ts, .env.example, docs/modules/tab1_learn_screens.md | 탭1 화면을 실제 API(/api/news/home, /api/cards/{id}, /api/answers)에 연결(VITE_USE_MOCK=false), 개발 서버 /api 프록시, null 값 처리, 답 제출 후 홈 갱신, 브라우저로 실제 서버 확인 요청 | - |
 | 2026-11-15 | C | worker/run_daily.py, tests/test_run_daily.py, pyproject.toml(apscheduler), docs/modules/run_daily.md | 하루 파이프라인 작성 요청 (수집·ETF 종료 코드 확인·선별 점수 DB 연결·분류 상한·출제, 단계 실패해도 계속·로그·종료 코드, APScheduler 08:00 KST) | - |
+| 2026-11-16 | C | worker/run_daily.py, tests/test_run_daily.py, docs/modules/run_daily.md | #87 리뷰 반영 요청 (ETF 수집을 기준일부터 backfill, 이미 카드가 된 자료는 후보에서 제외, 테스트) | - |

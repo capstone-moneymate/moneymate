@@ -113,10 +113,12 @@ def collect_sources(target: date) -> int:
     return code
 
 
-def collect_etf() -> int:
+def collect_etf(target: date) -> int:
+    """target 부터 최근 거래일까지 빠진 날만 받는다 (#87 리뷰). 평소(08:00)에는 today 와 같고,
+    --date 로 다시 돌리거나 전날 수집이 실패했을 때도 그날 스냅샷이 채워져 ETF 추세 계산 날짜와 맞는다."""
     from collectors import etf_holdings
 
-    return etf_holdings.main(["today"])  # 실패하면 1 (B 요청 4)
+    return etf_holdings.main(["backfill", target.isoformat()])  # 실패하면 1 (B 요청 4)
 
 
 def compute_etf_trend(target: date) -> int:
@@ -214,14 +216,18 @@ class Scorer:
 
 
 def load_day_sources(conn, target: date) -> list[dict]:
-    """기준일(target) 직전 거래일 다음 날부터 target 까지 나온 1차 자료. 주말·휴일 발표도 다음 거래일에 잡힌다."""
+    """기준일(target) 직전 거래일 다음 날부터 target 까지 나온 1차 자료. 주말·휴일 발표도 다음 거래일에 잡힌다.
+    이미 카드가 된 자료는 뺀다 (#87 리뷰). 같은 --date 로 다시 돌려도 같은 자료로 또 출제하지 않는다."""
     prev = conn.execute(
         "SELECT max(market_date) FROM prices WHERE ticker = 'KS11' AND market_date < %s", (target,)
     ).fetchone()[0] or target - timedelta(days=1)
     cur = conn.execute(
         """SELECT id, source_type, source_key, category, title, url, issuer_name, ticker, market,
                   published_date, published_at, numbers
-           FROM raw_sources WHERE published_date > %s AND published_date <= %s ORDER BY id""",
+           FROM raw_sources r
+           WHERE published_date > %s AND published_date <= %s
+             AND NOT EXISTS (SELECT 1 FROM card_sources cs WHERE cs.source_id = r.id)
+           ORDER BY id""",
         (prev, target),
     )
     cols = [c.name for c in cur.description]
@@ -298,7 +304,7 @@ def run(target: date, card_date: date, collect: bool = True, llm: bool = True) -
     if collect:
         run_step(report, "가격", collect_prices, target)
         run_step(report, "1차 자료", collect_sources, target)
-        run_step(report, "ETF 구성종목", collect_etf)
+        run_step(report, "ETF 구성종목", collect_etf, target)
         run_step(report, "ETF 추세", compute_etf_trend, target)
     cands = run_step(report, "선별 점수", score_sources, target) or []
     if llm and cands:
