@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from compute import indicators
 from concepts.graph import effect, load_graph
 from db import get_conn
 from validate.validators import verify
@@ -76,41 +77,27 @@ def load_range(ticker: str, start: date, end: date) -> pd.DataFrame:
     return df
 
 
-# --- 계산 (DB 없이 테스트하는 순수 함수) ---
+# --- 계산: B의 compute/indicators.py 를 쓴다 (차트 화면 데이터와 같은 함수, 기술확정안) ---
+# 입력이 모자라 indicators 가 올리는 ValueError 는 에이전트에게 보여 줄 ToolError 로 바꾼다.
 
 def wilder_rsi(closes: list[float], period: int = 14) -> float:
-    """마지막 날 RSI. 첫 평균은 처음 period 개 변화의 단순 평균, 그다음은 Wilder 평활
-    (평균 = (이전 평균 × (period-1) + 오늘 값) ÷ period). 손실이 0이면 100."""
-    if len(closes) < period + 1:
-        raise ToolError(f"RSI {period}일을 계산하려면 종가가 {period + 1}개 이상 필요해요 (지금 {len(closes)}개)")
-    diffs = [b - a for a, b in zip(closes, closes[1:])]
-    gain = sum(max(d, 0) for d in diffs[:period]) / period
-    loss = sum(max(-d, 0) for d in diffs[:period]) / period
-    for d in diffs[period:]:
-        gain = (gain * (period - 1) + max(d, 0)) / period
-        loss = (loss * (period - 1) + max(-d, 0)) / period
-    if loss == 0:
-        return 100.0
-    return round(100 - 100 / (1 + gain / loss), 2)
-
-
-def pct_return(start_close: float, end_close: float) -> float:
-    return round((end_close / start_close - 1) * 100, 2)
+    """마지막 날 RSI (Wilder). 가격이 내내 같으면 50, 손실이 0이면 100."""
+    try:
+        return indicators.wilder_rsi(closes, period)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
 
 
 def volume_ratio(volumes: list[float]) -> float:
     """마지막 날 거래량 ÷ 그 앞 날들 평균."""
-    *before, today = volumes
-    if not before:
-        raise ToolError("평균을 낼 이전 거래일이 없어요")
-    avg = sum(before) / len(before)
-    return round(today / avg, 2) if avg else 0.0
+    try:
+        return indicators.volume_ratio(volumes)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
 
 
-def top_volume_days(df: pd.DataFrame, n: int) -> list[dict]:
-    """거래량 큰 순 n 일. 같으면 이른 날 먼저."""
-    top = df.sort_values(["volume", "market_date"], ascending=[False, True]).head(n)
-    return [{"date": str(r.market_date), "volume": int(r.volume)} for r in top.itertuples()]
+pct_return = indicators.pct_return
+top_volume_days = indicators.top_volume_days
 
 
 # --- 도구 본체 ---

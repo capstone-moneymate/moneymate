@@ -8,5 +8,5 @@
 - **원시 가격 도구는 두지 않는다**: 종가·거래량 표를 주면 에이전트가 숫자를 직접 계산할 수 있어서, 계산된 값만 돌려준다.
 - **출력**: `run_tool(name, args, ctx) → (JSON 문자열, is_error)`. 그대로 `tool_result`의 content·is_error에 넣는다. 입력이 틀리거나 데이터가 없으면 예외 대신 오류 문장을 돌려줘서 에이전트가 고치게 한다. 검증 실패는 오류가 아니라 결과(`passed: false` + 이유)다.
 - **로그**: 도구 호출마다 `logs/tool_calls.jsonl`에 1줄(시각·도구·자료 키·입력·성공 여부·오류·ms).
-- **주의할 점**: 도구 정의는 모두 `strict: true`(스키마에 맞는 입력만 옴). 가격은 `prices` 테이블에서만 읽어서 run_daily가 미리 수집해 둬야 한다. RSI 정의는 B의 indicators.py와 같아야 한다(팀 확인). 252거래일이 다 안 차면 `avg_days`가 252보다 작게 나온다. 개념 사전은 B의 graph·validators와 같이 db/seeds csv에서 읽는다.
-- **테스트**: `cd worker && python -m pytest tests/test_tools.py -q` (RSI 손계산 2개·손실 0·데이터 부족, 수익률·거래량 배수·상위일 동점, 가짜 가격표로 도구 실행, 차트 정답 검증 통과·실패·잘못된 입력, 오류가 로그에 남는지, rate_hold → growth_valuation 경로·방향, 닿는 모든 결과, 이벤트 날짜 최신순, 인과 순서 검증 통과·방향 오류, 스키마 strict).
+- **주의할 점**: 도구 정의는 모두 `strict: true`(스키마에 맞는 입력만 옴). 가격은 `prices` 테이블에서만 읽어서 run_daily가 미리 수집해 둬야 한다. 계산(RSI·수익률·거래량 배수·상위일)은 B의 `compute/indicators.py`를 가져다 쓰고, 입력 부족(ValueError)만 ToolError로 바꾼다. 차트 화면 데이터(compose의 `chart_data`)도 같은 함수를 써서 정답과 화면 숫자가 같다. 가격이 내내 같으면(거래정지) RSI는 50이다. 252거래일이 다 안 차면 `avg_days`가 252보다 작게 나온다. 개념 사전은 B의 graph·validators와 같이 db/seeds csv에서 읽는다.
+- **테스트**: `cd worker && python -m pytest tests/test_tools.py -q` (RSI 손계산 2개·손실 0·가격이 내내 같으면 50·데이터 부족, 수익률·거래량 배수·상위일 동점, 가짜 가격표로 도구 실행, 차트 정답 검증 통과·실패·잘못된 입력, 오류가 로그에 남는지, rate_hold → growth_valuation 경로·방향, 닿는 모든 결과, 이벤트 날짜 최신순, 인과 순서 검증 통과·방향 오류, 스키마 strict).
