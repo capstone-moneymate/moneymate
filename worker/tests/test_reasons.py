@@ -12,9 +12,15 @@ from generate.classify import Concept
 CONCEPTS = [Concept("ai_investment", "AI 데이터센터 투자", "AI·반도체", []),
             Concept("gpu_demand", "AI 반도체 수요", "AI·반도체", []),
             Concept("semi_earnings", "반도체 기업 실적", "AI·반도체", []),
-            Concept("rate_hike", "기준금리 인상", "금리", [])]
+            Concept("rate_hike", "기준금리 인상", "금리", []),
+            Concept("bond_yield", "국채 금리", "금리", []),
+            Concept("growth_valuation", "성장주 가치평가", "금리", [])]
+# rate_hike → growth_valuation: 직접 ▼ 와 국채 금리 경유 (+1)(+1) = ▲ 가 함께 있는 모호한 쌍 (테스트용으로 만든 연결)
 GRAPH = build_graph({c.id: c.name for c in CONCEPTS},
-                    [("ai_investment", "gpu_demand", "up"), ("gpu_demand", "semi_earnings", "up")])
+                    [("ai_investment", "gpu_demand", "up"), ("gpu_demand", "semi_earnings", "up"),
+                     ("rate_hike", "growth_valuation", "down"), ("rate_hike", "bond_yield", "up"),
+                     ("bond_yield", "growth_valuation", "up"),
+                     ("rate_hike", "semi_earnings", "down")])
 BASE = date(2026, 9, 30)
 EVIDENCE = [rs.Evidence(1, 11, "2026-09-25", "엔비디아 데이터센터 매출 확대", "NVIDIA", "https://example.com/1"),
             rs.Evidence(2, 12, "2026-08-14", "빅테크 설비투자 계획 상향", None, "https://example.com/2")]
@@ -64,6 +70,7 @@ def test_good_reason_passes_with_code_path(monkeypatch):
     assert out.errors == [] and out.calls == 1 and out.headline == "왜 다 늘렸을까요?"
     r = out.reasons[0]
     assert r.path == ["ai_investment", "gpu_demand", "semi_earnings"]  # 경로는 사전으로 코드가 찾는다
+    assert r.direction == "up"  # (+1)(+1): 투자가 늘면 실적에 올리는 힘
     assert [e.source_id for e in r.evidence] == [11, 12]
     assert calls[0]["module"] == "reasons" and calls[0]["model"] == rs.SONNET
 
@@ -90,10 +97,18 @@ def test_prompt_wraps_sources_as_json():
     ([reason(start="semi_earnings", end="ai_investment")], "경로가 없어요"),
     ([reason(start="gpu_demand", end="gpu_demand")], "같아요"),
     ([reason(title=" ")], "채워 주세요"),
+    ([reason(start="rate_hike", end="growth_valuation")], "경로마다 방향이 달라요"),  # 모호한 쌍 (#85 리뷰)
 ])
 def test_check_reasons_errors(raw, message):
     errors = rs.check_reasons(raw, EVIDENCE, BASE, GRAPH)
     assert any(message in e for e in errors), errors
+
+
+def test_down_path_keeps_direction(monkeypatch):
+    # 누르는 힘 경로도 통과하되 방향을 담아 화면이 ▼ 를 그릴 수 있게 한다
+    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings")])
+    assert out.errors == [] and out.reasons[0].direction == "down"
+    assert out.reasons[0].path == ["rate_hike", "semi_earnings"]
 
 
 def test_evidence_after_base_date_is_rejected():

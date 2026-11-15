@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 import psycopg
 
-from concepts.graph import Graph, effect, load_graph
+from concepts.graph import AMBIGUOUS, Graph, effect, load_graph
 from db import get_conn
 from generate.classify import Concept, load_concepts
 from generate.llm_client import SONNET, create, text_of
@@ -62,6 +62,7 @@ class Reason:
     start_concept: str
     end_concept: str
     path: list[str]  # 코드가 찾은 사전 경로 (start → … → end)
+    direction: str  # 시작 개념이 커질 때 끝 개념이 받는 힘: up(▲ 올리는 힘) / down(▼ 누르는 힘). 사전 경로로 코드가 계산
     evidence: list[Evidence]
 
 
@@ -144,10 +145,14 @@ def output_schema(concept_ids: list[str], n_evidence: int) -> dict:
 
 # --- 코드 검사 ---
 
-def shortest_path(g: Graph, start: str, end: str) -> list[str] | None:
-    """사전에서 start → end 경로 중 가장 짧은 것. 없으면 None."""
-    paths = [p for p, _ in effect(g, start, end).paths]
-    return min(paths, key=len) if paths else None
+def path_and_direction(g: Graph, start: str, end: str) -> tuple[list[str] | None, str | None]:
+    """사전에서 start → end 경로 중 가장 짧은 것과 방향(up / down / ambiguous). 경로가 없으면 (None, None).
+
+    방향은 모든 경로를 본다 (graph.effect). 경로마다 부호가 다르면 ambiguous 이고, 그런 쌍은 정답으로 쓰지 않는다.
+    """
+    eff = effect(g, start, end)
+    paths = [p for p, _ in eff.paths]
+    return (min(paths, key=len) if paths else None), eff.direction
 
 
 def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g: Graph) -> list[str]:
@@ -170,8 +175,12 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
                 errors.append(f"{where}: 근거 {no} 는 공시 기준일({base_date}) 뒤에 나온 자료예요")
         if r["start_concept"] == r["end_concept"]:
             errors.append(f"{where}: 시작 개념과 끝 개념이 같아요")
-        elif shortest_path(g, r["start_concept"], r["end_concept"]) is None:
-            errors.append(f"{where}: 사전에 {r['start_concept']} → {r['end_concept']} 경로가 없어요. 다른 개념을 고르세요")
+        else:
+            path, direction = path_and_direction(g, r["start_concept"], r["end_concept"])
+            if path is None:
+                errors.append(f"{where}: 사전에 {r['start_concept']} → {r['end_concept']} 경로가 없어요. 다른 개념을 고르세요")
+            elif direction == AMBIGUOUS:  # graph.py 규칙: 모호한 쌍은 정답으로 쓰지 않는다 (#85 리뷰)
+                errors.append(f"{where}: {r['start_concept']} → {r['end_concept']} 는 경로마다 방향이 달라요. 다른 개념을 고르세요")
         banned = find_banned([r["title"], r["body"]])
         if banned:
             errors.append(f"{where}: 쓰면 안 되는 표현이 있어요: {', '.join(banned)}")
@@ -179,10 +188,14 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
 
 
 def to_reasons(raw: list[dict], evidence: list[Evidence], g: Graph) -> list[Reason]:
+    """check_reasons 를 통과한 이유만 넣는다 (경로가 있고 방향이 up / down)."""
     by_no = {e.no: e for e in evidence}
-    return [Reason(r["title"].strip(), r["body"].strip(), r["start_concept"], r["end_concept"],
-                   shortest_path(g, r["start_concept"], r["end_concept"]) or [],
-                   [by_no[n] for n in dict.fromkeys(r["evidence"])]) for r in raw]
+    out = []
+    for r in raw:
+        path, direction = path_and_direction(g, r["start_concept"], r["end_concept"])
+        out.append(Reason(r["title"].strip(), r["body"].strip(), r["start_concept"], r["end_concept"],
+                          path or [], direction, [by_no[n] for n in dict.fromkeys(r["evidence"])]))
+    return out
 
 
 # --- 생성 ---

@@ -53,3 +53,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-07 | C | web/src/api/cards.ts | #72 코드래빗 리뷰(판단 채점 요청 타임아웃 10초 → 서버 대기 33초보다 짧음) 검토와 반영 요청 | - |
 | 2026-11-07 | C | web/src/api/news.ts·cards.ts, types/news.ts·card.ts, pages/tab1/NewsHomePage.tsx, vite.config.ts, .env.example, docs/modules/tab1_learn_screens.md | 탭1 화면을 실제 API(/api/news/home, /api/cards/{id}, /api/answers)에 연결(VITE_USE_MOCK=false), 개발 서버 /api 프록시, null 값 처리, 답 제출 후 홈 갱신, 브라우저로 실제 서버 확인 요청 | - |
 | 2026-11-15 | C | worker/generate/reasons.py, tests/test_reasons.py, docs/modules/reasons.md | 탭 2 카드 ② 이유 생성 시작본 작성 요청 (방향별 제목, 기준일 이전 raw_sources 근거 번호, Sonnet 구조화 출력, 경로·근거 날짜·금지 표현 코드 검사, 수정 1회) | - |
+| 2026-11-16 | C | worker/generate/reasons.py, tests/test_reasons.py, docs/modules/reasons.md | #85 리뷰 반영 요청 (경로 방향이 모호한 쌍은 거부, Reason 에 경로 방향 up/down 추가, 테스트) | - |
