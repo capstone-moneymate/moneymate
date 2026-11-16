@@ -2,7 +2,7 @@ from datetime import date
 
 import pandas as pd
 
-from collectors.filings_13f import Report, clean_ticker, merge_reports, shares_by_cusip
+from collectors.filings_13f import Report, clean_ticker, merge_reports, pick_ticker, shares_by_cusip
 
 COLS = ["Issuer", "Cusip", "SharesPrnAmount", "Type", "PutCall", "Ticker"]
 
@@ -55,3 +55,15 @@ def test_clean_ticker():
     assert clean_ticker("") is None
     assert clean_ticker(float("nan")) is None
     assert clean_ticker("12345") is None
+
+
+def test_pick_ticker_prefers_openfigi():
+    # #99: SEC 원본 'LENB'(Lennar B주)는 하이픈이 없어 정규화로 못 고친다. OpenFIGI 'LEN-B' 를 쓴다
+    assert pick_ticker("LENB", "LEN-B") == ("LEN-B", "openfigi")
+    assert pick_ticker("NVDA", "NVDA") == ("NVDA", "openfigi")
+    # OpenFIGI 에 없는 해외 등록 CUSIP(Linde G54950103 등)은 edgartools 값
+    assert pick_ticker("LIN", None) == ("LIN", "edgartools")
+    assert pick_ticker("BRK.B", None) == ("BRK-B", "edgartools")
+    # 둘 다 없으면 NULL
+    assert pick_ticker(None, None) == (None, "openfigi")
+    assert pick_ticker("12345", None) == (None, "openfigi")
