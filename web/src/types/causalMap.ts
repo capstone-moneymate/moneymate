@@ -1,7 +1,9 @@
 /**
- * 탭3 인과 지도 타입 (잠정). 마이페이지 API GET /api/mypage/map?userId=... 응답 모양.
- * 마이페이지 API(B, Spring Boot)를 만드는 작업과 맞춘 것이고, API가 확정되면 이 파일을 함께 고친다.
- * 인과 지도 = 이 사용자가 학습한 개념·연결의 합집합 (기술확정안 "학습 기록").
+ * 탭3 마이페이지 타입. 마이페이지 API(B, server mypage 패키지 MypageDtos)의 응답 모양과 같은 이름이다.
+ * - GET /api/mypage/map?userId=...    인과 지도 (CausalMap)
+ * - GET /api/mypage/review?userId=... 다시 보는 개념 (Review)
+ * - GET /api/mypage/summary?userId=... 홈 숫자 (Summary)
+ * 인과 지도 = 이 사용자가 배운 개념 + 거기서 한 걸음 뻗은 사전 연결 (docs/modules/mypage_api.md).
  */
 
 /** 연결의 힘 방향 ← causal_edges.force_dir. up: 올리는 힘, down: 누르는 힘 */
@@ -19,6 +21,8 @@ export interface MapNode {
   correct: number
   /** 푼 횟수 ← user_concepts.total */
   total: number
+  /** true = 내가 배운 개념(total > 0). false = 배운 개념과 연결된 아직 안 배운 개념(correct·total 0) */
+  learned: boolean
 }
 
 /** 개념 사이 연결 하나 (from 이 to 를 올리거나 누른다) */
@@ -33,4 +37,36 @@ export interface MapEdge {
 export interface CausalMap {
   nodes: MapNode[]
   edges: MapEdge[]
+}
+
+/** 다시 보는 개념 하나 */
+export interface ReviewConcept {
+  id: string
+  name: string
+  theme: string
+  correct: number
+  total: number
+  /** correct / total 소수 (0.5 = 50%). 서버가 계산해 주고 반올림하지 않는다. 화면은 % 표기만 */
+  accuracy: number
+}
+
+/** 정답률 낮은 순 → 푼 횟수 적은 순 → id 순 (서버가 정렬, 화면은 그대로 쓴다) */
+export interface Review {
+  concepts: ReviewConcept[]
+}
+
+/** 마이페이지 홈 위쪽 숫자. 계산은 서버가 하고 화면은 표기만 한다 */
+export interface Summary {
+  /** 연속 학습 일수 (KST). 오늘 아직 안 풀었으면 어제까지 이어진 날수 */
+  streakDays: number
+  /** 오늘(KST) 답안을 냈는가 */
+  studiedToday: boolean
+  /** 배운 개념 수 */
+  conceptCount: number
+  /** 종합 정답률 소수 (객관식 정답 + 판단해보기 60점 이상) / 채점된 답안. 채점된 답안이 없으면 null */
+  accuracy: number | null
+  /** 채점된 답안 수 */
+  gradedCount: number
+  /** 판단해보기 제출 수 */
+  judgementCount: number
 }

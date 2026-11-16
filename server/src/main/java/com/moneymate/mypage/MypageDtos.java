@@ -31,4 +31,18 @@ public final class MypageDtos {
     /** GET /api/mypage/review */
     public record Review(List<ReviewConcept> concepts) {
     }
+
+    /**
+     * GET /api/mypage/summary. 마이페이지 홈 위쪽 숫자.
+     *
+     * @param streakDays     연속 학습 일수 (KST). 오늘 아직 안 풀었으면 어제까지 이어진 날수, 어제도 안 풀었으면 0
+     * @param studiedToday   오늘(KST) 답안을 냈는가
+     * @param conceptCount   배운 개념 수 (user_concepts.total > 0)
+     * @param accuracy       종합 정답률 소수 (객관식 정답 + 판단 60점 이상) / 채점된 답안. 채점된 답안이 없으면 null
+     * @param gradedCount    채점된 답안 수 (accuracy 의 분모)
+     * @param judgementCount 판단해보기 제출 수
+     */
+    public record Summary(int streakDays, boolean studiedToday, int conceptCount, Double accuracy,
+                          int gradedCount, int judgementCount) {
+    }
 }

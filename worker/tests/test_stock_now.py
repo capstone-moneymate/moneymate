@@ -43,6 +43,9 @@ def test_price_since_needs_both_sides():
 def test_price_since_rounds_to_two_places():
     # 3 → 3.5: 16.666… → 16.67
     assert sn.price_since([(date(2026, 9, 30), 3.0), (date(2026, 10, 2), 3.5)], BASE).return_pct == 16.67
+    # 종가도 둘째 자리 (yfinance 원본 1154.2900390625). 수익률은 원본으로: 778.309997558594 / 1154.2900390625 - 1 = -32.57%
+    p = sn.price_since([(date(2026, 6, 30), 1154.2900390625), (date(2026, 11, 13), 778.309997558594)], date(2026, 6, 30))
+    assert (p.from_close, p.to_close, p.return_pct) == (1154.29, 778.31, -32.57)
 
 
 def test_linked_concepts_follow_reason_paths_once():
@@ -161,8 +164,19 @@ def test_save_published_with_now_view():
     saved = params[5].obj
     assert saved[0]["path"] == ["ai_investment", "gpu_demand", "semi_earnings"]
     assert saved[0]["evidence"][0]["source_id"] == 10
+    assert "numbers" not in saved[0]["evidence"][0]  # 근거 numbers 는 프롬프트용이라 저장하지 않는다
     assert params[6].obj == {"text": "지금은"}
     assert params[7] == "published" and params[8].obj == {"calls": 1, "model": "sonnet"}
+
+
+def test_save_direction_warnings_as_pending():
+    # 큰손과 반대 방향 이유가 있으면 pending: 화면(서버는 published 만)에 안 나가고 사람이 본다 (B·C 합의)
+    conn = FakeConn()
+    result = ReasonsResult("왜 다 늘렸을까요?", REASONS, calls=1, warnings=["이유 1: 반대"])
+    assert rs.save(conn, BASE, "NVDA", "same", "up", result, None) == "pending"
+    assert conn.calls[0][1][7] == "pending"
+    assert conn.calls[0][1][8].obj == {"calls": 1, "warnings": ["이유 1: 반대"]}
+    assert conn.calls[0][1][5].obj[0]["change"] == "up"  # 시작 개념 변화도 저장
 
 
 def test_save_rejected_keeps_errors_and_null_now_view():
@@ -174,8 +188,10 @@ def test_save_rejected_keeps_errors_and_null_now_view():
     assert params[8].obj == {"calls": 0, "errors": ["근거 자료가 없어요"]}
 
 
-def _pair(filer, big, etf, d):
-    return {"ticker": "NVDA", "filer_key": filer, "big_chg_pct": big, "etf_trend_adj_pct": etf, "direction": d}
+def _pair(filer, big, etf, d, change_type=None):
+    # 003 에서 etf_trend_adj_pct → etf_trend_chg_pct. 변화율은 P2 비율이지만 부호만 보므로 값 크기는 상관없다
+    return {"ticker": "NVDA", "filer_key": filer, "big_chg_pct": big, "etf_trend_chg_pct": etf, "direction": d,
+            "change_type": change_type}
 
 
 def test_stock_direction_rules():
@@ -191,6 +207,11 @@ def test_stock_direction_rules():
     assert rs.stock_direction([_pair("a", 3.0, 1.0, "none"), _pair("b", -5.0, 1.0, "none")]) == ("none", "down")
     # 큰손 값이 없으면 ETF 합의 부호
     assert rs.stock_direction([_pair("a", None, 4.0, "none"), _pair("b", 0, -1.0, "none")]) == ("none", "up")
+    # 새로 담음은 변화율이 NULL(P2)이어도 +1 로 센다: 새로 담음 1 + 줄임(-0.1) 1 → 1 대 1, 합 +0.9 → up
+    rows = [_pair("a", None, -0.2, "diff", "new"), _pair("b", -0.1, -0.2, "same", "decrease")]
+    assert rs.stock_direction(rows) == ("diff", "up")
+    # 모두 정리는 -1 (P12) → down
+    assert rs.stock_direction([_pair("a", -1.0, -0.3, "same", "exit")]) == ("same", "down")
 
 
 def test_stock_direction_needs_values():

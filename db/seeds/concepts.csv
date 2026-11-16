@@ -25,3 +25,6 @@ corp_earnings,기업 순이익,기업 공시,indicator,당기순이익;순이익
 supply_contract_win,공급계약 체결,기업 공시,event,수주;공급계약;단일판매ㆍ공급계약체결
 order_backlog,수주잔고,기업 공시,indicator,수주잔액;기말수주잔고
 revenue,매출,기업 공시,indicator,매출액;매출 인식
+capex,신규 시설투자,기업 공시,event,시설투자;신규시설투자등;설비투자;시설 증설
+capacity,생산능력,기업 공시,indicator,생산 능력;생산 Capa;캐파
+semi_capex,반도체 설비투자,AI·반도체,event,반도체 투자;팹 투자;메모리 증설;파운드리 증설

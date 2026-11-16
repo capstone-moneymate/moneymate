@@ -108,14 +108,12 @@ def test_reapply_is_idempotent_on_real_db(db_conn):
 
 
 def test_apply_asks_to_load_dictionary_first(db_conn):
-    # 개념 사전이 DB 에 없으면 FK 오류 대신 할 일을 알려 준다
-    db_conn.execute("DELETE FROM concept_tickers")
-    db_conn.execute("DELETE FROM causal_edges")
-    db_conn.execute("DELETE FROM concepts WHERE id NOT IN (SELECT concept_id FROM user_concepts)")
-    if db_conn.execute("SELECT count(*) FROM concepts WHERE id = 'ai_investment'").fetchone()[0]:
-        pytest.skip("user_concepts 가 ai_investment 를 참조하고 있어 비울 수 없음")
-    with pytest.raises(ValueError, match="concepts.loader --save"):
-        apply_mappings(db_conn, read_mappings())
+    # 개념이 DB concepts 에 없으면 FK 오류 대신 할 일을 알려 준다.
+    # DB 의 개념을 지우면 cards·user_concepts 가 참조할 때 FK 에 걸리므로, DB 에 없는 id 로 시험한다
+    missing = "zz_not_loaded_concept"
+    assert not db_conn.execute("SELECT 1 FROM concepts WHERE id = %s", (missing,)).fetchone()
+    with pytest.raises(ValueError, match=f"DB concepts 에 없는 개념: {missing}.*concepts.loader --save"):
+        apply_mappings(db_conn, [Mapping(missing, "NVDA", "US", "이유", SRC, "draft")])
 
 
 def test_db_rejects_bad_ticker_format(db_conn):

@@ -7,3 +7,12 @@
   --color-up: #d6213b;
   --color-down: #1b64da;
 }
+
+/* 스크롤바 숨김 (모든 화면). 스크롤은 그대로 되고 막대만 안 보인다 */
+* {
+  scrollbar-width: none; /* Firefox, Chrome 121+ */
+  -ms-overflow-style: none; /* 옛 Edge */
+}
+*::-webkit-scrollbar {
+  display: none; /* Safari, 옛 Chrome */
+}

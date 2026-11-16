@@ -1,6 +1,6 @@
-> **초안 (Claude 작성, 2026-11-15).** 담당자 B가 읽고 고쳐서 확정한다.
+> **초안 (Claude 작성, 2026-11-15, summary 추가 2026-11-16 #120).** 담당자 B가 읽고 고쳐서 확정한다.
 
-# server: GET /api/mypage/map, GET /api/mypage/review (com.moneymate.mypage)
+# server: GET /api/mypage/map, /review, /summary (com.moneymate.mypage)
 
 - **한 줄 설명**: 탭3 마이페이지의 인과 지도(배운 개념 + 거기서 한 걸음 뻗은 사전 연결)와 다시 보는 개념(정답률 낮은 순)을 DB에서 읽어 돌려준다. **읽기 전용.**
 - **입력**: `?userId=<UUID>` (필수). 없거나 UUID가 아니면 400 (Spring 기본 응답). 읽는 테이블은 `user_concepts`, `concepts`, `causal_edges`.
@@ -8,3 +8,9 @@
 - **출력**: map `{nodes:[{id,name,theme,correct,total,learned}], edges:[{from,to,forceDir}]}`. `forceDir`는 `up`(올리는 힘) / `down`(누르는 힘). review `{concepts:[{id,name,theme,correct,total,accuracy}]}`. `accuracy`는 소수(0.5 = 50%), 반올림하지 않으니 화면에서 % 표기한다. 기록이 없거나 처음 보는 userId는 200과 빈 배열이다.
 - **주의할 점**: `user_concepts`에 쓰는 것은 learning 패키지의 `recordConceptResult`(conventions P17)다. 이 API는 `users`에도 행을 넣지 않는다. 사전 연결이 없는 개념(예: 차트 읽기 `volume_spike`)만 배웠으면 점만 있고 화살표는 없다. node의 `learned` 필드는 이슈 #90에서 정한 것이다. 탭3 화면 타입도 같은 이름으로 맞춘다. 스키마 변경은 없다.
 - **테스트**: `cd server; .\gradlew.bat test`. `MypageServiceTest` 7개(DB 없이 가짜 Repository): 한 걸음 이웃(rate_hike 2/3 → 연결 3개, 이웃 3개 learned=false), 배운 개념은 이웃으로 중복되지 않음, 연결 없는 개념은 점만, 기록 없는 사용자는 빈 지도이고 다른 쿼리를 하지 않음, 정렬 손계산(0/1 → 0/3 → 1/4 → 1/3 → 1/2(d) → 1/2(x) → 2/4 → 3/3), total 0 제외, 정답률 소수. 2026-11-15 임시 PostgreSQL 16(001~003 마이그레이션 + 사전 17·14개 + 테스트 사용자)에서 서버를 띄워 확인: rate_hike 2/3·bond_yield 0/1·rate_cut 0/3·volume_spike 0/0 → 점 6개(배움 3, 이웃 3), 연결 7개가 사전 손대조와 같음. review는 bond_yield → rate_cut → rate_hike 순이고 volume_spike는 빠짐. 기록 없음·처음 보는 userId는 빈 배열, userId 없음·`abc`는 400.
+
+## GET /api/mypage/summary (#120, 마이페이지 홈 숫자)
+- **출력**: `{streakDays, studiedToday, conceptCount, accuracy, gradedCount, judgementCount}`.
+- **하는 일**: ① 연속 학습: `user_answers.created_at`을 KST 날짜로 잘라(중복 없이 최근 400일) 오늘부터 거꾸로 하루씩 이어진 날을 센다. **오늘 아직 안 풀었으면 어제부터 센다**(오늘 하루 동안은 끊긴 것으로 치지 않음, 어제도 없으면 0. 2026-11-16 B 결정) ② `studiedToday`: 오늘(KST) 답안이 있는가 ③ `conceptCount`: 배운 개념 수(`total > 0`) ④ 종합 정답률 `accuracy` = `is_correct`가 참인 답안 / `is_correct`가 있는 답안. 코드 채점(정답 일치)과 판단 채점(60점 이상, P17)을 함께 센다. 채점된 답안이 없으면 `null` ⑤ `judgementCount`: `steps.kind = 'judgement'` 답안 수(다시 낸 것도 셈).
+- **주의할 점**: 오늘 날짜는 서버 시계(`Clock`, KST)로 정한다. 같은 답안을 다시 내도 한 번씩 센다(recordConceptResult와 같음). 읽기 전용, 스키마 변경 없음.
+- **테스트**: `MypageServiceTest` 6개 추가(연속 학습 손계산: 월~목 4일·14일 끊김, 오늘 안 풂 → 어제부터 3일, 어제도 없음 → 0, 순서 섞임·미래 날짜, KST 자정 직후(UTC 11/18 15:30 = KST 11/19) 오늘 판정과 숫자 6/8 = 0.75, 기록 없음 → 0·null). 2026-11-16 임시 PostgreSQL 16(001~005 마이그레이션)에서 두 SQL을 직접 실행: UTC 시각 5개(KST 자정 경계 포함)로 날짜 11/19·18·17, 채점 4·정답 2·판단 3이 손계산과 같음. 테스트는 이 PC에 JDK가 없어 `eclipse-temurin:21-jdk` 컨테이너에서 `./gradlew test`로 돌렸다(전체 통과). 2026-11-16 실제 서버(Spring, 로컬 PostgreSQL)·`VITE_USE_MOCK=false`로 확인: 기록 없음 → 0·null·빈 배열, 시험 기록(답안 10개 11/16·15·14·12 KST, 개념 11개)으로 연속 3일·정답률 0.6·판단 2회·다시 보는 개념 순서·지도(배운 11 + 이웃 9, 연결 18)가 손계산과 같음. 시험 데이터는 지웠다.

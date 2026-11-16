@@ -12,6 +12,11 @@ import com.moneymate.mypage.MypageDtos.CausalMap;
 import com.moneymate.mypage.MypageDtos.MapEdge;
 import com.moneymate.mypage.MypageDtos.MapNode;
 import com.moneymate.mypage.MypageDtos.ReviewConcept;
+import com.moneymate.mypage.MypageDtos.Summary;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.BeforeEach;
@@ -144,5 +149,66 @@ class MypageServiceTest {
     void accuracyIsDecimal() {
         assertThat(MypageService.accuracy(learned("a", 3, 4))).isEqualTo(0.75);
         assertThat(MypageService.accuracy(learned("a", 0, 0))).isEqualTo(0.0);
+    }
+
+    // --- 홈 숫자 (summary) ---
+
+    static final LocalDate TODAY = LocalDate.of(2026, 11, 19); // 목요일
+
+    static List<LocalDate> days(String... isoDates) {
+        return java.util.Arrays.stream(isoDates).map(LocalDate::parse).toList();
+    }
+
+    @Test
+    void streakCountsFromTodayWhenStudiedToday() {
+        // 손계산: 월(16)·화(17)·수(18)·목(19=오늘) → 4일. 14일(토)은 15일이 비어서 끊김
+        assertThat(MypageService.streak(days("2026-11-19", "2026-11-18", "2026-11-17", "2026-11-16", "2026-11-14"), TODAY))
+                .isEqualTo(4);
+    }
+
+    @Test
+    void streakCountsFromYesterdayWhenNotYetToday() {
+        // 오늘(19) 아직 안 풂: 어제(18)부터 18·17·16 → 3일 (오늘 하루 동안은 끊긴 것으로 치지 않음)
+        assertThat(MypageService.streak(days("2026-11-18", "2026-11-17", "2026-11-16"), TODAY)).isEqualTo(3);
+    }
+
+    @Test
+    void streakIsZeroWhenYesterdayMissing() {
+        // 어제(18)도 안 풂 → 0. 17·16 기록은 이미 끊긴 것
+        assertThat(MypageService.streak(days("2026-11-17", "2026-11-16"), TODAY)).isZero();
+        assertThat(MypageService.streak(List.of(), TODAY)).isZero();
+    }
+
+    @Test
+    void streakIgnoresOrderAndFutureDays() {
+        // 순서가 섞여도 같은 값. 오늘 뒤 날짜(시계 차이)는 세지 않음
+        assertThat(MypageService.streak(days("2026-11-17", "2026-11-20", "2026-11-19", "2026-11-18"), TODAY)).isEqualTo(3);
+    }
+
+    @Test
+    void summaryUsesKstToday() {
+        // 2026-11-18T15:30Z = KST 11/19 00:30. KST 로는 이미 목요일이라 19일 기록이 "오늘"
+        Clock clock = Clock.fixed(Instant.parse("2026-11-18T15:30:00Z"), ZoneOffset.UTC);
+        MypageService kst = new MypageService(repo, clock);
+        when(repo.findAnswerDays(USER)).thenReturn(days("2026-11-19", "2026-11-18"));
+        when(repo.countAnswers(USER)).thenReturn(new AnswerCounts(8, 6, 2));
+        when(repo.findLearnedConcepts(USER)).thenReturn(List.of(learned("a", 1, 2), learned("b", 3, 3)));
+
+        Summary s = kst.summary(USER);
+
+        // 손계산: 연속 2일(19·18), 오늘 풂, 개념 2개, 정답률 6/8 = 0.75, 채점 8개, 판단 2회
+        assertThat(s).isEqualTo(new Summary(2, true, 2, 0.75, 8, 2));
+    }
+
+    @Test
+    void summaryForEmptyUser() {
+        MypageService fixed = new MypageService(repo,
+                Clock.fixed(Instant.parse("2026-11-19T03:00:00Z"), ZoneOffset.UTC));
+        when(repo.findAnswerDays(USER)).thenReturn(List.of());
+        when(repo.countAnswers(USER)).thenReturn(new AnswerCounts(0, 0, 0));
+        when(repo.findLearnedConcepts(USER)).thenReturn(List.of());
+
+        // 채점된 답안이 없으면 정답률은 null (0% 로 보이지 않게)
+        assertThat(fixed.summary(USER)).isEqualTo(new Summary(0, false, 0, null, 0, 0));
     }
 }

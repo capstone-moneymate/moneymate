@@ -28,8 +28,11 @@ STOCK = {"ticker": "NVDA", "name": "엔비디아"}
 
 
 def reason(title="AI 투자 확대", body="데이터센터 투자가 늘어 AI 반도체 수요가 커졌을 수 있어요.",
-           start="ai_investment", end="semi_earnings", evidence=(1, 2)):
-    return {"title": title, "body": body, "start_concept": start, "end_concept": end, "evidence": list(evidence)}
+           start="ai_investment", end="semi_earnings", evidence=(1, 2), change=None):
+    r = {"title": title, "body": body, "start_concept": start, "end_concept": end, "evidence": list(evidence)}
+    if change:  # 없으면 예전 응답 모양 (change 칸 없음 → up 으로 계산)
+        r["change"] = change
+    return r
 
 
 def fake_create(monkeypatch, *payloads, stop="end_turn"):
@@ -80,6 +83,60 @@ def test_schema_limits_concepts_and_evidence_numbers():
     item = schema["properties"]["reasons"]["items"]["properties"]
     assert item["start_concept"]["enum"] == ["a", "b"]
     assert item["evidence"]["items"]["enum"] == [1, 2, 3]  # 입력에 없는 번호는 나올 수 없다
+    # 시작 개념의 변화 (5주차 노션 제안 (1))
+    assert item["change"]["enum"] == ["up", "down"]
+    assert "change" in schema["properties"]["reasons"]["items"]["required"]
+
+
+def test_rate_event_start_needs_that_decision_in_evidence():
+    # 동결뿐인 분기에 rate_hike(down) 으로 "인상이 없었다"를 돌려 쓰지 못하게 한다
+    hold = rs.Evidence(1, 21, "2026-06-17", "FOMC 정책금리 결정", None, "u", {"decision": "hold"})
+    hike = rs.Evidence(2, 22, "2026-09-16", "FOMC 정책금리 결정", None, "u", {"decision": "hike"})
+    base = date(2026, 9, 30)
+    via_hold = reason("금리 인상 없음", "금리가 그대로라 부담이 덜했을 수 있어요.", "rate_hike", "growth_valuation",
+                      evidence=(1,), change="down")
+    errors = rs.check_reasons([via_hold], [hold, hike], base, GRAPH)
+    assert any("실제 'hike' 결정이 있을 때만" in e for e in errors)
+    # 실제 인상 근거가 있고 change 가 up 이면 통과 (경로 검사는 테스트 그래프가 모호한 쌍이라 bond_yield 로 본다)
+    ok = reason("금리 인상", "금리가 올라 부담이 커졌을 수 있어요.", "rate_hike", "bond_yield", evidence=(2,), change="up")
+    assert rs.check_reasons([ok], [hold, hike], base, GRAPH) == []
+    # 인상 근거여도 change 가 down 이면 막는다
+    bad = reason("금리 인상", "본문이에요.", "rate_hike", "bond_yield", evidence=(2,), change="down")
+    assert rs.check_reasons([bad], [hold, hike], base, GRAPH)
+
+
+def test_rate_hold_is_not_a_start_concept():
+    # B 결정: 금리 동결은 조건 붙은 연결·모든 종목에 같은 이유·양이 아닌 사건이라 이유의 시작으로 쓰지 않는다
+    item = rs.output_schema(["rate_hold", "rate_hike", "growth_valuation"], 2)["properties"]["reasons"]["items"]
+    assert item["properties"]["start_concept"]["enum"] == ["rate_hike", "growth_valuation"]
+    assert "rate_hold" in item["properties"]["end_concept"]["enum"]  # 끝 개념으로는 쓸 수 있다
+
+
+def test_change_down_flips_direction_and_matches_reduction(monkeypatch):
+    # "AI 투자가 줄어 실적에 누르는 힘 → 줄였다": change 가 없으면 (+1)(+1) = ▲ 로 계산돼 줄임과 반대였다
+    down = reason("AI 투자 둔화", "투자가 줄어 수요가 약해졌을 수 있어요.", change="down")
+    out, _ = run(monkeypatch, [down], change="down")
+    r = out.reasons[0]
+    assert (r.change, r.direction) == ("down", "down") and out.warnings == []
+    # 예전 응답(칸 없음)은 up 으로 계산 → 줄임 종목이면 경고만 남고 통과한다 (거부하지 않음)
+    out, _ = run(monkeypatch, [reason()], change="down")
+    assert out.errors == [] and out.reasons and len(out.warnings) == 1
+    assert "ai_investment(up) → semi_earnings 힘이 up 인데 큰손은 줄임" in out.warnings[0]
+
+
+def test_change_flips_direction_on_single_edge():
+    # 테스트 그래프의 bond_yield → growth_valuation 은 올리는 연결(up). 시작이 커지면 ▲, 줄어들면 ▼
+    assert rs.path_and_direction(GRAPH, "bond_yield", "growth_valuation", "down") == (["bond_yield", "growth_valuation"], "down")
+    assert rs.path_and_direction(GRAPH, "bond_yield", "growth_valuation") == (["bond_yield", "growth_valuation"], "up")
+
+
+def test_direction_warnings_skip_diff_and_list_mismatches():
+    r_up = rs.Reason("a", "b", "ai_investment", "semi_earnings", [], "up", [], "up")
+    r_down = rs.Reason("c", "d", "ai_investment", "semi_earnings", [], "down", [], "down")
+    assert rs.direction_warnings([r_up, r_down], "diff", "up") == []  # 엇갈린 종목은 보지 않는다
+    warn = rs.direction_warnings([r_up, r_down], "same", "up")
+    assert len(warn) == 1 and warn[0].startswith("이유 2 'c'")
+    assert len(rs.direction_warnings([r_up, r_down], "none", "down")) == 1
 
 
 def test_prompt_wraps_sources_as_json():
@@ -87,6 +144,26 @@ def test_prompt_wraps_sources_as_json():
     assert '"question": "왜 다 늘렸을까요?"' in user
     assert '"no": 2, "date": "2026-08-14"' in user
     assert "ai_investment | AI 데이터센터 투자 | AI·반도체" in rs.build_system(CONCEPTS)
+    assert '"numbers"' not in user  # numbers 가 없는 근거는 칸을 넣지 않는다
+
+
+def test_prompt_passes_evidence_numbers_without_calendar_flag():
+    # FOMC 동결을 제목만 보고 "금리 부담이 줄었다"로 지어낸 문제 (2026-11-16) → 결정·금리 전후를 넘긴다
+    fomc = rs.Evidence(1, 21, "2026-06-17", "FOMC 정책금리 결정", None, "https://example.com/f",
+                       {"calendar_verified": True, "decision": "hold", "rate_before": 3.75, "rate_after": 3.75})
+    user = rs.build_user(STOCK, "same", "up", [], [fomc])
+    assert '"numbers": {' in user and '"decision": "hold"' in user and '"rate_after": 3.75' in user
+    assert "calendar_verified" not in user
+    system = rs.build_system(CONCEPTS)
+    assert "hold(동결)" in system and "hold 면 금리가 바뀌지 않은 것" in system
+
+
+@pytest.mark.parametrize("ticker,market", [("NVDA", "US"), ("BRK-B", "US"), ("005930", "KR"), ("00104K", "KR"),
+                                           ("0015B0", "KR")])
+def test_stock_market_for_macro_filter(ticker, market):
+    # 미국 종목 근거에 한국은행 결정이 들어간 문제 (2026-11-16) → 시장에 맞는 지수 키의 거시 발표만
+    assert rs.stock_market(ticker) == market
+    assert rs.MACRO_INDEXES[market] == (["US500", "IXIC"] if market == "US" else ["KS11", "KQ11"])
 
 
 @pytest.mark.parametrize("raw, message", [
@@ -106,7 +183,9 @@ def test_check_reasons_errors(raw, message):
 
 def test_down_path_keeps_direction(monkeypatch):
     # 누르는 힘 경로도 통과하되 방향을 담아 화면이 ▼ 를 그릴 수 있게 한다
-    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings")])
+    # rate_hike 는 근거에 실제 인상 결정이 있어야 시작 개념이 된다 (DECISION_EVENTS)
+    hike = [rs.Evidence(1, 31, "2026-09-16", "FOMC 정책금리 결정", None, "u", {"decision": "hike"})]
+    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings", evidence=(1,))], evidence=hike)
     assert out.errors == [] and out.reasons[0].direction == "down"
     assert out.reasons[0].path == ["rate_hike", "semi_earnings"]
 

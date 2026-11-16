@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moneymate.judgement.JudgementFeedback.ChainItem;
+import com.moneymate.learning.ConceptResultRecorder;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -46,13 +47,15 @@ class JudgementServiceTest {
 
     JudgementRepository repo;
     JudgeClient client;
+    ConceptResultRecorder recorder;
     JudgementService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(JudgementRepository.class);
         client = mock(JudgeClient.class);
-        service = new JudgementService(repo, client, new JudgeProperties("http://judge", 30, 5, 100), CLOCK);
+        recorder = mock(ConceptResultRecorder.class);
+        service = new JudgementService(repo, client, new JudgeProperties("http://judge", 30, 5, 100), recorder, CLOCK);
         when(repo.findStep(7L)).thenReturn(Optional.of(STEP));
         when(repo.findReusable(anyLong(), anyString())).thenReturn(Optional.empty());
     }
@@ -92,6 +95,8 @@ class JudgementServiceTest {
         JudgementService.StoredFeedback back = service.readFeedback(savedFeedback.getValue());
         assertThat(back.feedback()).isEqualTo(FEEDBACK);
         assertThat(back.reasons()).isEqualTo(REASONS);
+        // P17: 판단 단계 chain 개념을 맞음으로 기록
+        verify(recorder).recordConceptResult(USER.toString(), new String[] {"rate_hold"}, true);
     }
 
     @Test
@@ -107,6 +112,7 @@ class JudgementServiceTest {
         assertThat(r.feedback()).isEqualTo(FEEDBACK);   // 규칙 채점이어도 고정 문구 + 인과 뼈대가 온다
         verify(repo).insertAnswer(anyString(), anyLong(), anyLong(), any(), anyString(), anyString(),
                 eq(false), eq(56), any(), eq("rule"), anyString());
+        verify(recorder).recordConceptResult(USER.toString(), new String[] {"rate_hold"}, false);
     }
 
     @Test
@@ -127,6 +133,8 @@ class JudgementServiceTest {
         // 재사용한 줄에도 같은 피드백을 저장한다
         verify(repo).insertAnswer(anyString(), eq(3L), eq(7L), any(), anyString(), eq(hash),
                 eq(true), eq(78), eq(new Rubric(2, 4, 1)), eq("llm"), eq(stored));
+        // 재사용해도 낼 때마다 센다
+        verify(recorder).recordConceptResult(USER.toString(), new String[] {"rate_hold"}, true);
     }
 
     @Test
@@ -220,6 +228,8 @@ class JudgementServiceTest {
         assertThat(r.message()).isEqualTo(JudgementService.FALLBACK_MESSAGE);
         verify(repo).insertAnswer(anyString(), eq(3L), eq(7L), any(), eq(ANSWER), anyString(),
                 isNull(), isNull(), isNull(), isNull(), isNull());
+        // 채점을 못 했으면 맞음·틀림을 모르니 기록하지 않는다
+        verify(recorder, never()).recordConceptResult(any(), any(), any());
     }
 
     @Test

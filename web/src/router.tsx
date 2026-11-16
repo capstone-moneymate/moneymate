@@ -6,6 +6,7 @@ import { NewsHomePage } from '@/pages/tab1/NewsHomePage'
 import { ResultPage } from '@/pages/tab1/ResultPage'
 import { EtfPage } from '@/pages/tab2/EtfPage'
 import { StockDetailPage } from '@/pages/tab2/StockDetailPage'
+import { CausalMapPage } from '@/pages/tab3/CausalMapPage'
 import { MyPage } from '@/pages/tab3/MyPage'
 
 export const router = createBrowserRouter([
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: '/etf', element: <EtfPage /> },
       { path: '/etf/:ticker', element: <StockDetailPage /> },
       { path: '/mypage', element: <MyPage /> },
+      { path: '/mypage/map', element: <CausalMapPage /> },
     ],
   },
 ])

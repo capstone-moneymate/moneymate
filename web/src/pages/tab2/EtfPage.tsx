@@ -6,14 +6,8 @@ import type { EtfMove } from '@/types/etf'
 import type { Direction, StockOverlap } from '@/types/overlap'
 import { DirectionChip } from './DirectionChip'
 import { FilerChangeText } from './FilerChangeText'
-import {
-  daysBetween,
-  etfShortName,
-  filerShortName,
-  formatDate,
-  GUIDE_NOTE,
-  todayKst,
-} from './labels'
+import { daysBetween, etfShortName, filerShortName, formatDate, todayKst } from './labels'
+import { ETF_UNIT_NOTE, FILING_DELAY_NOTE, GUIDE_NOTE, NO_OVERLAP_NOTE } from './notices'
 
 type View = '13f' | 'etf'
 
@@ -54,9 +48,10 @@ export const EtfPage = () => {
 
       {view === '13f' ? <OverlapView /> : <EtfDailyView />}
 
-      <p className="mx-5 mt-8 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        {GUIDE_NOTE}
-      </p>
+      <div className="mx-5 mt-8 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
+        <p>{GUIDE_NOTE}</p>
+        <p>{view === '13f' ? FILING_DELAY_NOTE : ETF_UNIT_NOTE}</p>
+      </div>
     </div>
   )
 }
@@ -71,12 +66,7 @@ const OverlapView = () => {
     return <StateText>겹침 종목을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</StateText>
 
   if (data.stocks.length === 0) {
-    return (
-      <StateText>
-        아직 큰손과 액티브 ETF가 함께 움직인 종목이 없어요. 13F 공시 후 겹친 종목을 함께 보여
-        드릴게요.
-      </StateText>
-    )
+    return <StateText>{NO_OVERLAP_NOTE}</StateText>
   }
 
   const periodEnd = data.stocks[0].filers[0]?.periodEnd
