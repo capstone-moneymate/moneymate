@@ -71,7 +71,7 @@ def test_build_graph_rejects_bad_input():
 def test_seed_dictionary():
     # 실제 개념 사전 (db/seeds). 연결이 바뀌면 손계산도 다시 확인한다
     g = load_graph()
-    assert len(g.names) == 26
+    assert len(g.names) == 29
     assert find_cycle(g) is None
     # 인하 → 국채 금리 ▼ → 성장주 ▲ : (-1) × (-1) = +1
     assert effect(g, "rate_cut", "growth_valuation").direction == UP
@@ -94,3 +94,10 @@ def test_seed_dictionary():
     assert effect(g, "supply_contract_win", "revenue").direction == UP
     # 매출이 늘어도 비용에 따라 순이익은 달라져 연결하지 않았다
     assert effect(g, "revenue", "corp_earnings").direction is None
+    # 신규 시설투자 → 생산능력 ▲ : +1
+    assert effect(g, "capex", "capacity").direction == UP
+    # AI 반도체 수요 → HBM 수요 ▲ → 반도체 설비투자 ▲ → 생산능력 ▲ : +1. 직접 연결은 넣지 않아 경로는 하나다
+    e = effect(g, "gpu_demand", "capacity")
+    assert e.direction == UP and len(e.paths) == 1
+    # 반도체 설비투자는 일반 시설투자와 나눴다: 다른 업종 시설투자에 AI 반도체 수요 경로가 붙지 않는다
+    assert effect(g, "gpu_demand", "capex").direction is None
