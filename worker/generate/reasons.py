@@ -9,7 +9,8 @@
 - 인과 뼈대는 LLM 이 시작·끝 개념만 고르고, 경로는 B의 graph.py 가 사전 연결로 찾는다 (정답은 데이터와 코드가).
 - 제목(왜 다 늘렸을까요? 등)은 방향으로 코드가 정한다. 이유 문장은 추정 말투, 권유·예측 금지 (B의 find_banned).
 
-6주차에 할 일: 카드 ③ 지금은, 저장 위치(A의 마이그레이션), B의 근거 날짜 검증기로 바꾸기, run_daily 연결.
+6주차: 카드 ③ 지금은은 generate/stock_now.py. 저장은 save() (A에게 요청한 stock_reasons 004 가 생기면 실제로 붙음).
+남은 것: B의 근거 날짜 검증기로 바꾸기, run_daily 연결(13F 분기 갱신 때).
 """
 import argparse
 import json
@@ -18,6 +19,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from concepts.graph import AMBIGUOUS, Graph, effect, load_graph
 from db import get_conn
@@ -236,6 +238,59 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
         messages += [{"role": "assistant", "content": text},
                      {"role": "user", "content": "다음 문제를 고쳐서 이유 전체를 다시 써 주세요:\n- " + "\n- ".join(errors)}]
     return result
+
+
+# --- 종목 단위 방향 (conventions P19: overlap_results 의 쌍별 방향을 줄이는 규칙은 C 가 정한다) ---
+
+def stock_direction(rows: list[dict]) -> tuple[str, str]:
+    """한 종목의 overlap_results 줄들(같은 분기) → (direction, change).
+
+    rows: filer_key, big_chg_pct, etf_trend_adj_pct, direction ((큰손, ETF) 쌍마다 한 줄)
+    - direction: 한 쌍이라도 diff 면 diff ("왜 방향이 다를까요?"), 아니고 한 쌍이라도 same 이면 same, 모두 none 이면 none
+    - change (큰손 쪽 변화): 큰손마다 한 번씩 big_chg_pct 부호를 세어 많은 쪽. 같으면 변화율 합의 부호(0 이면 up).
+      큰손 값이 하나도 없으면(한쪽만 움직인 none) ETF 쪽 etf_trend_adj_pct 합의 부호. 그것도 없으면 ValueError
+    """
+    if not rows:
+        raise ValueError("overlap_results 줄이 없어요")
+    dirs = {r["direction"] for r in rows}
+    direction = "diff" if "diff" in dirs else "same" if "same" in dirs else "none"
+    big = {r["filer_key"]: float(r["big_chg_pct"]) for r in rows if r.get("big_chg_pct") not in (None, 0)}
+    if big:
+        ups, downs = sum(v > 0 for v in big.values()), sum(v < 0 for v in big.values())
+        change = "up" if ups > downs else "down" if downs > ups else ("up" if sum(big.values()) >= 0 else "down")
+        return direction, change
+    etf = [float(r["etf_trend_adj_pct"]) for r in rows if r.get("etf_trend_adj_pct") not in (None, 0)]
+    if not etf:
+        raise ValueError(f"{rows[0].get('ticker')}: 큰손·ETF 변화율이 모두 없어 change 를 정할 수 없어요")
+    return direction, "up" if sum(etf) >= 0 else "down"
+
+
+# --- 저장 (A 의 004_stock_reasons, conventions P19) ---
+
+def save(conn, base_date: date, ticker: str, direction: str, change: str, result: ReasonsResult,
+         now_view: dict | None, model_info: dict | None = None) -> str:
+    """stock_reasons 한 줄 (분기·종목마다 1줄, 다시 만들면 덮어쓰고 updated_at 갱신). 저장한 status 를 돌려준다.
+
+    P19: 이유가 있고 errors 가 비면 published, 아니면 rejected (서버는 published 만 읽는다).
+    rejected 도 저장해서 왜 막혔는지(errors 는 model_info 에) 팀이 볼 수 있게 한다.
+    now_view: stock_now.StockNow.to_json() (카드 ③). 아직 안 만들었으면 None → NULL.
+    """
+    status = "published" if result.reasons and not result.errors else "rejected"
+    info = {"calls": result.calls, **(model_info or {})}
+    if result.errors:
+        info["errors"] = result.errors
+    conn.execute(
+        """INSERT INTO stock_reasons (big_period_end, ticker, direction, change, headline, reasons, now_view,
+                                      status, model_info)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (big_period_end, ticker) DO UPDATE
+              SET direction = EXCLUDED.direction, change = EXCLUDED.change, headline = EXCLUDED.headline,
+                  reasons = EXCLUDED.reasons, now_view = EXCLUDED.now_view, status = EXCLUDED.status,
+                  model_info = EXCLUDED.model_info, updated_at = now()""",
+        (base_date, ticker, direction, change, result.headline, Jsonb([asdict(r) for r in result.reasons]),
+         Jsonb(now_view) if now_view is not None else None, status, Jsonb(info)),
+    )
+    return status
 
 
 def main(argv: list[str] | None = None) -> int:

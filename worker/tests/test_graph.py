@@ -71,7 +71,7 @@ def test_build_graph_rejects_bad_input():
 def test_seed_dictionary():
     # 실제 개념 사전 (db/seeds). 연결이 바뀌면 손계산도 다시 확인한다
     g = load_graph()
-    assert len(g.names) == 17
+    assert len(g.names) == 26
     assert find_cycle(g) is None
     # 인하 → 국채 금리 ▼ → 성장주 ▲ : (-1) × (-1) = +1
     assert effect(g, "rate_cut", "growth_valuation").direction == UP
@@ -82,3 +82,15 @@ def test_seed_dictionary():
     assert effect(g, "rate_cut", "ai_investment").direction is None
     # HBM 공급 확대 → 범용 메모리 가격 ▲ → 반도체 기업 실적 ▲
     assert effect(g, "hbm_supply", "semi_earnings").direction == UP
+    # 자사주 취득 → 유통 주식 수 ▼ → 주당순이익 ▲ : (-1) × (-1) = +1
+    assert effect(g, "buyback", "eps").direction == UP
+    # 보유 자기주식 소각은 발행주식 총수만 줄인다. 유통 주식 수는 취득 때 이미 줄어서 주당순이익과 이어지지 않는다
+    assert effect(g, "share_cancel", "eps").direction is None
+    # 자사주 취득 → 소각 ▲ (1년 내 소각 의무) → 발행주식 총수 ▼ : (+1) × (-1) = -1
+    assert effect(g, "buyback", "issued_shares").direction == DOWN
+    # 기업 순이익 → 주당순이익 ▲ (분자) : +1
+    assert effect(g, "corp_earnings", "eps").direction == UP
+    # 공급계약 체결 → 수주잔고 ▲ → 매출 ▲ : (+1) × (+1) = +1
+    assert effect(g, "supply_contract_win", "revenue").direction == UP
+    # 매출이 늘어도 비용에 따라 순이익은 달라져 연결하지 않았다
+    assert effect(g, "revenue", "corp_earnings").direction is None

@@ -8,7 +8,6 @@ import {
   isBusinessDay,
   type Time,
 } from 'lightweight-charts'
-import { useChart } from '@/api/charts'
 import type { ChartData } from '@/types/chart'
 
 const COLOR = {
@@ -22,17 +21,15 @@ const PRICE_VOLUME_HEIGHT = 240
 const RSI_HEIGHT = 90
 
 interface ChartStepProps {
-  stepId: string
+  /** 카드 API 가 단계와 함께 내려 준 값 (steps.content.chart). 이 기능(#82) 전에 만든 카드에는 없다 */
+  chart?: ChartData
   ticker: string
 }
 
-/** 차트 읽기 단계의 차트. 보기·정답 확인은 QuizView 가 맡고, 여기는 데이터를 받아 그리기만 한다 */
-export const ChartStep = ({ stepId, ticker }: ChartStepProps) => {
-  const { data, isPending, isError } = useChart(stepId)
-
-  if (isPending) return <ChartMessage text="차트를 불러오는 중…" />
-  if (isError || !data || data.points.length === 0) {
-    return <ChartMessage text="차트를 불러오지 못했어요. 보기는 그대로 고를 수 있어요." />
+/** 차트 읽기 단계의 차트. 보기·정답 확인은 QuizView 가 맡고, 여기는 받은 데이터를 그리기만 한다 */
+export const ChartStep = ({ chart: data, ticker }: ChartStepProps) => {
+  if (!data || data.points.length === 0) {
+    return <ChartMessage text="이 문제는 차트가 없어요. 보기는 그대로 고를 수 있어요." />
   }
 
   const hasRsi = data.points.some((p) => p.rsi != null)

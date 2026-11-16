@@ -29,7 +29,7 @@ export const QuizView = ({ step, onNext }: QuizViewProps) => {
       buttonDisabled={picked === null || submit.isPending}
       onButton={() => (result ? onNext(result) : check())}
     >
-      {step.kind === 'chart' && <ChartStep stepId={step.id} ticker={step.ticker} />}
+      {step.kind === 'chart' && <ChartStep chart={step.chart} ticker={step.ticker} />}
       <ul className="flex flex-col gap-2">
         {step.options.map((option, i) => (
           <li key={option}>

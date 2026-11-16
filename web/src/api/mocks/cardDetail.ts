@@ -1,3 +1,4 @@
+import { chartMocks } from '@/api/mocks/chart'
 import type { CardDetail } from '@/types/card'
 
 /**
@@ -77,6 +78,7 @@ export const cardDetailMocks: Record<string, CardDetail> = {
         question: '발표 날 은행 업종 거래량은 평소와 비교해 어땠을까요?',
         ticker: 'KS11',
         options: ['평소보다 많았다', '평소와 비슷했다', '평소보다 적었다'],
+        chart: chartMocks['rh-4'],
       },
       {
         id: 'rh-5',
@@ -194,6 +196,7 @@ export const cardDetailMocks: Record<string, CardDetail> = {
         question: '3일 중 거래량이 가장 많았던 날은 언제일까요?',
         ticker: 'KS11',
         options: ['첫째 날', '둘째 날', '셋째 날'],
+        chart: chartMocks['kp-3'],
       },
       {
         id: 'kp-4',
