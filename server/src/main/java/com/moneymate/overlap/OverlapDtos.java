@@ -44,6 +44,14 @@ public final class OverlapDtos {
             List<DirectionPair> pairs) {
     }
 
+    /** "내 지도에 있어요" 개념 하나 (사용자가 배운 개념). id 는 concepts.id 그대로. */
+    public record MyMapConcept(String id, String name, String theme) {
+    }
+
+    /** 사용자가 배운 개념과 연결된 종목 하나와 그 개념들. */
+    public record MyMapTicker(String ticker, List<MyMapConcept> concepts) {
+    }
+
     /** GET /api/overlaps. 겹침 결과가 하나도 없으면 calcDate 는 null, stocks 는 빈 목록. */
     public record OverlapList(String calcDate, List<StockOverlap> stocks) {
     }

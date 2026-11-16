@@ -59,4 +59,38 @@
          </if>
          ORDER BY o.ticker, o.filer_key, o.etf_code
     </select>
+
+    <resultMap id="myMapMap" type="com.moneymate.overlap.MyMapRow">
+        <constructor>
+            <arg column="ticker" javaType="String"/>
+            <arg column="concept_id" javaType="String"/>
+            <arg column="concept_name" javaType="String"/>
+            <arg column="theme" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!--
+      "내 지도에 있어요" (#100, P20). 배운 개념 = user_concepts.total > 0 (B 의 마이페이지 지도와 같은 기준).
+      concept_tickers 와 user_concepts 가 둘 다 concepts.id 를 참조해 id 를 그대로 비교한다.
+      팀 검토 전이라 status 는 거르지 않는다 (draft 도 나온다).
+    -->
+    <sql id="myMapSelect">
+        SELECT ct.ticker, c.id AS concept_id, c.name AS concept_name, c.theme
+          FROM user_concepts uc
+          JOIN concept_tickers ct ON ct.concept_id = uc.concept_id
+          JOIN concepts c ON c.id = uc.concept_id
+         WHERE uc.user_id = CAST(#{userId} AS uuid)
+           AND uc.total &gt; 0
+    </sql>
+
+    <select id="findMyMapTickers" resultMap="myMapMap">
+        <include refid="myMapSelect"/>
+         ORDER BY ct.ticker, c.id
+    </select>
+
+    <select id="findMyConceptsForTicker" resultMap="myMapMap">
+        <include refid="myMapSelect"/>
+           AND ct.ticker = #{ticker}
+         ORDER BY c.id
+    </select>
 </mapper>

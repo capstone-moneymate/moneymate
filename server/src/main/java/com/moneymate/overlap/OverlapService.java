@@ -3,6 +3,8 @@ package com.moneymate.overlap;
 import com.moneymate.overlap.OverlapDtos.DirectionPair;
 import com.moneymate.overlap.OverlapDtos.EtfChange;
 import com.moneymate.overlap.OverlapDtos.FilerChange;
+import com.moneymate.overlap.OverlapDtos.MyMapConcept;
+import com.moneymate.overlap.OverlapDtos.MyMapTicker;
 import com.moneymate.overlap.OverlapDtos.OverlapList;
 import com.moneymate.overlap.OverlapDtos.StockOverlap;
 import java.math.BigDecimal;
@@ -47,6 +49,31 @@ public class OverlapService {
             throw new StockNotFound(normalized);
         }
         return stocks.get(0);
+    }
+
+    /**
+     * "내 지도에 있어요" (#100): 사용자가 배운 개념(total > 0)과 연결된 종목들, 티커 순.
+     * 겹침 메인에서 종목마다 배지를 띄울 때 쓴다. 기록이 없거나 연결된 종목이 없으면 빈 목록.
+     */
+    public List<MyMapTicker> myMapTickers(String userId) {
+        Map<String, List<MyMapConcept>> byTicker = new LinkedHashMap<>();
+        for (MyMapRow r : repository.findMyMapTickers(userId)) {
+            byTicker.computeIfAbsent(r.ticker(), k -> new ArrayList<>()).add(concept(r));
+        }
+        List<MyMapTicker> out = new ArrayList<>();
+        byTicker.forEach((ticker, concepts) -> out.add(new MyMapTicker(ticker, List.copyOf(concepts))));
+        return out;
+    }
+
+    /** "내 지도에 있어요" (#100): 종목 하나에 연결된 개념 중 사용자가 배운 것, id 순. 종목 상세에서 쓴다. */
+    public List<MyMapConcept> myConceptsForTicker(String userId, String ticker) {
+        return repository.findMyConceptsForTicker(userId, normalizeTicker(ticker)).stream()
+                .map(OverlapService::concept)
+                .toList();
+    }
+
+    private static MyMapConcept concept(MyMapRow r) {
+        return new MyMapConcept(r.conceptId(), r.conceptName(), r.theme());
     }
 
     /** 경로의 티커를 저장 형식(대문자)에 맞춘다 (conventions 1장). 변환 규칙(P1)은 worker 가 저장할 때 이미 적용했다. */

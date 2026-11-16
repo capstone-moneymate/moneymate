@@ -1,0 +1,19 @@
+concept_id,ticker,market,reason,source,status
+ai_investment,GOOGL,US,10-K: AI를 중심으로 기술 인프라 설비투자를 늘리고 있다고 밝힘,https://www.sec.gov/Archives/edgar/data/1652044/000165204426000018/0001652044-26-000018-index.html,draft
+ai_investment,MSFT,US,10-K: 클라우드·AI 인프라 투자가 커지고 설비투자가 늘고 있다고 밝힘,https://www.sec.gov/Archives/edgar/data/789019/000119312526323660/0001193125-26-323660-index.html,draft
+ai_investment,AMZN,US,10-K: AI 인프라용 GPU 등 반도체를 소수 공급사에서 사 온다고 밝힘,https://www.sec.gov/Archives/edgar/data/1018724/000101872426000004/0001018724-26-000004-index.html,draft
+ai_investment,META,US,10-K: AI 사업에 인프라 투자를 늘려야 한다고 밝힘,https://www.sec.gov/Archives/edgar/data/1326801/000162828026003942/0001628280-26-003942-index.html,draft
+gpu_demand,NVDA,US,10-K: 데이터센터용 GPU 등 AI 가속 컴퓨팅이 주력 사업,https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/0001045810-26-000021-index.html,draft
+gpu_demand,AMD,US,10-K: 데이터센터 매출 증가를 Instinct GPU 수요로 설명,https://www.sec.gov/Archives/edgar/data/2488/000000248826000021/0000002488-26-000021-index.html,draft
+gpu_demand,AVGO,US,10-K: AI 데이터센터용 맞춤형 가속기(XPU)를 만든다고 밝힘,https://www.sec.gov/Archives/edgar/data/1730168/000173016825000121/0001730168-25-000121-index.html,draft
+gpu_demand,TSM,US,20-F: AI GPU·ASIC 같은 AI 가속기를 위탁 생산한다고 밝힘,https://www.sec.gov/Archives/edgar/data/1046179/000162828026025362/0001628280-26-025362-index.html,draft
+hbm_supply,MU,US,10-K: HBM3E·HBM4를 만들고 공급을 늘리고 있다고 밝힘,https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/0000723125-26-000023-index.html,draft
+hbm_demand,MU,US,10-K: AI 서버가 HBM을 포함한 D램을 점점 더 많이 필요로 한다고 밝힘,https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/0000723125-26-000023-index.html,draft
+memory_price,MU,US,10-K: D램 등 메모리 평균 판매가격이 실적에 영향을 준다고 밝힘,https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/0000723125-26-000023-index.html,draft
+semi_earnings,NVDA,US,10-K: GPU 등 반도체를 설계해 판다,https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/0001045810-26-000021-index.html,draft
+semi_earnings,AMD,US,10-K: CPU·GPU 등 반도체를 설계해 판다,https://www.sec.gov/Archives/edgar/data/2488/000000248826000021/0000002488-26-000021-index.html,draft
+semi_earnings,AVGO,US,10-K: AI용 반도체 등 반도체 제품을 판다,https://www.sec.gov/Archives/edgar/data/1730168/000173016825000121/0001730168-25-000121-index.html,draft
+semi_earnings,MU,US,10-K: 메모리·저장장치 반도체 기업이라고 밝힘,https://www.sec.gov/Archives/edgar/data/723125/000072312526000023/0000723125-26-000023-index.html,draft
+semi_earnings,SNDK,US,10-K: 낸드 플래시 반도체 메모리 기업이라고 밝힘,https://www.sec.gov/Archives/edgar/data/2023554/000162828026057406/0001628280-26-057406-index.html,draft
+semi_earnings,TSM,US,20-F: 반도체 위탁 생산(파운드리) 기업,https://www.sec.gov/Archives/edgar/data/1046179/000162828026025362/0001628280-26-025362-index.html,draft
+semi_earnings,INTC,US,10-K: CPU 등 반도체를 설계·생산해 판다,https://www.sec.gov/Archives/edgar/data/50863/000005086326000011/0000050863-26-000011-index.html,draft

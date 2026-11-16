@@ -40,6 +40,7 @@
 | P17 | **판단 단계 "맞음" 기준**: 판단(`judgement`) 채점 `score`(0~100) **60점 이상**이면 `user_concepts`에 맞음으로 기록한다. 기록은 서버(Spring Boot)의 공통 메서드 `recordConceptResult(userId, conceptIds, isCorrect)` 하나로 한다 (B 구현). 코드 채점을 하는 답안 API(C)와 판단 채점 API(A)가 이 메서드를 부른다 | 채점이 두 곳에서 일어나도 기준이 하나가 되게 |
 | P18 | **카드 출처**: 카드는 `card_sources`(card_id, source_id, is_main)로 `raw_sources`의 1차 자료 여러 개를 묶는다. 대표 자료(`is_main`)는 카드당 1개. `cards.news_id`는 없앴다 (003) | 같은 사건 자료를 한 카드로 묶되 FK로 무결성 유지 |
 | P19 | **종목 이유 카드(`stock_reasons`)**: 13F 분기(`big_period_end`)마다 종목당 한 줄, 다시 만들면 덮어쓰고 `updated_at` 갱신. `direction`(same/diff/none)은 종목 단위 값이라 `overlap_results`의 쌍별 방향을 줄이는 규칙을 C가 reasons.md에 적는다. `status`는 cards와 같은 3값이고 reasons.py `errors`가 비면 `published`, 남으면 `rejected`. 서버는 `published`만 읽는다 (004) | AI 추정 이유도 검사를 통과한 것만 화면에 나가게 (P8과 같은 장치) |
+| P20 | **개념↔티커 매핑(`concept_tickers`)**: 원본은 `db/seeds/concept_tickers.csv`이고 `worker/concepts/ticker_loader.py`가 DB를 CSV와 똑같이 맞춘다(upsert, CSV에서 지운 행은 DB에서도 지움). `concept_id`는 B의 `concepts.csv` id만 쓴다(새 개념은 B에게 먼저). 연결은 SEC 10-K·20-F 사업 설명으로 확인한 것만 넣고 링크를 `source`에, 팀 검토 전은 `status = draft`. "배운 개념"은 `user_concepts.total > 0`(P17·마이페이지와 같은 기준). `ai_investment`는 투자하는 회사(빅테크)에만 붙이고, 돈 버는 회사는 `gpu_demand`·`semi_earnings`에 붙인다 (005) | 탭 2 "내 지도에 있어요"가 user_concepts 와 id 를 그대로 비교한다. 한 개념이 두 뜻으로 섞이지 않게 |
 
 ## 3. 컬럼 합의가 필요한 5개 테이블 (분담표 7장)
 
@@ -52,6 +53,7 @@
 | overlap_results | A → 탭2 | `direction` 3값, 사용한 두 기준일 저장 |
 | cards | C → 탭1 | `card_type` 1/2/3, `key_facts`(채점 증거용), `status`, 출처는 `card_sources` (P18) |
 | stock_reasons | C → 탭2 | 분기·종목당 한 줄, `direction`·`change`·`headline`, `reasons`·`now_view` JSON 모양은 C가 정리, `status` (P19, 004) |
+| concept_tickers | A → 탭2 | (개념, 티커) 한 줄, `market` US/KR, 근거 공시 `source`, `status` draft/approved (P20, 005) |
 | steps | C → 탭1, A(채점) | `kind` 5종(concept, quiz, causal_order, chart, judgement. AI 분석은 judgement 결과 화면이라 단계가 아님), `answer`는 서버가 사용자에게 내려보내지 않음 |
 
 ## 4. 마이그레이션
@@ -72,3 +74,4 @@
 | 2026-10-29 | 003: `raw_sources`·`card_sources` 추가, `cards.news_id` 삭제, `steps.kind`에서 `open_ended`·`ai_analysis` 삭제, 루브릭 9점 주석 | B·C 요청, A 반영 |
 | 2026-10-29 | 판단 단계 60점 이상을 맞음으로 기록 (P17) | A |
 | 2026-11-16 | 004: `stock_reasons`(카드 ②③) 추가. C 초안에 `change`·CHECK·`status`·`model_info`·`updated_at` 추가, `now` → `now_view` (P19). `overlap_results` 방향 컬럼 제안은 다음 번호로 분리 | C 요청, A 반영 |
+| 2026-11-16 | 005: `concept_tickers` 추가와 첫 초안 18줄(AI·반도체 개념 6개 × 미국 11종목, 전부 draft). 금리·차트 읽기 개념은 붙이지 않음 (P20) | A (#100), B 요청(사전 id만) |
