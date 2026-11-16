@@ -210,7 +210,7 @@ def fill_tickers(conn) -> int:
     filled = 0
     for raw_code, stock_name, ticker, issuer_name in candidates:
         if not same_company(stock_name, issuer_name):
-            print(f"  ⚠ ticker 안 채움 (종목명 다름): {raw_code} {stock_name} ≠ {ticker} {issuer_name}")
+            print(f"  [경고] ticker 안 채움 (종목명 다름): {raw_code} {stock_name} ≠ {ticker} {issuer_name}")
             continue
         print(f"  ticker 채움: {raw_code} {stock_name} → {ticker} {issuer_name}")
         filled += conn.execute(
@@ -242,12 +242,12 @@ def collect_day(conn, etf_code: str, d: date) -> int | None:
     """
     df = fetch_trading_day(etf_code, d)
     if df.empty:
-        print(f"  ⚠ {etf_code} {d}: 수집 실패, 거래일인데 결과가 비어 있음 (로그인 실패·KRX 응답 오류·상장 전 날짜인지 확인)")
+        print(f"  [경고] {etf_code} {d}: 수집 실패, 거래일인데 결과가 비어 있음 (로그인 실패·KRX 응답 오류·상장 전 날짜인지 확인)")
         return None
     prev_date, prev = previous_snapshot(conn, etf_code, d)
     ratio = unit_change_ratio(prev, dict(zip(df["raw_code"], df["shares"])))
     if ratio is not None:
-        print(f"  ⚠ {etf_code} {prev_date} → {d}: 전 종목 수량이 {ratio:.4f}배로 같이 변함. "
+        print(f"  [경고] {etf_code} {prev_date} → {d}: 전 종목 수량이 {ratio:.4f}배로 같이 변함. "
               "설정 단위 변경으로 보인다. 추세 계산 전에 운용사 공지를 확인할 것")
     n = save_holdings(conn, df)
     print(f"  {etf_code} {d}: 주식 {len(df)}종목, 새로 저장 {n}줄")
