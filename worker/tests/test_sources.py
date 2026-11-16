@@ -73,3 +73,25 @@ def test_fed_rate_change_uses_next_day():
                            date(2026, 9, 16))["decision"] == "hold"
     # 다음 날 값이 아직 없으면 판정하지 않는다
     assert fed_rate_change(series[:2], date(2026, 9, 16)) is None
+
+
+def test_fill_dart_numbers_keeps_going_when_one_document_fails(monkeypatch, capsys):
+    import requests
+
+    from collectors import dart_numbers, sources
+
+    srcs = dart_rows_to_sources([
+        _dart("20261027000001", "Y", "005930", "단일판매ㆍ공급계약체결"),
+        _dart("20261027000002", "K", "035720", "주식소각결정"),
+    ])
+
+    def fake_fetch(rcept_no, api_key=None):
+        if rcept_no.endswith("1"):
+            raise requests.ConnectionError("끊김")
+        return "<TABLE><TR><TD>4. 소각예정금액(원)</TD><TD>1,000</TD></TR></TABLE>"
+
+    monkeypatch.setattr(dart_numbers, "fetch_document", fake_fetch)
+    assert sources.fill_dart_numbers(srcs, "key") == 1
+    assert srcs[0].numbers == {}
+    assert srcs[1].numbers == {"소각예정금액(원)": 1000}
+    assert "원문 숫자를 못 읽었어요" in capsys.readouterr().err

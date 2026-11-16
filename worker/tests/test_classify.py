@@ -40,6 +40,13 @@ def test_schema_enum_is_dictionary_plus_none():
     assert enum == ["rate_hold", "growth_valuation", "hbm_supply", "consecutive_rise", "none"]
 
 
+def test_schema_asks_reason_before_concept():
+    # 속성 순서대로 생성되므로 이유를 먼저 쓰고 개념을 고르게 한다 (2026-11-16 이유·선택 불일치)
+    schema = cl.output_schema(CONCEPTS)
+    assert list(schema["properties"]) == ["reason", "start_concept"]
+    assert schema["required"] == ["reason", "start_concept"]
+
+
 def test_system_lists_aliases():
     assert "rate_hold | 기준금리 동결 | 금리 | 금리 동결, 금리 유지" in cl.build_system(CONCEPTS)
 
