@@ -80,7 +80,7 @@ class ReasonsResult:
     reasons: list[Reason] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)  # 끝내 통과하지 못한 이유 (비어 있으면 통과)
     calls: int = 0
-    # 통과는 했지만 사람이 볼 것: 이유 방향이 큰손 변화와 반대 (5주차 노션 제안 (2), B 확인 중이라 거부하지 않는다)
+    # 통과는 했지만 사람이 볼 것: 이유 방향이 큰손 변화와 반대. 있으면 save 가 pending 으로 저장한다 (B·C 합의)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -154,14 +154,27 @@ def build_user(stock: dict, direction: str, change: str, facts: list[str], evide
     )
 
 
+# 이유의 시작 개념으로 쓰지 않는 개념 (B 결정 2026-11-16). 사전 연결은 맞지만(탭 1 뉴스용) 탭 2 이유에는 안 맞는다:
+# ① "시장이 인하를 기대할 때"라는 조건이 붙은 연결인데 reasons 는 그 조건을 확인할 수 없고
+# ② 2분기 FOMC 가 4/29·6/17 모두 동결이라 20종목 전부에 같은 이유가 붙어 "왜 이 종목을"의 답이 안 되고
+# ③ 동결은 양이 아니라 사건이라 change 로도 방향을 못 맞춘다 (2분기 20종목에서 큰손과 반대인 이유 6개가 모두 이것)
+NOT_START = frozenset({"rate_hold"})
+# 금리 사건 개념은 근거에 실제 그 결정이 있을 때만 시작 개념으로 쓴다. rate_hold 를 뺐더니 2분기(4/29·6/17 모두 동결)
+# 20종목 중 18종목이 동결을 "rate_hike(down)"·"rate_cut(down)"으로 돌려 썼다 (2026-11-16). B 결정의 취지와 같다:
+# 3분기(9/16 인상)처럼 결정이 있으면 rate_hike → 국채 금리 → 성장주 경로는 쓸 수 있다
+DECISION_EVENTS = {"rate_hike": "hike", "rate_cut": "cut"}
+
+
 def output_schema(concept_ids: list[str], n_evidence: int) -> dict:
-    """개념 id 와 근거 번호를 enum 으로 묶어 사전·입력 밖의 값이 나올 수 없게 한다. 개수 제한은 코드가 본다."""
+    """개념 id 와 근거 번호를 enum 으로 묶어 사전·입력 밖의 값이 나올 수 없게 한다. 개수 제한은 코드가 본다.
+    시작 개념에서는 NOT_START 를 뺀다 (끝 개념으로는 쓸 수 있다)."""
+    start_ids = [c for c in concept_ids if c not in NOT_START]
     reason = {
         "type": "object",
         "properties": {
             "title": {"type": "string"},
             "body": {"type": "string"},
-            "start_concept": {"type": "string", "enum": concept_ids},
+            "start_concept": {"type": "string", "enum": start_ids},
             "change": {"type": "string", "enum": list(CHANGES)},
             "end_concept": {"type": "string", "enum": concept_ids},
             "evidence": {"type": "array", "items": {"type": "integer", "enum": list(range(1, n_evidence + 1))}},
@@ -217,6 +230,12 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
                 errors.append(f"{where}: 사전에 {r['start_concept']} → {r['end_concept']} 경로가 없어요. 다른 개념을 고르세요")
             elif direction == AMBIGUOUS:  # graph.py 규칙: 모호한 쌍은 정답으로 쓰지 않는다 (#85 리뷰)
                 errors.append(f"{where}: {r['start_concept']} → {r['end_concept']} 는 경로마다 방향이 달라요. 다른 개념을 고르세요")
+        decision = DECISION_EVENTS.get(r["start_concept"])
+        if decision:
+            decided = [no for no in r["evidence"] if (by_no.get(no) and by_no[no].numbers.get("decision") == decision)]
+            if not decided or r.get("change", "up") != "up":
+                errors.append(f"{where}: {r['start_concept']} 는 근거에 실제 '{decision}' 결정이 있을 때만 시작 개념으로 "
+                              f"쓸 수 있어요 (change 는 up). 동결(hold)이면 금리 사건을 이유로 쓰지 마세요")
         banned = find_banned([r["title"], r["body"]])
         if banned:
             errors.append(f"{where}: 쓰면 안 되는 표현이 있어요: {', '.join(banned)}")
@@ -236,10 +255,11 @@ def to_reasons(raw: list[dict], evidence: list[Evidence], g: Graph) -> list[Reas
 
 
 def direction_warnings(reasons: list[Reason], direction: str, change: str) -> list[str]:
-    """큰손이 한쪽으로 움직인 종목(same·none)에서 이유의 힘이 그 변화와 반대인 것. 거부하지 않고 경고만 남긴다.
+    """큰손이 한쪽으로 움직인 종목(same·none)에서 이유의 힘이 그 변화와 반대인 것.
 
-    5주차 노션 제안 (2) (B 확인 중): 끝 개념마다 '커지면 늘릴 이유'인지 사전에 정보가 없어서
-    (비용·금리처럼 커지면 줄일 이유인 개념도 있다) 자동으로 버리지 않고 사람이 pending·model_info 에서 본다.
+    경고가 있으면 save 가 pending 으로 저장해 화면에 안 나가고 사람이 본다 (2026-11-16 B·C 합의).
+    다시 쓰게(거부) 하지 않는 까닭: 끝 개념마다 '커지면 늘릴 이유'인지 사전에 정보가 없어서
+    (비용·금리처럼 커지면 줄일 이유인 개념도 있다) 맞는 이유를 버릴 수 있다.
     diff(방향이 엇갈림)는 이유가 어느 쪽을 설명해도 되므로 보지 않는다.
     """
     if direction == "diff":
@@ -336,15 +356,25 @@ def save(conn, base_date: date, ticker: str, direction: str, change: str, result
          now_view: dict | None, model_info: dict | None = None) -> str:
     """stock_reasons 한 줄 (분기·종목마다 1줄, 다시 만들면 덮어쓰고 updated_at 갱신). 저장한 status 를 돌려준다.
 
-    P19: 이유가 있고 errors 가 비면 published, 아니면 rejected (서버는 published 만 읽는다).
-    rejected 도 저장해서 왜 막혔는지(errors 는 model_info 에) 팀이 볼 수 있게 한다.
+    status (P19 + 2026-11-16 B·C 합의):
+    - 이유가 없거나 errors 가 남으면 rejected
+    - 이유는 통과했지만 방향 경고(큰손 변화와 반대)가 있으면 pending: 화면에 안 나가고(서버는 published 만) 사람이
+      model_info.warnings 를 보고 published 로 바꾸거나 다시 만든다. 카드 ②는 "왜 늘렸나/줄였나"를 설명하는 곳이라
+      반대 방향 이유가 정답처럼 읽히면 안 되고, 13F 는 분기에 20종목 정도라 사람이 볼 수 있다 (2분기 실데이터에서
+      반대인데 맞는 이유는 없었다)
+    - 그 밖은 published
     now_view: stock_now.StockNow.to_json() (카드 ③). 아직 안 만들었으면 None → NULL.
     """
-    status = "published" if result.reasons and not result.errors else "rejected"
+    if not result.reasons or result.errors:
+        status = "rejected"
+    elif result.warnings:
+        status = "pending"
+    else:
+        status = "published"
     info = {"calls": result.calls, **(model_info or {})}
     if result.errors:
         info["errors"] = result.errors
-    if result.warnings:  # 방향 경고는 published 를 막지 않는다 (B 확인 전)
+    if result.warnings:
         info["warnings"] = result.warnings
     conn.execute(
         """INSERT INTO stock_reasons (big_period_end, ticker, direction, change, headline, reasons, now_view,

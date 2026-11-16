@@ -34,7 +34,7 @@ class StockRun:
     status: str | None = None  # published / rejected / None(저장 안 함)
     calls: int = 0
     error: str | None = None
-    warnings: int = 0  # 이유 방향이 큰손 변화와 반대인 개수 (reasons.direction_warnings, 저장은 막지 않음)
+    warnings: int = 0  # 이유 방향이 큰손 변화와 반대인 개수 (reasons.direction_warnings, 있으면 pending 으로 저장)
 
 
 def pct_text(v: float | None) -> str | None:
@@ -161,7 +161,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{ticker:8} {run.direction or '-':5} {run.change or '-':5} 근거 {run.evidence:2}건 "
                   f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향경고 {run.warnings} {run.error or ''}")
     done = [r for r in runs if r.status == "published"]
-    print(f"\n종목 {len(runs)}개, published {len(done)}, rejected {sum(r.status == 'rejected' for r in runs)}, "
+    print(f"\n종목 {len(runs)}개, published {len(done)}, pending {sum(r.status == 'pending' for r in runs)}, "
+          f"rejected {sum(r.status == 'rejected' for r in runs)}, "
           f"방향 못 정함 {sum(bool(r.error) for r in runs)}, 방향 경고 {sum(r.warnings for r in runs)}")
     return 0
 
