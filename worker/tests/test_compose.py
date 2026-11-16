@@ -403,3 +403,16 @@ def test_etf_row_text(trend, day, base, want_trend, want_day):
     assert row["분기 말 대비 추세"] == want_trend
     assert row["전 거래일 대비"] == want_day
     assert row["보유 수량"] == "12,345주" and row["기준일"] == "2026-10-30"
+
+
+def test_unknown_release_time_is_marked_and_prompt_forbids_reaction_reading():
+    # DART 는 시각이 없다 → '발표 시각: 모름'. 프롬프트에 그때 반응 해석 금지 규칙이 있다 (2026-11-16 LX세미콘)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    user = cp.build_user({**SOURCE, "published_at": None}, CLS2, [])
+    assert f"발표 시각: {cp.UNKNOWN_TIME}" in user
+    assert "발표 시각을 모르는 자료" in cp.PROMPT and "반응을 해석하는 말을 쓰지 않는다" in cp.PROMPT
+
+    at = datetime(2026, 10, 8, 10, 0, tzinfo=ZoneInfo("Asia/Seoul"))
+    assert "발표 시각: 2026-10-08T10:00+09:00" in cp.build_user({**SOURCE, "published_at": at}, CLS2, [])

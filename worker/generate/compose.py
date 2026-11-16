@@ -128,6 +128,20 @@ def source_text(source: dict) -> str:
     return "\n".join(lines)
 
 
+UNKNOWN_TIME = "확인 안 됨 (장 마감 뒤 공시라면 시장 반응은 다음 거래일에 나오므로 아직 반영되지 않았을 수 있음)"
+
+
+def release_time(source: dict) -> str:
+    """발표 시각. DART 는 시각을 주지 않아 published_at 이 없다 → UNKNOWN_TIME.
+
+    2026-11-16 실데이터: LX세미콘 잠정실적(11/3 접수)은 공시일 -3.24%·거래량 0.61배였지만 다음 거래일
+    -13.74%·약 3.3배였다. 시각을 모르는데 공시일 값을 반응으로 해석해 "거래량이 급증하지 않았다"고 썼다.
+    프롬프트의 "발표 시각을 모르는 자료" 규칙이 이 표시를 보고 반응 해석을 막는다.
+    """
+    at = source.get("published_at")
+    return at.isoformat(timespec="minutes") if at else UNKNOWN_TIME
+
+
 def build_user(source: dict, cls: ClassifyResult, etf_rows: list[dict]) -> str:
     lines = [
         f"유형: {cls.card_type}  (단계: {' → '.join(STEP_ORDER[cls.card_type])})",
@@ -136,6 +150,7 @@ def build_user(source: dict, cls: ClassifyResult, etf_rows: list[dict]) -> str:
         f"회사·기관: {source.get('issuer_name') or '-'}",
         f"종목(차트·도구에 쓸 티커): {source.get('ticker') or '-'}",
         f"발표일: {source.get('published_date') or '-'}",
+        f"발표 시각: {release_time(source)}",
         "",
         "원문 (evidence_quote 는 이 안의 문장을 그대로):",
         source_text(source),
