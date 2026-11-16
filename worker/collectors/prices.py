@@ -7,6 +7,8 @@
 실행:
   cd worker && python collectors/prices.py today            # 최근 거래일 국내 전 종목 + 지수 4개
   cd worker && python collectors/prices.py backfill 253     # 국내 전 종목 253거래일 (252일 평균 + 당일)
+      지난 날짜로 run_daily --date 를 다시 돌리려면 그날 앞으로도 252거래일이 있어야 해서 253 + (오늘까지 거래일 수)를 준다.
+      예: 2주 전(10거래일)부터 다시 보려면 backfill 268 (2026-11-16 실데이터에서 253 으로는 대부분 0점이 나왔다)
   cd worker && python collectors/prices.py us NVDA 2025-10-01
 
 날짜: market_date 는 그 시장의 거래일이다 (conventions.md). 미국장 10/27 종가는 KST로 10/28 아침에 나오지만 2026-10-27 로 저장한다.

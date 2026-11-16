@@ -87,6 +87,26 @@ def test_prompt_wraps_sources_as_json():
     assert '"question": "왜 다 늘렸을까요?"' in user
     assert '"no": 2, "date": "2026-08-14"' in user
     assert "ai_investment | AI 데이터센터 투자 | AI·반도체" in rs.build_system(CONCEPTS)
+    assert '"numbers"' not in user  # numbers 가 없는 근거는 칸을 넣지 않는다
+
+
+def test_prompt_passes_evidence_numbers_without_calendar_flag():
+    # FOMC 동결을 제목만 보고 "금리 부담이 줄었다"로 지어낸 문제 (2026-11-16) → 결정·금리 전후를 넘긴다
+    fomc = rs.Evidence(1, 21, "2026-06-17", "FOMC 정책금리 결정", None, "https://example.com/f",
+                       {"calendar_verified": True, "decision": "hold", "rate_before": 3.75, "rate_after": 3.75})
+    user = rs.build_user(STOCK, "same", "up", [], [fomc])
+    assert '"numbers": {' in user and '"decision": "hold"' in user and '"rate_after": 3.75' in user
+    assert "calendar_verified" not in user
+    system = rs.build_system(CONCEPTS)
+    assert "hold(동결)" in system and "hold 면 금리가 바뀌지 않은 것" in system
+
+
+@pytest.mark.parametrize("ticker,market", [("NVDA", "US"), ("BRK-B", "US"), ("005930", "KR"), ("00104K", "KR"),
+                                           ("0015B0", "KR")])
+def test_stock_market_for_macro_filter(ticker, market):
+    # 미국 종목 근거에 한국은행 결정이 들어간 문제 (2026-11-16) → 시장에 맞는 지수 키의 거시 발표만
+    assert rs.stock_market(ticker) == market
+    assert rs.MACRO_INDEXES[market] == (["US500", "IXIC"] if market == "US" else ["KS11", "KQ11"])
 
 
 @pytest.mark.parametrize("raw, message", [

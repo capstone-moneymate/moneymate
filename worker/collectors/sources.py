@@ -10,6 +10,7 @@
 실행 (국내는 장 마감 후 16:00, 미국은 다음 날 아침 08:00):
   cd worker && python collectors/sources.py dart 2026-10-27
   cd worker && python collectors/sources.py sec 2026-10-27 NVDA AAPL
+  cd worker && python collectors/sources.py sec 2026-04-01 NVDA AAPL --until 2026-06-30   # 기간 (탭 2 근거)
   cd worker && python collectors/sources.py macro 2026-10-22
   끝에 --save 를 붙이면 raw_sources 에 저장한다 (안 붙이면 화면 출력만)
 필요: .env 의 DART_API_KEY (opendart.fss.or.kr), ECOS_API_KEY (ecos.bok.or.kr), EDGAR_IDENTITY
@@ -133,17 +134,32 @@ def fill_dart_numbers(sources: list[Source], api_key: str | None = None) -> int:
 # ------------------------------------------------------------------
 # SEC 8-K
 # ------------------------------------------------------------------
-def fetch_sec_8k(d: date, tickers: list[str]) -> list[Source]:
-    """탭 2 종목의 그날(미국 날짜) 8-K 중 Item 2.02·1.01. 접수 시각(acceptance)으로 반응일을 정한다."""
+def _filing_date(filing, default: date) -> date:
+    """edgartools filing.filing_date (date 또는 'YYYY-MM-DD'). 없으면 default (하루 단위 호출의 그날)."""
+    fd = getattr(filing, "filing_date", None)
+    if isinstance(fd, date):
+        return fd
+    if isinstance(fd, str) and fd:
+        return date.fromisoformat(fd[:10])
+    return default
+
+
+def fetch_sec_8k(d: date, tickers: list[str], until: date | None = None) -> list[Source]:
+    """탭 2 종목의 그날(미국 날짜) 8-K 중 Item 2.02·1.01. 접수 시각(acceptance)으로 반응일을 정한다.
+
+    until 을 주면 d ~ until 기간을 한 번에 받는다 (탭 2 이유의 근거는 13F 기준일 앞 92일이라 하루씩 부르면
+    종목 × 날짜만큼 호출된다. 2026-11-16 run_reasons 실데이터 준비). 발표일은 각 공시의 filing_date 다.
+    """
     from edgar import Company, set_identity
 
     if not config.EDGAR_IDENTITY:
         raise RuntimeError("EDGAR_IDENTITY 가 비어 있습니다 (.env, 영문 이름 + gmail)")
     set_identity(config.EDGAR_IDENTITY)
+    span = f"{d.isoformat()}:{until.isoformat()}" if until else d.isoformat()
     out = []
     for raw in tickers:
         t = normalize_us_ticker(raw)
-        filings = Company(t).get_filings(form="8-K", filing_date=d.isoformat(), amendments=False)
+        filings = Company(t).get_filings(form="8-K", filing_date=span, amendments=False)
         for f in filings:
             items = getattr(f, "items", None) or getattr(f.obj(), "items", [])
             cat = sec_8k_category(items)
@@ -158,7 +174,7 @@ def fetch_sec_8k(d: date, tickers: list[str]) -> list[Source]:
                 category=cat,
                 title=f"{f.company} 8-K Item {', '.join(items) if isinstance(items, list) else items}",
                 url=f.homepage_url,
-                published_date=d,
+                published_date=_filing_date(f, d),
                 published_at=accepted if accepted and accepted.tzinfo else None,
                 issuer_name=f.company,
                 ticker=t,
@@ -310,7 +326,10 @@ def main(argv: list[str]) -> int:
     if kind == "dart":
         sources = fetch_dart(d)
     elif kind == "sec":
-        sources = fetch_sec_8k(d, [a for a in argv[2:] if not a.startswith("--")])
+        # --until YYYY-MM-DD 를 주면 d ~ until 기간 (탭 2 근거 92일치를 한 번에)
+        until = date.fromisoformat(argv[argv.index("--until") + 1]) if "--until" in argv else None
+        skip = {argv[argv.index("--until") + 1]} if until else set()
+        sources = fetch_sec_8k(d, [a for a in argv[2:] if not a.startswith("--") and a not in skip], until)
     elif kind == "macro":
         sources = fetch_macro(d)
     else:
