@@ -28,9 +28,12 @@
 카드 전체에 쓰는 검사 (DB 를 읽지 않는 순수 함수. C의 compose 가 검증 단계에서 부른다)
 - find_banned(texts): 매수·매도 권유, 수익 예측 표현. 목록은 banned_terms.txt
 - find_duplicates(new_texts, past_texts): 이미 출제한 문제와 거의 같은 문장. 예전 문제는 C가 steps 에서 읽어 넘긴다
+- check_evidence(chosen, available, base_date): 탭 2 이유가 고른 근거 번호가 입력에 있었고, 공시 기준일 이전 자료인가
 """
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -167,4 +170,58 @@ def find_duplicates(new_texts: list[str], past_texts: list[str],
         match, score, _ = process.extractOne(text, past, scorer=fuzz.ratio, processor=utils.default_process)
         if score >= threshold:
             errors.append(f'"{text}" 가 예전 문제 "{match}" 와 거의 같아요 (유사도 {score:.0f}). 다른 질문으로 바꿔 주세요')
+    return errors
+
+
+# ------------------------------------------------------------------
+# 근거 날짜 (탭 2, 기술확정안 검증 표 "근거 날짜")
+# ------------------------------------------------------------------
+
+def _as_date(value: date | str, what: str) -> date:
+    """date 는 그대로, 'YYYY-MM-DD' 문자열은 date 로. 그 밖의 형식은 입력 데이터 문제라 ValueError."""
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return date.fromisoformat(value)  # 2026-02-30 같은 없는 날도 여기서 ValueError
+    raise ValueError(f"{what} 는 date 나 'YYYY-MM-DD' 문자열이어야 해요: {value!r}")
+
+
+def check_evidence(chosen: Iterable[int], available: Mapping[int, date | str], base_date: date | str,
+                   where: str = "") -> list[str]:
+    """LLM 이 고른 근거 번호를 검사해 오류 문장 목록을 돌려준다. 비어 있으면 통과. DB 를 읽지 않는다.
+
+    chosen: LLM 이 고른 근거 번호 (출력)
+    available: 입력으로 넘긴 근거 {번호: 발행일}. 발행일은 date 나 'YYYY-MM-DD'
+    base_date: 공시 기준일 (13F 분기 말). 그날 나온 자료까지 쓸 수 있다
+    where: 오류 문장 앞에 붙일 위치 (예: "이유 1"). 문장은 LLM 에게 그대로 돌려준다
+
+    검사 (오류 문장은 C의 reasons.check_reasons 와 같은 말이라 그대로 바꿔 끼울 수 있다)
+    1. 번호를 1개 이상 골랐는가
+    2. 입력에 있던 번호인가 (숫자가 아니거나 없는 번호)
+    3. 같은 번호를 두 번 고르지 않았는가
+    4. 발행일이 기준일 이전(같은 날 포함)인가
+
+    available·base_date 의 날짜 형식이 틀리면 LLM 이 고칠 수 없는 입력 데이터 문제라 오류 문장 대신 ValueError.
+    """
+    base = _as_date(base_date, "base_date")
+    published = {no: _as_date(d, f"근거 {no} 발행일") for no, d in available.items()}
+    prefix = f"{where}: " if where else ""
+    chosen = list(chosen)
+
+    if not chosen:
+        return [f"{prefix}근거 자료 번호를 1개 이상 고르세요"]
+
+    errors = []
+    seen = set()
+    for no in chosen:
+        # bool 은 int 의 하위 타입이라 True 가 1번으로 읽히지 않게 따로 뺀다
+        if isinstance(no, bool) or not isinstance(no, int) or no not in published:
+            errors.append(f"{prefix}입력에 없는 근거 번호예요: {no}")
+            continue
+        if no in seen:
+            errors.append(f"{prefix}근거 {no} 를 두 번 골랐어요. 한 번만 쓰세요")
+            continue
+        seen.add(no)
+        if published[no] > base:
+            errors.append(f"{prefix}근거 {no} 는 공시 기준일({base}) 뒤에 나온 자료예요")
     return errors
