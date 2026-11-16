@@ -1,5 +1,6 @@
 package com.moneymate.judgement;
 
+import com.moneymate.learning.ConceptResultRecorder;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -16,7 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * 판단해보기 근거 채점 (A, #55) + AI 분석 피드백 (#56).
  *
- * 순서: 단계 확인 → 하루 호출 제한(사용자별, 서비스 전체) → 같은 답안 해시 재사용 → FastAPI 채점 → user_answers 저장.
+ * 순서: 단계 확인 → 하루 호출 제한(사용자별, 서비스 전체) → 같은 답안 해시 재사용 → FastAPI 채점 → user_answers 저장
+ * → user_concepts 기록(P17, B 의 recordConceptResult. 채점을 못 하면 기록하지 않는다).
  * 채점·피드백 생성(루브릭·Claude·규칙 채점 전환)은 Python(worker/generate/judge.py)이 하고, 여기서는 다시 계산하지 않는다.
  * 피드백과 채점 이유는 user_answers.feedback(TEXT)에 JSON 문자열로 저장해, 재사용할 때 그대로 돌려준다.
  * FastAPI 호출이 실패하면 점수·피드백 없이 고정 문구를 돌려주고 답안은 저장한다.
@@ -38,18 +40,22 @@ public class JudgementService {
     private final JudgementRepository repository;
     private final JudgeClient judgeClient;
     private final JudgeProperties props;
+    private final ConceptResultRecorder recorder;
     private final Clock clock;
     private final JsonMapper json = JsonMapper.builder().build();
 
     @Autowired
-    public JudgementService(JudgementRepository repository, JudgeClient judgeClient, JudgeProperties props) {
-        this(repository, judgeClient, props, Clock.system(KST));
+    public JudgementService(JudgementRepository repository, JudgeClient judgeClient, JudgeProperties props,
+                            ConceptResultRecorder recorder) {
+        this(repository, judgeClient, props, recorder, Clock.system(KST));
     }
 
-    JudgementService(JudgementRepository repository, JudgeClient judgeClient, JudgeProperties props, Clock clock) {
+    JudgementService(JudgementRepository repository, JudgeClient judgeClient, JudgeProperties props,
+                     ConceptResultRecorder recorder, Clock clock) {
         this.repository = repository;
         this.judgeClient = judgeClient;
         this.props = props;
+        this.recorder = recorder;
         this.clock = clock;
     }
 
@@ -78,6 +84,8 @@ public class JudgementService {
             boolean correct = g.score() >= CORRECT_SCORE;
             StoredFeedback stored = readFeedback(g.feedbackJson());
             save(userId, step, req, hash, correct, g.score(), rubric, g.gradedBy(), g.feedbackJson());
+            // 재사용해도 낼 때마다 센다 (코드 채점과 같은 기준, P17)
+            recorder.recordConceptResult(userId, step.conceptIds(), correct);
             return new JudgementResponse(g.score(), correct, rubric, stored.reasons(), "claude", true, null,
                     stored.feedback());
         }
@@ -98,7 +106,8 @@ public class JudgementService {
         Map<String, String> reasons = result.reasons() == null ? Map.of() : result.reasons();
         String feedbackJson = writeFeedback(new StoredFeedback(result.feedback(), reasons));
         save(userId, step, req, hash, correct, result.score(), result.rubric(), byClaude ? "llm" : "rule", feedbackJson);
-        // TODO(P17): B의 recordConceptResult(userId, step.conceptIds(), correct) 가 생기면 여기서 부른다
+        // P17: 탭3 인과 지도·다시 보는 개념용. 개념은 판단 단계 정답 chain (60점 이상이면 맞음)
+        recorder.recordConceptResult(userId, step.conceptIds(), correct);
         return new JudgementResponse(result.score(), correct, result.rubric(), reasons,
                 byClaude ? "claude" : "rule", false, null, result.feedback());
     }

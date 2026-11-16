@@ -73,7 +73,7 @@ curl -s localhost:8080/api/stocks/NVDA
 | 헤더 | 섹터 태그, 성격 태그, 회사 한 줄 소개 | 어떤 테이블에도 없다 |
 | 헤더 | 한글 종목명 | `issuer_name`(13F 영문), `stock_name`(pykrx 표기)뿐 |
 | 메인 하단 | 변동성 TOP2 | `prices`에서 계산해야 한다 (이 API 범위 밖) |
-| 카드 ②③ | 이유, 지금은 | 004에서 `stock_reasons` 표를 만들었다(C 요청, P19). reasons.py 저장과 이 API 응답 연결은 C가 JSON 모양을 정리한 뒤(#101) |
+| 카드 ②③ | 이유, 지금은 | #101에서 상세 응답 `reasons`로 연결했다(아래) |
 | 13F 공시 전 | 안내문 상태 | 공시 전/후 1~2주/그 이후 구분 값 없음 (`filedAt`으로 화면이 판단 가능) |
 
 ## 스키마 변경 제안 (적용하지 않음. 004는 stock_reasons 로 썼으므로 다음 번호)
@@ -90,7 +90,7 @@ ALTER TABLE overlap_results
 - ETF가 없는 13F 종목까지 메인 상단에 보이려면 overlap.py `co_increased()` 결과를 저장할 테이블(예: `co_increased(calc_date, big_period_end, ticker, filer_keys TEXT[])`)이 필요하다.
 - 종목 헤더의 섹터·성격·소개는 `stock_profiles(ticker PK, name_ko, sector, style, intro)` 같은 정적 테이블을 제안한다(손으로 채움).
 
-## "내 지도에 있어요" 조회 (#100, API 연결 전)
+## "내 지도에 있어요" 조회 (#100, #101에서 상세 응답 `myConcepts`로 연결)
 
 `OverlapService`에 메서드 두 개를 두고, SQL은 `OverlapRepository.xml`의 `findMyMapTickers`·`findMyConceptsForTicker`에 있다. 아직 엔드포인트에는 연결하지 않았다.
 
@@ -98,3 +98,36 @@ ALTER TABLE overlap_results
 - `myConceptsForTicker(userId, ticker)`: 종목 하나에 연결된 개념 중 사용자가 배운 것이다. 티커는 대문자로 맞춘다. 종목 상세용이다.
 - 기록이 없는 사용자나 처음 보는 사용자는 빈 목록이다. 팀 검토 전이라 `status`는 거르지 않는다. userId는 UUID 문자열이다. 형식이 틀리면 DB 오류가 나므로, API에 붙일 때 마이페이지처럼 400으로 막는다.
 - 테스트: `OverlapMyMapIntegrationTest` 3개(Testcontainers + `fixtures/my_map.sql`, 손계산은 fixture 맨 위에 있다), `OverlapServiceTest`에 2개를 추가했다.
+
+## 종목 상세의 카드 ②③과 "내 지도에 있어요" (#101)
+
+`GET /api/stocks/{ticker}?userId=<UUID>`. userId는 선택이고, UUID가 아니면 400이다. 응답은 위 상세에 두 칸을 더한다.
+
+- `reasons`: `stock_reasons`에서 그 티커의 `status = 'published'` 중 가장 최근 `big_period_end` 한 줄이다(P19). 없거나 JSON이 깨졌으면 `null`이고, 화면은 대체 문구를 보여 준다. C가 저장한 snake_case JSON(`docs/modules/reasons.md` "저장 모양")을 서버가 camelCase로 옮긴다. 이유를 만들거나 고치지 않고, 아래 두 가지만 더한다.
+  - 경로 개념마다 `concepts.name`과 `learned`(사용자가 배운 개념, `user_concepts.total > 0`)를 붙인다. 사전에 없는 id는 이름 대신 id를 쓴다.
+  - 이유마다 `inMyMap`(경로에 배운 개념이 하나라도 있음)을 붙인다.
+  - 화면용이 아닌 값은 내보내지 않는다: `start_concept`·`end_concept`(경로에 있음), 근거의 `source_id`, 카드 ③의 `errors`, `model_info`.
+- `reasons.now`: 카드 ③이다. `now_view`가 NULL이면 `null`이다. `price.returnPct`는 C가 저장한 퍼센트 값 그대로다(12.5 = 12.5%). conventions P2(변화율은 소수)와 다르니 C에게 확인할 안건이다.
+- `myConcepts`: #100 매핑(`concept_tickers`)으로 이 종목과 연결된 개념 중 사용자가 배운 것이다. userId가 없으면 빈 목록이다.
+
+```json
+"reasons": {
+  "bigPeriodEnd": "2026-06-30", "direction": "diff", "change": "up", "headline": "왜 방향이 다를까요?",
+  "reasons": [{"title": "AI 투자 확대", "body": "…", "direction": "up", "inMyMap": true,
+    "path": [{"id": "ai_investment", "name": "AI 데이터센터 투자", "learned": false},
+             {"id": "gpu_demand", "name": "AI 반도체 수요", "learned": true}],
+    "evidence": [{"no": 4, "publishedDate": "2026-06-12", "title": "…", "issuerName": "…", "url": "https://…"}]}],
+  "now": {"baseDate": "2026-06-30",
+    "price": {"fromDate": "2026-06-30", "fromClose": 100.0, "toDate": "2026-11-14", "toClose": 112.5, "returnPct": 12.5},
+    "laterSources": [{"publishedDate": "…", "title": "…", "url": "…", "numbers": {"매출액 전년동기대비(%)": 62.0}}],
+    "linked": [{"conceptId": "gpu_demand", "name": "AI 반도체 수요", "reasonTitle": "AI 투자 확대"}],
+    "text": null}
+},
+"myConcepts": [{"id": "gpu_demand", "name": "AI 반도체 수요", "theme": "AI·반도체"}]
+```
+
+- 테스트: `OverlapApiIntegrationTest` 6개.
+  - NVDA는 더 최근 분기의 pending과 오래된 published를 건너뛰고 2026-06-30 published를 내준다. userId가 없으면 learned가 false이고 `myConcepts`가 빈 목록이다. userId가 있으면 learned·inMyMap이 true이고 `myConcepts`가 채워진다. 카드 ③의 errors는 나오지 않는다.
+  - GOOGL은 rejected만 있어서 `reasons`가 null이다.
+  - userId가 `abc`이면 400이다.
+- 테스트: `OverlapServiceTest` 11개. 이름·learned 붙이기, 사전에 없는 id, 개념 id를 한 번씩만 조회하는지, userId가 없으면 조회하지 않는지, 이유는 없지만 `myConcepts`는 있는 경우, 깨진 JSON이면 null.

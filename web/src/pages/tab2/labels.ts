@@ -1,8 +1,8 @@
 import type { ChangeType, Direction } from '@/types/overlap'
 
 /**
- * 탭2 화면 문구와 이름 상수. 서버는 영어 상수와 코드만 내려 주고 한글은 여기서 바꾼다.
- * 문구를 바꿀 때는 이 파일만 고친다.
+ * 탭2 이름·라벨 상수. 서버는 영어 상수와 코드만 내려 주고 한글은 여기서 바꾼다.
+ * 안내·대체 문구는 notices.ts 에 모은다 (#101).
  */
 
 /**
@@ -42,14 +42,6 @@ export const DIRECTION_LABEL: Record<Direction, string> = {
   diff: '방향 다름',
   none: '비교 보류',
 }
-
-/** 방향 다름 설명 (docs/서비스흐름.md "방향 비교") */
-export const DIFF_NOTE =
-  '방향 다름은 의견이 갈린 게 아니라, 13F 분기 말 이후 상황이 바뀌었거나 투자 원칙이 달라서일 수 있어요.'
-
-/** 탭2 안내 문구 (docs/서비스흐름.md "안내 문구") */
-export const GUIDE_NOTE =
-  '13F는 분기 말 기록이라 지금도 갖고 있는지 알 수 없어요. 매니저는 매매 이유를 공개하지 않아 이유는 추정이고, 따라 사기 위한 정보가 아니에요.'
 
 /** '2026-06-30' → '6월 30일' */
 export const formatDate = (date: string) => {

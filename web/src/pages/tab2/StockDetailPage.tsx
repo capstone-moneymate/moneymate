@@ -1,20 +1,21 @@
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { StockNotFoundError, useStockOverlap } from '@/api/overlap'
 import { ChangeRate } from '@/components/ChangeRate'
-import type { StockOverlap } from '@/types/overlap'
+import type { StockDetail } from '@/types/overlap'
 import { DirectionChip } from './DirectionChip'
 import { FilerChangeText, TrendText } from './FilerChangeText'
+import { etfFullName, etfShortName, FILERS, filerShortName, formatDate } from './labels'
+import { NowCard } from './NowCard'
 import {
   DIFF_NOTE,
-  etfFullName,
-  etfShortName,
-  FILERS,
-  filerShortName,
-  formatDate,
+  ETF_UNIT_NOTE,
+  FILING_DELAY_NOTE,
   GUIDE_NOTE,
-} from './labels'
+  MY_MAP_STOCK_NOTE,
+} from './notices'
+import { MyMapBadge, ReasonsCard } from './ReasonsCard'
 
-/** 탭2 종목 상세: 종목 헤더 → 카드 ① 무엇이 바뀌었나 → 카드 ②③ 자리 (#101) */
+/** 탭2 종목 상세: 종목 헤더 → 카드 ① 무엇이 바뀌었나 → 카드 ② 이유 → 카드 ③ 지금은 (#101) */
 export const StockDetailPage = () => {
   const { ticker = '' } = useParams()
   const { data, isPending, isError, error } = useStockOverlap(ticker)
@@ -67,7 +68,7 @@ const TopBar = () => {
   )
 }
 
-const StockBody = ({ stock }: { stock: StockOverlap }) => {
+const StockBody = ({ stock }: { stock: StockDetail }) => {
   const byFiler = new Map(stock.filers.map((f) => [f.filerKey, f]))
   const periodEnd = stock.filers[0]?.periodEnd
   const snapshotDate = stock.etfs[0]?.snapshotDate
@@ -79,6 +80,14 @@ const StockBody = ({ stock }: { stock: StockOverlap }) => {
       <header className="px-5 pt-1">
         <h1 className="text-2xl font-bold text-slate-900">{stock.ticker}</h1>
         <p className="mt-0.5 text-sm text-slate-500">{stock.issuerName ?? stock.etfStockName}</p>
+        {stock.myConcepts.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <MyMapBadge />
+            <span className="text-xs text-slate-500">
+              {MY_MAP_STOCK_NOTE}: {stock.myConcepts.map((c) => c.name).join(', ')}
+            </span>
+          </div>
+        )}
       </header>
 
       <section className="mx-5 mt-5 rounded-2xl border border-slate-200 p-4 shadow-sm">
@@ -147,24 +156,16 @@ const StockBody = ({ stock }: { stock: StockOverlap }) => {
         {hasDiff && <p className="mt-2 text-xs leading-relaxed text-slate-500">{DIFF_NOTE}</p>}
       </section>
 
-      {/* 카드 ②③ 은 #101 에서 만든다 */}
-      <Placeholder label="카드 ②" title="이유 (AI 추정)" />
-      <Placeholder label="카드 ③" title="지금은" />
+      <ReasonsCard data={stock.reasons} />
+      {/* 이유가 없으면 카드 ③ 도 보여 줄 것이 없어 카드 ② 대체 문구만 둔다 */}
+      {stock.reasons && <NowCard now={stock.reasons.now} />}
 
-      <p className="mx-5 mt-6 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        {GUIDE_NOTE}
-      </p>
+      <div className="mx-5 mt-6 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
+        <p>{GUIDE_NOTE}</p>
+        <p>{FILING_DELAY_NOTE}</p>
+        <p>{ETF_UNIT_NOTE}</p>
+      </div>
     </>
-  )
-}
-
-const Placeholder = ({ label, title }: { label: string; title: string }) => {
-  return (
-    <section className="mx-5 mt-3 rounded-2xl border border-dashed border-slate-300 p-4">
-      <p className="text-xs font-bold text-slate-400">{label}</p>
-      <h2 className="mt-0.5 font-bold text-slate-400">{title}</h2>
-      <p className="mt-1 text-sm text-slate-400">준비 중</p>
-    </section>
   )
 }
 

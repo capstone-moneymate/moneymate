@@ -28,8 +28,11 @@ STOCK = {"ticker": "NVDA", "name": "엔비디아"}
 
 
 def reason(title="AI 투자 확대", body="데이터센터 투자가 늘어 AI 반도체 수요가 커졌을 수 있어요.",
-           start="ai_investment", end="semi_earnings", evidence=(1, 2)):
-    return {"title": title, "body": body, "start_concept": start, "end_concept": end, "evidence": list(evidence)}
+           start="ai_investment", end="semi_earnings", evidence=(1, 2), change=None):
+    r = {"title": title, "body": body, "start_concept": start, "end_concept": end, "evidence": list(evidence)}
+    if change:  # 없으면 예전 응답 모양 (change 칸 없음 → up 으로 계산)
+        r["change"] = change
+    return r
 
 
 def fake_create(monkeypatch, *payloads, stop="end_turn"):
@@ -80,6 +83,36 @@ def test_schema_limits_concepts_and_evidence_numbers():
     item = schema["properties"]["reasons"]["items"]["properties"]
     assert item["start_concept"]["enum"] == ["a", "b"]
     assert item["evidence"]["items"]["enum"] == [1, 2, 3]  # 입력에 없는 번호는 나올 수 없다
+    # 시작 개념의 변화 (5주차 노션 제안 (1))
+    assert item["change"]["enum"] == ["up", "down"]
+    assert "change" in schema["properties"]["reasons"]["items"]["required"]
+
+
+def test_change_down_flips_direction_and_matches_reduction(monkeypatch):
+    # "AI 투자가 줄어 실적에 누르는 힘 → 줄였다": change 가 없으면 (+1)(+1) = ▲ 로 계산돼 줄임과 반대였다
+    down = reason("AI 투자 둔화", "투자가 줄어 수요가 약해졌을 수 있어요.", change="down")
+    out, _ = run(monkeypatch, [down], change="down")
+    r = out.reasons[0]
+    assert (r.change, r.direction) == ("down", "down") and out.warnings == []
+    # 예전 응답(칸 없음)은 up 으로 계산 → 줄임 종목이면 경고만 남고 통과한다 (거부하지 않음)
+    out, _ = run(monkeypatch, [reason()], change="down")
+    assert out.errors == [] and out.reasons and len(out.warnings) == 1
+    assert "ai_investment(up) → semi_earnings 힘이 up 인데 큰손은 줄임" in out.warnings[0]
+
+
+def test_change_flips_direction_on_single_edge():
+    # 테스트 그래프의 bond_yield → growth_valuation 은 올리는 연결(up). 시작이 커지면 ▲, 줄어들면 ▼
+    assert rs.path_and_direction(GRAPH, "bond_yield", "growth_valuation", "down") == (["bond_yield", "growth_valuation"], "down")
+    assert rs.path_and_direction(GRAPH, "bond_yield", "growth_valuation") == (["bond_yield", "growth_valuation"], "up")
+
+
+def test_direction_warnings_skip_diff_and_list_mismatches():
+    r_up = rs.Reason("a", "b", "ai_investment", "semi_earnings", [], "up", [], "up")
+    r_down = rs.Reason("c", "d", "ai_investment", "semi_earnings", [], "down", [], "down")
+    assert rs.direction_warnings([r_up, r_down], "diff", "up") == []  # 엇갈린 종목은 보지 않는다
+    warn = rs.direction_warnings([r_up, r_down], "same", "up")
+    assert len(warn) == 1 and warn[0].startswith("이유 2 'c'")
+    assert len(rs.direction_warnings([r_up, r_down], "none", "down")) == 1
 
 
 def test_prompt_wraps_sources_as_json():
@@ -87,6 +120,26 @@ def test_prompt_wraps_sources_as_json():
     assert '"question": "왜 다 늘렸을까요?"' in user
     assert '"no": 2, "date": "2026-08-14"' in user
     assert "ai_investment | AI 데이터센터 투자 | AI·반도체" in rs.build_system(CONCEPTS)
+    assert '"numbers"' not in user  # numbers 가 없는 근거는 칸을 넣지 않는다
+
+
+def test_prompt_passes_evidence_numbers_without_calendar_flag():
+    # FOMC 동결을 제목만 보고 "금리 부담이 줄었다"로 지어낸 문제 (2026-11-16) → 결정·금리 전후를 넘긴다
+    fomc = rs.Evidence(1, 21, "2026-06-17", "FOMC 정책금리 결정", None, "https://example.com/f",
+                       {"calendar_verified": True, "decision": "hold", "rate_before": 3.75, "rate_after": 3.75})
+    user = rs.build_user(STOCK, "same", "up", [], [fomc])
+    assert '"numbers": {' in user and '"decision": "hold"' in user and '"rate_after": 3.75' in user
+    assert "calendar_verified" not in user
+    system = rs.build_system(CONCEPTS)
+    assert "hold(동결)" in system and "hold 면 금리가 바뀌지 않은 것" in system
+
+
+@pytest.mark.parametrize("ticker,market", [("NVDA", "US"), ("BRK-B", "US"), ("005930", "KR"), ("00104K", "KR"),
+                                           ("0015B0", "KR")])
+def test_stock_market_for_macro_filter(ticker, market):
+    # 미국 종목 근거에 한국은행 결정이 들어간 문제 (2026-11-16) → 시장에 맞는 지수 키의 거시 발표만
+    assert rs.stock_market(ticker) == market
+    assert rs.MACRO_INDEXES[market] == (["US500", "IXIC"] if market == "US" else ["KS11", "KQ11"])
 
 
 @pytest.mark.parametrize("raw, message", [

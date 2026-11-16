@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { apiClient, USE_MOCK } from '@/api/client'
 import { etfDailyMock } from '@/api/mocks/etfDaily'
-import { overlapListMock } from '@/api/mocks/overlap'
+import { overlapListMock, stockDetailMock } from '@/api/mocks/overlap'
+import { getUserId } from '@/lib/userId'
 import type { EtfDaily } from '@/types/etf'
-import type { OverlapList, StockOverlap } from '@/types/overlap'
+import type { OverlapList, StockDetail } from '@/types/overlap'
 
 /**
  * 탭2 API: 겹침 목록·종목 상세(#97, docs/modules/overlap_api.md)와 ETF 어제 변화(docs/modules/etf_daily_api.md).
@@ -20,14 +21,17 @@ const fetchOverlaps = async (): Promise<OverlapList> => {
   return data
 }
 
-const fetchStock = async (ticker: string): Promise<StockOverlap> => {
+/** 종목 상세: 카드 ① + 카드 ②③(#101) + "내 지도에 있어요". userId 로 배운 개념을 표시한다 */
+const fetchStock = async (ticker: string): Promise<StockDetail> => {
   if (USE_MOCK) {
-    const stock = overlapListMock.stocks.find((s) => s.ticker === ticker.toUpperCase())
+    const stock = stockDetailMock(ticker)
     if (!stock) throw new StockNotFoundError(ticker)
     return stock
   }
   try {
-    const { data } = await apiClient.get<StockOverlap>(`/api/stocks/${encodeURIComponent(ticker)}`)
+    const { data } = await apiClient.get<StockDetail>(`/api/stocks/${encodeURIComponent(ticker)}`, {
+      params: { userId: getUserId() },
+    })
     return data
   } catch (e) {
     if (isAxiosError(e) && e.response?.status === 404) throw new StockNotFoundError(ticker)

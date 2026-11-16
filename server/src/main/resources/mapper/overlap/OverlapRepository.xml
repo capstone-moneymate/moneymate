@@ -60,6 +60,52 @@
          ORDER BY o.ticker, o.filer_key, o.etf_code
     </select>
 
+    <resultMap id="reasonsMap" type="com.moneymate.overlap.StockReasonsRow">
+        <constructor>
+            <arg column="big_period_end" javaType="java.time.LocalDate"/>
+            <arg column="direction" javaType="String"/>
+            <arg column="change" javaType="String"/>
+            <arg column="headline" javaType="String"/>
+            <arg column="reasons_json" javaType="String"/>
+            <arg column="now_view_json" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 카드 ②③ (#101, P19). pending·rejected 는 화면에 내보내지 않는다. JSONB 는 글자로 읽어 서비스가 옮긴다 -->
+    <select id="findPublishedReasons" resultMap="reasonsMap">
+        SELECT big_period_end, direction, change, headline,
+               reasons::text AS reasons_json, now_view::text AS now_view_json
+          FROM stock_reasons
+         WHERE ticker = #{ticker}
+           AND status = 'published'
+         ORDER BY big_period_end DESC
+         LIMIT 1
+    </select>
+
+    <resultMap id="conceptNameMap" type="com.moneymate.overlap.ConceptNameRow">
+        <constructor>
+            <arg column="id" javaType="String"/>
+            <arg column="name" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findConceptNames" resultMap="conceptNameMap">
+        SELECT id, name
+          FROM concepts
+         WHERE id IN
+         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
+    <!-- 배운 개념 = user_concepts.total > 0 (P20, 마이페이지 지도와 같은 기준) -->
+    <select id="findLearnedAmong" resultType="String">
+        SELECT concept_id
+          FROM user_concepts
+         WHERE user_id = CAST(#{userId} AS uuid)
+           AND total &gt; 0
+           AND concept_id IN
+           <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
     <resultMap id="myMapMap" type="com.moneymate.overlap.MyMapRow">
         <constructor>
             <arg column="ticker" javaType="String"/>
