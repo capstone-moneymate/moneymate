@@ -171,6 +171,11 @@ def test_step_rows(offline):
     last = date.fromisoformat(str(offline.iloc[-1].market_date))
     assert rows[3]["content"]["end_date"] == last.isoformat()
     assert rows[3]["content"]["start_date"] == (last - timedelta(days=90)).isoformat()
+    # 차트 데이터: 가짜 가격 30일이 모두 90일 안이라 30개, 하루 문제라 그날을 하이라이트, RSI 는 rsi 문제에만
+    chart = rows[3]["content"]["chart"]
+    assert len(chart["points"]) == 30 and chart["points"][-1] == {"date": last.isoformat(), "close": 129.0, "volume": 3000}
+    assert chart["highlight"] == {"date": last.isoformat(), "label": "문제의 날"}
+    assert "rsi" not in chart["points"][0]
     assert rows[4]["answer"] == {"chain": ["rate_hold", "growth_valuation"], "counter": []}
     assert rows[0]["answer"] is None
 
@@ -186,6 +191,24 @@ def test_step_rows(offline):
 def test_chart_display_range(check, want):
     r = cp.chart_display_range(check)
     assert (r["start_date"], r["end_date"]) == want
+
+
+def test_chart_data_period_question_has_no_highlight(offline):
+    # 기간 문제(가장 많은 날)는 문제 기간만, 하이라이트 없음 (정답을 드러내지 않게)
+    check = {"metric": "top_volume_date", "start_date": "2026-10-08", "end_date": "2026-10-12", "value": "2026-10-12"}
+    chart = cp.chart_data("KS11", check)
+    assert [p["date"] for p in chart["points"]] == ["2026-10-08", "2026-10-09", "2026-10-12"]
+    assert "highlight" not in chart
+
+
+def test_chart_data_rsi_matches_answer_tool(offline):
+    # rsi 문제: 날마다 RSI, 앞 14일은 None, 마지막 값은 정답 확인 도구(calc_rsi)와 같다
+    last = str(offline.iloc[-1].market_date)
+    chart = cp.chart_data("KS11", {"metric": "rsi", "start_date": None, "end_date": last, "value": "100"})
+    rsis = [p["rsi"] for p in chart["points"]]
+    assert rsis[:14] == [None] * 14 and rsis[14] is not None
+    assert rsis[-1] == tools.calc_rsi("KS11", last, 14)["rsi"] == 100.0  # 종가가 매일 1씩 올라 손실 0
+    assert chart["highlight"]["date"] == last
 
 
 def test_card_schema_kinds():
@@ -246,6 +269,36 @@ def test_repair_then_pass(offline, monkeypatch):
     (feedback,) = calls[1][-1]["content"]  # 실패 이유는 submit_card 의 tool_result 로 돌아간다
     assert feedback["tool_use_id"] == "tu_submit_0" and feedback["is_error"] is True
     assert "코드가 계산한 값은 3.0" in feedback["content"]
+
+
+def test_chart_data_failure_on_save_is_error_not_exception(offline, monkeypatch):
+    # 검증은 통과했는데 저장할 때 가격을 못 읽으면: 트랜잭션을 열지 않고 errors 로 돌려준다 (#83 리뷰)
+    card = good_card(offline)
+    fake(monkeypatch, [resp("tool_use", submit(card))])
+
+    def no_prices(ticker, check):
+        raise tools.ToolError("KS11 가격이 없어요")
+
+    monkeypatch.setattr(cp, "chart_data", no_prices)
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=True)
+    # DB 가 없는 테스트라 트랜잭션을 먼저 열었다면 "DB 에 저장하지 못했어요"가 나왔을 것이다.
+    # 차트 오류가 나왔다는 것은 단계 행을 트랜잭션을 열기 전에 만들었다는 뜻이다
+    assert r.card_id is None and r.card == card
+    assert r.errors == ["차트 데이터를 만들지 못해 저장하지 않았어요 (KS11 가격이 없어요)"]
+
+
+def test_db_failure_on_save_is_error_not_exception(offline, monkeypatch):
+    import psycopg
+
+    card = good_card(offline)
+    fake(monkeypatch, [resp("tool_use", submit(card))])
+
+    def down():
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(cp, "get_conn", down)
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=True)
+    assert r.card_id is None and r.errors[0].startswith("DB 에 저장하지 못했어요 (OperationalError")
 
 
 def test_gives_up_after_max_repairs(offline, monkeypatch):

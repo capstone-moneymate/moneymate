@@ -27,6 +27,11 @@ def test_rsi_no_loss_is_100():
     assert tools.wilder_rsi([1, 2, 3, 4], period=2) == 100.0
 
 
+def test_rsi_flat_prices_is_neutral():
+    # 거래정지 등으로 가격이 내내 같으면 100이 아니라 50 (indicators.py, B 요청 3)
+    assert tools.wilder_rsi([5, 5, 5, 5], period=2) == 50.0
+
+
 def test_rsi_too_short():
     with pytest.raises(tools.ToolError):
         tools.wilder_rsi([1, 2], period=2)
