@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.learning.LearningRepository">
+
+    <insert id="ensureUser">
+        INSERT INTO users (id) VALUES (CAST(#{userId} AS uuid))
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <!-- concepts 와 JOIN 해서 사전에 없는 id 는 외래키 오류 대신 건너뛴다. 낼 때마다 센다 (같은 단계를 다시 내도 total +1) -->
+    <insert id="upsertConceptResults">
+        INSERT INTO user_concepts (user_id, concept_id, correct, total, updated_at)
+        SELECT CAST(#{userId} AS uuid), c.id,
+               CASE WHEN #{correct} THEN 1 ELSE 0 END, 1, now()
+          FROM concepts c
+         WHERE c.id = ANY(#{conceptIds, typeHandler=org.apache.ibatis.type.ArrayTypeHandler})
+        ON CONFLICT (user_id, concept_id) DO UPDATE
+           SET correct    = user_concepts.correct + EXCLUDED.correct,
+               total      = user_concepts.total + 1,
+               updated_at = now()
+    </insert>
+</mapper>
