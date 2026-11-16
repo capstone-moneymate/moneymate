@@ -1,7 +1,8 @@
 import type { ChartData } from '@/types/chart'
 
 /**
- * 화면 확인용 가상 데이터 (실제 시세 아님). 단계 id별로 둔다.
+ * 화면 확인용 가상 데이터 (실제 시세 아님). 단계 id별로 두고, cardDetail.ts 의 목 차트 단계 `chart` 칸에 넣는다
+ * (실제 카드는 카드 API 가 steps.content.chart 를 내려 준다).
  * cardDetail.ts 의 목 정답과 맞춘다: rh-4 발표 날 거래량이 평소보다 많음, kp-3 셋째 날 거래량이 가장 많음.
  */
 export const chartMocks: Record<string, ChartData> = {
