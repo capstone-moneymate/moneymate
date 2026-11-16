@@ -169,6 +169,14 @@ def test_save_published_with_now_view():
     assert params[7] == "published" and params[8].obj == {"calls": 1, "model": "sonnet"}
 
 
+def test_save_published_keeps_direction_warnings_in_model_info():
+    conn = FakeConn()
+    result = ReasonsResult("왜 다 늘렸을까요?", REASONS, calls=1, warnings=["이유 1: 반대"])
+    assert rs.save(conn, BASE, "NVDA", "same", "up", result, None) == "published"  # 경고는 저장을 막지 않는다
+    assert conn.calls[0][1][8].obj == {"calls": 1, "warnings": ["이유 1: 반대"]}
+    assert conn.calls[0][1][5].obj[0]["change"] == "up"  # 시작 개념 변화도 저장
+
+
 def test_save_rejected_keeps_errors_and_null_now_view():
     conn = FakeConn()
     result = ReasonsResult("왜 다 늘렸을까요?", [], ["근거 자료가 없어요"])
