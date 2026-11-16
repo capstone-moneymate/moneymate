@@ -180,6 +180,16 @@ def test_step_rows(offline):
     assert rows[0]["answer"] is None
 
 
+def test_judgement_concept_ids_include_chain(offline):
+    # 탭 3 에 같은 개념으로 쌓이게: 판단 단계 content.concept_ids 에 answer.chain 개념이 모두 들어간다 (B 요청)
+    card = good_card(offline)
+    card["steps"][4]["concept_ids"] = ["growth_valuation"]
+    card["steps"][4]["chain"] = ["rate_hold", "growth_valuation"]
+    judge = cp.step_rows(card, seed="s")[4]
+    assert judge["content"]["concept_ids"] == ["growth_valuation", "rate_hold"]  # 원래 순서 + 빠진 chain 개념
+    assert set(judge["answer"]["chain"]) <= set(judge["content"]["concept_ids"])
+
+
 @pytest.mark.parametrize("check, want", [
     # 기간 문제는 문제 기간만 그린다 (더 넓으면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
     ({"metric": "top_volume_date", "start_date": "2026-10-06", "end_date": "2026-10-08"}, ("2026-10-06", "2026-10-08")),
