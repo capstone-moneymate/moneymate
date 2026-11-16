@@ -2,6 +2,7 @@ package com.moneymate.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.moneymate.learning.ConceptResultRecorder;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,12 +37,14 @@ class AnswerServiceTest {
             new String[] {});
 
     AnswerRepository repo;
+    ConceptResultRecorder recorder;
     AnswerService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(AnswerRepository.class);
-        service = new AnswerService(repo, false);
+        recorder = mock(ConceptResultRecorder.class);
+        service = new AnswerService(repo, recorder, false);
         for (AnswerStep s : List.of(QUIZ, CHART, ORDER, JUDGE)) {
             when(repo.findStep(s.stepId(), false)).thenReturn(Optional.of(s));
         }
@@ -154,7 +158,7 @@ class AnswerServiceTest {
 
     @Test
     void includePendingIsPassedToRepository() {
-        AnswerService pending = new AnswerService(repo, true);
+        AnswerService pending = new AnswerService(repo, recorder, true);
         when(repo.findStep(10L, true)).thenReturn(Optional.of(QUIZ));
 
         assertThat(pending.submit(pick(10L, "quiz", 2)).isCorrect()).isTrue();
@@ -176,6 +180,35 @@ class AnswerServiceTest {
         assertThatThrownBy(() -> service.submit(order(22L, List.of("a"))))
                 .isInstanceOf(AnswerExceptions.AnswerKeyMissing.class);
         verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean());
+    }
+
+    // --- 개념 학습 기록 (P17, user_concepts) ---
+
+    @Test
+    void correctAnswerRecordsStepConcepts() {
+        service.submit(order(12L, List.of("rate_hold", "loan_spread", "bank_profit")));
+
+        verify(recorder).recordConceptResult(USER.toString(),
+                new String[] {"rate_hold", "loan_spread", "bank_profit"}, true);
+    }
+
+    @Test
+    void wrongAnswerRecordsAsWrong() {
+        service.submit(pick(11L, "chart", 2));
+
+        verify(recorder).recordConceptResult(USER.toString(), new String[] {"volume"}, false);
+    }
+
+    @Test
+    void rejectedAnswerIsNotRecorded() {
+        assertThatThrownBy(() -> service.submit(pick(10L, "quiz", 9)))
+                .isInstanceOf(AnswerExceptions.BadAnswer.class);
+        assertThatThrownBy(() -> service.submit(pick(13L, "judgement", 0)))
+                .isInstanceOf(AnswerExceptions.BadAnswer.class);
+        assertThatThrownBy(() -> service.submit(pick(99L, "quiz", 0)))
+                .isInstanceOf(AnswerExceptions.StepNotFound.class);
+
+        verify(recorder, never()).recordConceptResult(anyString(), any(), any());
     }
 
     // --- JSON 모양 (web 타입) ---
