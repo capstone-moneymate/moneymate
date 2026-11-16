@@ -13,3 +13,7 @@ hbm_demand,memory_price,up,수요가 공급보다 빠르면 메모리 가격이 
 hbm_supply,memory_price,up,HBM 생산이 웨이퍼를 더 쓰면서 범용 D램 생산 여력이 줄어 가격이 오른다. 공급 부족 국면 기준 (TrendForce 2026.5.29·2026.9.29)
 memory_price,semi_earnings,up,메모리 가격이 오르면 메모리 업체 이익이 늘어난다
 gpu_demand,semi_earnings,up,AI 반도체 기업의 매출이 늘어난다
+buyback,share_count,down,자기주식을 다시 사들이면 그만큼 유통 주식 수에서 빠진다 (K-IFRS 1033 문단 20 / IAS 33 IE 예시 2)
+share_count,eps,down,주당순이익은 순이익을 가중평균 유통보통주식수로 나눈 값이라 주식 수가 줄면 오른다 (K-IFRS 1033 문단 10)
+buyback,share_cancel,up,자기주식을 취득하면 취득일부터 1년 이내에 소각해야 한다 (상법 제341조의4 제1항 / 2026.9.10 시행). 임직원 보상·우리사주 등 제2항의 목적으로 주주총회가 승인한 보유처분계획이 있으면 소각하지 않고 보유할 수 있다
+share_cancel,issued_shares,down,회사가 보유한 자기주식을 이사회 결의로 소각하면 그 주식이 없어져 발행주식 총수가 줄어든다 (상법 제343조 제1항 단서). 자기주식은 취득할 때 이미 유통 주식 수에서 빠지므로(K-IFRS 1033 문단 20) 소각만으로 주당순이익은 바뀌지 않는다

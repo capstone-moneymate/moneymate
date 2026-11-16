@@ -16,3 +16,8 @@ volume_spike,거래량 급증,차트 읽기,signal,거래량 증가;거래량 �
 rsi_overbought,RSI 과매수,차트 읽기,signal,과매수 구간;RSI 70 이상
 ma_breakout,이동평균선 돌파,차트 읽기,signal,이평선 돌파;골든크로스
 consecutive_rise,연속 상승,차트 읽기,signal,연속 상승 마감;N거래일 연속 상승
+buyback,자사주 취득,기업 공시,event,자기주식 취득;자사주 매입;자기주식취득결정
+share_cancel,자사주 소각,기업 공시,event,자기주식 소각;주식 소각;주식소각결정
+share_count,유통 주식 수,기업 공시,indicator,유통주식수;가중평균유통보통주식수
+issued_shares,발행주식 총수,기업 공시,indicator,발행주식수;총발행주식수
+eps,주당순이익,기업 공시,outcome,EPS;기본주당이익;주당이익
