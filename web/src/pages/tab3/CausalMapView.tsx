@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -12,7 +12,6 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   buildLayout,
-  needsReview,
   NODE_H,
   NODE_W,
   ROOT_H,
@@ -22,40 +21,62 @@ import {
   themeId,
   themesOf,
 } from '@/pages/tab3/causalMapLayout'
-import { EDGE_COLORS, REVIEW_COLOR, themeColor } from '@/pages/tab3/mapColors'
-import { ConceptNode, RootNode, ThemeNode } from '@/pages/tab3/MapNodes'
+import { EDGE_COLORS, themeColorMap } from '@/pages/tab3/mapColors'
+import { ConceptNode, GhostNode, RootNode, ThemeNode } from '@/pages/tab3/MapNodes'
 import type { CausalMap, MapNode } from '@/types/causalMap'
 
-const nodeTypes = { root: RootNode, theme: ThemeNode, concept: ConceptNode }
+const nodeTypes = { root: RootNode, theme: ThemeNode, concept: ConceptNode, ghost: GhostNode }
 
-/** 접기·펼치기 뒤 화면을 어디에 맞출지 */
-type FitTarget = { kind: 'all' } | { kind: 'theme'; theme: string; expanded: boolean }
+/**
+ * 화면을 어디에 맞출지. n 은 같은 대상을 다시 눌러도 effect 가 다시 돌게 하는 번호다.
+ * - all: 전체
+ * - theme: 편 테마(그 테마로 맞춤) / 접은 테마(그 노드를 가운데로)
+ * - concept: 고른 개념과 이웃
+ */
+type FitRequest =
+  | { kind: 'all' }
+  /** 첫 화면: 뿌리와 테마 노드만 읽히는 크기로 맞춘다 (개념은 손가락으로 축소해서 본다) */
+  | { kind: 'themes' }
+  | { kind: 'theme'; theme: string; expanded: boolean }
+  | { kind: 'concept'; id: string }
+type FitTarget = FitRequest & { n: number }
 
 interface CausalMapViewProps {
   map: CausalMap
+  /** 처음부터 고를 개념 id (홈의 다시 보는 개념에서 눌러 들어올 때) */
+  focusId?: string | null
 }
 
 /**
- * 인과 지도 (React Flow, 디자인 시안의 가로 나무 모양).
- * 테마 노드를 누르면 접고 펴고, 개념을 누르면 연결된 것만 진하게 하고 아래에 정보를 보여 준다.
+ * 인과 지도 (React Flow, 마인드맵 모양). 배운 개념만 그린다.
+ * 처음에는 가지와 같은 테마 안 인과선만 보이고, 개념을 누르면 그 개념의 연결이 전부(다른 테마·아직 안 배운 개념) 보인다.
+ * 테마 노드를 누르면 접고 편다.
  */
-export const CausalMapView = ({ map }: CausalMapViewProps) => {
+export const CausalMapView = ({ map, focusId = null }: CausalMapViewProps) => {
   const themes = useMemo(() => themesOf(map), [map])
-  const colors = useMemo(() => new Map(themes.map((t, i) => [t, themeColor(t, i)])), [themes])
+  const colors = useMemo(() => themeColorMap(themes), [themes])
+  const byId = useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map])
+  const focus = focusId && byId.get(focusId)?.learned ? focusId : null
+
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [fitTarget, setFitTarget] = useState<FitTarget>({ kind: 'all' })
+  const [selectedId, setSelectedId] = useState<string | null>(focus)
+  const [fitTarget, setFitTarget] = useState<FitTarget>(
+    focus ? { kind: 'concept', id: focus, n: 0 } : { kind: 'themes', n: 0 },
+  )
   const { fitView, setCenter, getZoom, getNode, zoomIn, zoomOut } = useReactFlow()
 
-  const layout = useMemo(() => buildLayout(map, collapsed), [map, collapsed])
-
-  // 선택한 개념이 접혀 사라지면 선택을 지운다 (렌더 중 판정, effect 불필요)
+  // 고른 개념이 접혀 사라지면 선택을 지운다 (렌더 중 판정, effect 불필요)
   const selected =
-    selectedId && layout.nodes.some((n) => n.id === selectedId)
-      ? (map.nodes.find((n) => n.id === selectedId) ?? null)
+    selectedId && byId.get(selectedId)?.learned && !collapsed.has(byId.get(selectedId)!.theme)
+      ? byId.get(selectedId)!
       : null
 
-  /** 선택한 개념과 바로 이어진 노드 (나머지는 흐리게) */
+  const layout = useMemo(
+    () => buildLayout(map, collapsed, selected?.id ?? null),
+    [map, collapsed, selected],
+  )
+
+  /** 고른 개념과 바로 이어진 노드 (나머지는 흐리게) */
   const neighbors = useMemo(() => {
     if (!selected) return null
     const ids = new Set([selected.id])
@@ -67,6 +88,8 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
     return ids
   }, [selected, layout])
 
+  const nextFit = (t: FitRequest) => setFitTarget((prev) => ({ ...t, n: prev.n + 1 }))
+
   const toggleTheme = (theme: string) => {
     const expanding = collapsed.has(theme)
     setCollapsed((prev) => {
@@ -75,7 +98,7 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
       else next.add(theme)
       return next
     })
-    setFitTarget({ kind: 'theme', theme, expanded: expanding })
+    nextFit({ kind: 'theme', theme, expanded: expanding })
   }
 
   const nodes: Node[] = useMemo(
@@ -93,7 +116,9 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
               position,
               width: THEME_W,
               height: THEME_H,
+              style: { opacity: selected ? 0.35 : 1 },
               data: {
+                side: n.side,
                 theme: n.theme,
                 color: colors.get(n.theme)!,
                 collapsed: n.collapsed,
@@ -108,15 +133,26 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
               width: NODE_W,
               height: NODE_H,
               data: {
+                side: n.side,
                 node: n.node,
-                review: needsReview(n.node),
+                hidden: n.hidden,
                 dim,
                 selected: n.id === selectedId,
               },
             }
+          case 'ghost':
+            return {
+              id: n.id,
+              type: 'ghost',
+              position,
+              width: NODE_W,
+              height: NODE_H,
+              zIndex: 10,
+              data: { side: n.side, node: n.node },
+            }
         }
       }),
-    [layout, neighbors, selectedId, colors],
+    [layout, neighbors, selectedId, selected, colors],
   )
 
   const edges: Edge[] = useMemo(
@@ -126,23 +162,23 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
         if (e.kind === 'branch') {
           return {
             ...base,
+            sourceHandle: e.source === 'root' ? e.side : undefined,
             style: {
               stroke: colors.get(e.theme),
               strokeWidth: 2,
-              opacity: selected ? 0.15 : 0.55,
+              opacity: selected ? 0.12 : 0.55,
             },
           }
         }
         const touches = selected !== null && (e.source === selected.id || e.target === selected.id)
-        const opacity = selected && !touches ? 0.1 : 1
         const color = EDGE_COLORS[e.dir]
         return {
           ...base,
+          zIndex: e.focus ? 5 : 0,
           style: {
             stroke: color,
-            strokeWidth: e.count > 1 ? 2.4 : 1.5,
-            strokeDasharray: e.dir === 'mixed' ? '2 3' : undefined,
-            opacity,
+            strokeWidth: touches ? 2 : 1.5,
+            opacity: selected && !touches ? 0.1 : 1,
           },
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 12, height: 12 },
         }
@@ -150,25 +186,46 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
     [layout, selected, colors],
   )
 
-  // 접기·펼치기 뒤 새 배치가 그려진 다음 화면을 맞춘다
+  // 화면 맞춤은 새 요청(fitTarget.n)이 있을 때 한 번만. 선택 해제 등으로 배치만 바뀌면 화면은 그대로 둔다
+  const handled = useRef(-1)
   useEffect(() => {
+    if (handled.current === fitTarget.n) return
+    // 처리 표시는 실제로 맞춘 뒤에 한다 (StrictMode 처럼 effect 가 취소되고 다시 돌아도 맞춤이 빠지지 않게)
     const id = requestAnimationFrame(() => {
+      handled.current = fitTarget.n
       if (fitTarget.kind === 'all') {
         void fitView({ padding: 0.08, duration: 300 })
         return
       }
-      const tid = themeId(fitTarget.theme)
-      if (fitTarget.expanded) {
-        // 편 테마와 그 개념들로 맞춘다
-        const ids = [tid, ...map.nodes.filter((n) => n.theme === fitTarget.theme).map((n) => n.id)]
+      if (fitTarget.kind === 'themes') {
+        const ids = layout.nodes
+          .filter((n) => n.kind === 'root' || n.kind === 'theme')
+          .map((n) => ({ id: n.id }))
+        void fitView({ nodes: ids, padding: 0.15, maxZoom: 1.2 })
+        return
+      }
+      if (fitTarget.kind === 'concept') {
+        const ids = new Set([fitTarget.id])
+        for (const e of layout.edges) {
+          if (e.kind === 'branch') continue
+          if (e.source === fitTarget.id) ids.add(e.target)
+          if (e.target === fitTarget.id) ids.add(e.source)
+        }
         void fitView({
-          nodes: ids.map((nid) => ({ id: nid })),
-          padding: 0.15,
+          nodes: [...ids].map((nid) => ({ id: nid })),
+          padding: 0.2,
           maxZoom: 1.2,
           duration: 300,
         })
+        return
+      }
+      const tid = themeId(fitTarget.theme)
+      if (fitTarget.expanded) {
+        const ids = layout.nodes
+          .filter((n) => n.id === tid || (n.kind === 'concept' && n.node.theme === fitTarget.theme))
+          .map((n) => ({ id: n.id }))
+        void fitView({ nodes: ids, padding: 0.15, maxZoom: 1.2, duration: 300 })
       } else {
-        // 접은 테마 노드를 화면 가운데로 (배율 유지)
         const node = getNode(tid)
         if (node) {
           void setCenter(node.position.x + THEME_W / 2, node.position.y + THEME_H / 2, {
@@ -179,14 +236,19 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
       }
     })
     return () => cancelAnimationFrame(id)
-  }, [layout, fitTarget, fitView, setCenter, getZoom, getNode, map])
+  }, [fitTarget, layout, fitView, setCenter, getZoom, getNode])
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     if (node.type === 'theme') {
       toggleTheme((node.data as { theme: string }).theme)
       setSelectedId(null)
     } else if (node.type === 'concept') {
-      setSelectedId((prev) => (prev === node.id ? null : node.id))
+      if (selectedId === node.id) {
+        setSelectedId(null)
+      } else {
+        setSelectedId(node.id)
+        nextFit({ kind: 'concept', id: node.id })
+      }
     }
   }
 
@@ -204,8 +266,6 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
         zoomOnDoubleClick={false}
         minZoom={0.2}
         maxZoom={2.5}
-        fitView
-        fitViewOptions={{ padding: 0.08 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={14} size={1} color="#cbd5e1" />
       </ReactFlow>
@@ -220,7 +280,7 @@ export const CausalMapView = ({ map }: CausalMapViewProps) => {
         <MapButton label="축소" onClick={() => void zoomOut({ duration: 200 })}>
           −
         </MapButton>
-        <MapButton label="전체 보기" onClick={() => setFitTarget({ kind: 'all' })} small>
+        <MapButton label="전체 보기" onClick={() => nextFit({ kind: 'all' })} small>
           전체
         </MapButton>
       </div>
@@ -281,8 +341,10 @@ const Legend = () => {
         </p>
       ))}
       <p className="flex items-center gap-2 text-[11px] text-slate-700">
-        <span className="mx-1 size-2.5 rounded-full" style={{ backgroundColor: REVIEW_COLOR }} />
-        복습 필요
+        <span className="rounded-full bg-slate-700 px-1 text-[8px] leading-[14px] font-bold text-white">
+          +N
+        </span>
+        누르면 보이는 연결
       </p>
     </div>
   )
@@ -295,43 +357,45 @@ interface ConceptPanelProps {
 
 /** 개념을 누르면 아래에 뜨는 정보. 연결은 접기와 무관하게 원래 개념 기준으로 보여 준다 */
 const ConceptPanel = ({ concept, map }: ConceptPanelProps) => {
-  const nameOf = (id: string) => map.nodes.find((n) => n.id === id)?.name ?? id
+  const byId = new Map(map.nodes.map((n) => [n.id, n]))
+  const label = (id: string) => {
+    const n = byId.get(id)
+    if (!n) return id
+    return n.learned ? n.name : `${n.name}(아직 안 배움)`
+  }
   const out = map.edges.filter((e) => e.from === concept.id)
   const inc = map.edges.filter((e) => e.to === concept.id)
   const rows = [
     {
       title: '이 개념이 올림',
       color: EDGE_COLORS.up,
-      items: out.filter((e) => e.forceDir === 'up').map((e) => nameOf(e.to)),
+      items: out.filter((e) => e.forceDir === 'up').map((e) => label(e.to)),
     },
     {
       title: '이 개념이 누름',
       color: EDGE_COLORS.down,
-      items: out.filter((e) => e.forceDir === 'down').map((e) => nameOf(e.to)),
+      items: out.filter((e) => e.forceDir === 'down').map((e) => label(e.to)),
     },
     {
       title: '올려 주는 것',
       color: EDGE_COLORS.up,
-      items: inc.filter((e) => e.forceDir === 'up').map((e) => nameOf(e.from)),
+      items: inc.filter((e) => e.forceDir === 'up').map((e) => label(e.from)),
     },
     {
       title: '눌러 주는 것',
       color: EDGE_COLORS.down,
-      items: inc.filter((e) => e.forceDir === 'down').map((e) => nameOf(e.from)),
+      items: inc.filter((e) => e.forceDir === 'down').map((e) => label(e.from)),
     },
   ].filter((r) => r.items.length > 0)
+
+  const percent = concept.total > 0 ? Math.round((concept.correct / concept.total) * 100) : null
 
   return (
     <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">{concept.name}</p>
         <p className="shrink-0 text-[11px] text-slate-500">
-          {concept.theme} · 정답 {concept.correct}/{concept.total}
-          {needsReview(concept) && (
-            <span className="ml-1 font-semibold" style={{ color: REVIEW_COLOR }}>
-              복습 필요
-            </span>
-          )}
+          {concept.theme} · 정답률 {percent ?? 0}%
         </p>
       </div>
       <dl className="mt-2 space-y-1">

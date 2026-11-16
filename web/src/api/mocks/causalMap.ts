@@ -4,9 +4,9 @@ import type { CausalMap, ForceDir, MapEdge, MapNode } from '@/types/causalMap'
  * 탭3 인과 지도 목 데이터 (React Flow 시험용, #89).
  * - "사전" 표시는 db/seeds/concepts.csv·causal_edges.csv 에 있는 개념·연결(17개·14개)을 옮긴 것이다.
  * - "가짜" 표시는 개념 30~50개에서 확대·이동·접기를 시험하려고 지어낸 것이다. 사전에 없고, 인과 설명의 근거도 아니다.
- * - 맞힌 횟수·푼 횟수(correct/total)는 모두 가짜다.
- * - 테마 6개는 개념 사전을 늘려 갈 것을 가정한 시험용이다 (사전은 아직 확정 전).
- * 마이페이지 API 연결 후 삭제한다.
+ * - 맞힌 횟수·푼 횟수(correct/total)는 모두 가짜다. 0/0 은 아직 안 배운 개념(learned=false)이다.
+ * - 테마 6개는 개념 30~50개를 가정한 시험용이다.
+ * VITE_USE_MOCK 이 'false' 가 아닐 때(서버 없이 화면 볼 때)만 쓴다.
  */
 
 type NodeRow = [id: string, name: string, theme: string, correct: number, total: number]
@@ -20,7 +20,7 @@ const NODE_ROWS: NodeRow[] = [
   ['inflation', '물가 상승', '금리', 1, 3],
   ['bond_yield', '국채 금리', '금리', 2, 2],
   ['bank_margin', '은행 예대금리차(잔액 기준)', '금리', 1, 2],
-  ['growth_valuation', '성장주 가치평가', '금리', 0, 2],
+  ['growth_valuation', '성장주 가치평가', '금리', 0, 0],
   // 금리 — 가짜 2개
   ['deposit_rate', '예금 금리', '금리', 2, 2],
   ['interest_burden', '가계 이자 부담', '금리', 1, 1],
@@ -30,11 +30,11 @@ const NODE_ROWS: NodeRow[] = [
   ['gpu_demand', 'AI 반도체 수요', 'AI·반도체', 2, 4],
   ['hbm_supply', 'HBM 공급 확대', 'AI·반도체', 1, 2],
   ['hbm_demand', 'HBM 수요', 'AI·반도체', 3, 4],
-  ['memory_price', '범용 메모리(D램) 가격', 'AI·반도체', 0, 1],
+  ['memory_price', '범용 메모리(D램) 가격', 'AI·반도체', 0, 0],
   ['semi_earnings', '반도체 기업 실적', 'AI·반도체', 2, 3],
   // AI·반도체 — 가짜 3개
   ['foundry_util', '파운드리 가동률', 'AI·반도체', 1, 2],
-  ['semi_capex', '반도체 설비투자', 'AI·반도체', 1, 1],
+  ['semi_capex', '반도체 설비투자', 'AI·반도체', 0, 0],
   ['semi_export', '반도체 수출', 'AI·반도체', 2, 3],
 
   // 차트 읽기 — 사전 4개
@@ -56,7 +56,7 @@ const NODE_ROWS: NodeRow[] = [
   ['usd_krw', '원·달러 환율 상승', '환율', 3, 4],
   ['import_price', '수입 물가', '환율', 1, 1],
   ['exporter_earnings', '수출 기업 이익', '환율', 2, 2],
-  ['fx_reserve', '외환보유액', '환율', 0, 1],
+  ['fx_reserve', '외환보유액', '환율', 0, 0],
 
   // 유가·에너지 — 가짜 7개
   ['opec_cut', '산유국 감산', '유가·에너지', 1, 1],
@@ -65,7 +65,7 @@ const NODE_ROWS: NodeRow[] = [
   ['airline_cost', '항공사 연료비', '유가·에너지', 1, 1],
   ['energy_earnings', '에너지 기업 실적', '유가·에너지', 0, 1],
   ['gasoline_price', '휘발유 가격', '유가·에너지', 2, 2],
-  ['ev_demand', '전기차 수요', '유가·에너지', 1, 2],
+  ['ev_demand', '전기차 수요', '유가·에너지', 0, 0],
 
   // 경기·고용 — 가짜 7개
   ['employment', '고용 증가', '경기·고용', 2, 2],
@@ -74,7 +74,7 @@ const NODE_ROWS: NodeRow[] = [
   ['retail_sales', '소매 판매', '경기·고용', 1, 1],
   ['gdp_growth', '경제 성장률', '경기·고용', 2, 3],
   ['recession_fear', '경기 침체 우려', '경기·고용', 0, 2],
-  ['corp_earnings', '기업 이익 전반', '경기·고용', 1, 1],
+  ['corp_earnings', '기업 이익 전반', '경기·고용', 0, 0],
 ]
 
 const EDGE_ROWS: EdgeRow[] = [
@@ -148,6 +148,7 @@ const nodes: MapNode[] = NODE_ROWS.map(([id, name, theme, correct, total]) => ({
   theme,
   correct,
   total,
+  learned: total > 0,
 }))
 
 const edges: MapEdge[] = EDGE_ROWS.map(([from, to, forceDir]) => ({ from, to, forceDir }))
