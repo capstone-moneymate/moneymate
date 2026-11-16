@@ -174,6 +174,8 @@ class NewsServiceTest {
                 new StepRow(11, 2, "chart", """
                         {"concept_ids":["volume"],"question":"거래량은?","options":["늘었다","줄었다"],
                          "ticker":"000660","start_date":"2026-08-01","end_date":"2026-11-06",
+                         "chart":{"points":[{"date":"2026-11-06","close":201000.0,"volume":3000,"rsi":71.5}],
+                                  "highlight":{"date":"2026-11-06","label":"문제의 날"}},
                          "answer_index":0,"explanation":"섞여 들어온 정답","chart_check":{"metric":"volume"}}"""),
                 new StepRow(12, 3, "judgement", """
                         {"concept_ids":[],"question":"어떻게 볼까요?","context":"ETF가 늘렸어요",
@@ -199,6 +201,9 @@ class NewsServiceTest {
         Map<String, Object> chart = d.steps().get(1);
         assertThat(chart).containsEntry("startDate", "2026-08-01").containsEntry("endDate", "2026-11-06")
                 .containsEntry("ticker", "000660");
+        assertThat(chart.get("chart")).isEqualTo(Map.of(  // compose 가 저장한 차트 데이터는 그대로 내려간다
+                "points", List.of(Map.of("date", "2026-11-06", "close", 201000.0, "volume", 3000, "rsi", 71.5)),
+                "highlight", Map.of("date", "2026-11-06", "label", "문제의 날")));
         assertThat(chart).doesNotContainKeys("answerIndex", "answer_index", "explanation", "chartCheck", "chart_check");
 
         Map<String, Object> judge = d.steps().get(2);
