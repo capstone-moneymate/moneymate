@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.mypage.MypageRepository">
+
+    <resultMap id="conceptMap" type="com.moneymate.mypage.ConceptRow">
+        <constructor>
+            <arg column="id" javaType="String"/>
+            <arg column="name" javaType="String"/>
+            <arg column="theme" javaType="String"/>
+            <arg column="correct" javaType="_int"/>
+            <arg column="total" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="edgeMap" type="com.moneymate.mypage.EdgeRow">
+        <constructor>
+            <arg column="from_concept" javaType="String"/>
+            <arg column="to_concept" javaType="String"/>
+            <arg column="force_dir" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 배운 개념 = user_concepts 에 있고 한 번 이상 푼(total > 0) 개념 -->
+    <sql id="learnedIds">
+        SELECT uc.concept_id
+          FROM user_concepts uc
+         WHERE uc.user_id = CAST(#{userId} AS uuid)
+           AND uc.total &gt; 0
+    </sql>
+
+    <select id="findLearnedConcepts" resultMap="conceptMap">
+        SELECT c.id, c.name, c.theme, uc.correct, uc.total
+          FROM user_concepts uc
+          JOIN concepts c ON c.id = uc.concept_id
+         WHERE uc.user_id = CAST(#{userId} AS uuid)
+           AND uc.total &gt; 0
+         ORDER BY c.id
+    </select>
+
+    <!-- 한쪽 끝이라도 배운 개념에 닿은 연결. 반대쪽 끝은 아직 안 배웠어도 된다 -->
+    <select id="findEdgesTouchingLearned" resultMap="edgeMap">
+        SELECT e.from_concept, e.to_concept, e.force_dir
+          FROM causal_edges e
+         WHERE e.from_concept IN (<include refid="learnedIds"/>)
+            OR e.to_concept   IN (<include refid="learnedIds"/>)
+         ORDER BY e.id
+    </select>
+
+    <select id="findConcepts" resultMap="conceptMap">
+        SELECT c.id, c.name, c.theme, 0 AS correct, 0 AS total
+          FROM concepts c
+         WHERE c.id IN
+         <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+         ORDER BY c.id
+    </select>
+</mapper>
