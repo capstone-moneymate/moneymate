@@ -37,9 +37,9 @@ def test_read_seeds_rejects_bad_dictionary(tmp_path, concepts, edges, message):
 
 
 def test_real_seeds_pass_check():
-    # 실제 사전 (db/seeds). 보류했던 연결 2개를 지운 뒤 17개 / 14개
+    # 실제 사전 (db/seeds). 보류했던 연결 2개를 지운 뒤 17개 / 14개, 자사주·기업 순이익·공급계약(#96)을 더해 26개 / 21개
     seeds = read_seeds()
-    assert (len(seeds.concepts), len(seeds.edges)) == (17, 14)
+    assert (len(seeds.concepts), len(seeds.edges)) == (26, 21)
     pairs = {e[:2] for e in seeds.edges}
     assert ("rate_hike", "growth_valuation") not in pairs and ("rate_cut", "ai_investment") not in pairs
 

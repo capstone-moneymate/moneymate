@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.etf.EtfRepository">
+
+    <resultMap id="etfMap" type="com.moneymate.etf.EtfRow">
+        <constructor>
+            <arg column="etf_code" javaType="String"/>
+            <arg column="snapshot_date" javaType="java.time.LocalDate"/>
+            <arg column="raw_code" javaType="String"/>
+            <arg column="ticker" javaType="String"/>
+            <arg column="stock_name" javaType="String"/>
+            <arg column="day_chg_pct" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findLatestSnapshots" resultMap="etfMap">
+        SELECT etf_code, max(snapshot_date) AS snapshot_date,
+               NULL AS raw_code, NULL AS ticker, NULL AS stock_name, NULL AS day_chg_pct
+          FROM holdings_etf
+         GROUP BY etf_code
+         ORDER BY etf_code
+    </select>
+
+    <!--
+      ETF 마다 자기 최신 스냅샷만 본다. day_chg_pct 는 B 의 etf_trend.py 가 채운 값 그대로다.
+      NULL(어제 새로 담음, 또는 그 ETF 의 첫 스냅샷이라 비교 대상 없음)은 화면에 보이지 않기로 해서 뺀다.
+      최신 스냅샷에 없는 종목(전량 정리)은 행이 없어 나오지 않는다.
+    -->
+    <select id="findLatestMoves" resultMap="etfMap">
+        SELECT h.etf_code, h.snapshot_date, h.raw_code, h.ticker, h.stock_name, h.day_chg_pct
+          FROM holdings_etf h
+          JOIN (SELECT etf_code, max(snapshot_date) AS d FROM holdings_etf GROUP BY etf_code) l
+            ON l.etf_code = h.etf_code AND l.d = h.snapshot_date
+         WHERE h.day_chg_pct IS NOT NULL
+         ORDER BY h.etf_code, h.raw_code
+    </select>
+</mapper>

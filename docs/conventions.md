@@ -39,6 +39,7 @@
 | P16 | **ETF 구성종목 코드·저장 범위**: pykrx 구성종목 코드는 CUSIP 9자리의 2~7번째 글자다(NVIDIA `67066G104` → `7066G1`). `raw_code`에 받은 그대로 저장하고, `ticker`는 13F `cusip`의 2~7번째 글자와 맞추거나 OpenFIGI로 변환해 채운다(못 찾으면 `NULL`). **주식만 저장**하고 원화현금 `010010`, 설정현금액 `H00000`, 선물은 저장하지 않는다. 1CU 기준 수량이라 **자금 유입 보정(`trend_adj_pct`)은 쓰지 않는다** (003) | findings.md B칸. 6자리가 드물게 다른 회사와 겹칠 수 있어 매칭 결과는 종목명으로 한 번 확인한다. 운용사가 설정 단위를 바꾸면 전 종목이 같은 비율로 변하므로 수집기가 경고한다 |
 | P17 | **판단 단계 "맞음" 기준**: 판단(`judgement`) 채점 `score`(0~100) **60점 이상**이면 `user_concepts`에 맞음으로 기록한다. 기록은 서버(Spring Boot)의 공통 메서드 `recordConceptResult(userId, conceptIds, isCorrect)` 하나로 한다 (B 구현). 코드 채점을 하는 답안 API(C)와 판단 채점 API(A)가 이 메서드를 부른다 | 채점이 두 곳에서 일어나도 기준이 하나가 되게 |
 | P18 | **카드 출처**: 카드는 `card_sources`(card_id, source_id, is_main)로 `raw_sources`의 1차 자료 여러 개를 묶는다. 대표 자료(`is_main`)는 카드당 1개. `cards.news_id`는 없앴다 (003) | 같은 사건 자료를 한 카드로 묶되 FK로 무결성 유지 |
+| P19 | **종목 이유 카드(`stock_reasons`)**: 13F 분기(`big_period_end`)마다 종목당 한 줄, 다시 만들면 덮어쓰고 `updated_at` 갱신. `direction`(same/diff/none)은 종목 단위 값이라 `overlap_results`의 쌍별 방향을 줄이는 규칙을 C가 reasons.md에 적는다. `status`는 cards와 같은 3값이고 reasons.py `errors`가 비면 `published`, 남으면 `rejected`. 서버는 `published`만 읽는다 (004) | AI 추정 이유도 검사를 통과한 것만 화면에 나가게 (P8과 같은 장치) |
 
 ## 3. 컬럼 합의가 필요한 5개 테이블 (분담표 7장)
 
@@ -50,6 +51,7 @@
 | holdings_etf | B → A(overlap), B(trend) | 확인됨: 구성종목 코드는 CUSIP 2~7번째 글자 → `raw_code`, `ticker`는 변환 후 채움 (P16) |
 | overlap_results | A → 탭2 | `direction` 3값, 사용한 두 기준일 저장 |
 | cards | C → 탭1 | `card_type` 1/2/3, `key_facts`(채점 증거용), `status`, 출처는 `card_sources` (P18) |
+| stock_reasons | C → 탭2 | 분기·종목당 한 줄, `direction`·`change`·`headline`, `reasons`·`now_view` JSON 모양은 C가 정리, `status` (P19, 004) |
 | steps | C → 탭1, A(채점) | `kind` 5종(concept, quiz, causal_order, chart, judgement. AI 분석은 judgement 결과 화면이라 단계가 아님), `answer`는 서버가 사용자에게 내려보내지 않음 |
 
 ## 4. 마이그레이션
@@ -69,3 +71,4 @@
 | 2026-10-29 | 003: `holdings_etf.shares` NUMERIC, `raw_code` 추가·UNIQUE 변경, `trend_adj_pct` 제거(방향 판정은 `trend_chg_pct`), `normalize_kr_code` 영문 허용 | B 요청, A 반영 |
 | 2026-10-29 | 003: `raw_sources`·`card_sources` 추가, `cards.news_id` 삭제, `steps.kind`에서 `open_ended`·`ai_analysis` 삭제, 루브릭 9점 주석 | B·C 요청, A 반영 |
 | 2026-10-29 | 판단 단계 60점 이상을 맞음으로 기록 (P17) | A |
+| 2026-11-16 | 004: `stock_reasons`(카드 ②③) 추가. C 초안에 `change`·CHECK·`status`·`model_info`·`updated_at` 추가, `now` → `now_view` (P19). `overlap_results` 방향 컬럼 제안은 다음 번호로 분리 | C 요청, A 반영 |
