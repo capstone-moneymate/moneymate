@@ -541,6 +541,9 @@ def step_rows(card: dict, seed: str) -> list[dict]:
             answer = {"correct": c["answer_order"], "explanation": s["explanation"], "change": c["change"],
                       "direction": c["direction"], "evidence_quote": c["evidence_quote"]}
         elif kind == "judgement":
+            # 탭 3 기록: 답안 API 는 content.concept_ids, 판단 채점은 answer.chain 으로 user_concepts 에 쌓는다.
+            # 같은 개념으로 쌓이게 chain 개념을 concept_ids 에도 넣는다 (순서 유지, 중복 없이. B 요청)
+            content["concept_ids"] = list(dict.fromkeys(s["concept_ids"] + s["chain"]))
             content |= {"question": s["question"], "context": s["context"], "choices": s["choices"]}
             answer = {"chain": s["chain"], "counter": s["counter"]}  # A의 채점이 경로·반박 개념으로 쓴다
         rows.append({"step_no": no, "kind": kind, "content": content, "answer": answer})

@@ -1,5 +1,6 @@
 package com.moneymate.answer;
 
+import com.moneymate.learning.ConceptResultRecorder;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,7 +16,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * 탭1 코드 채점 (C, 4주차): 간단 퀴즈·차트 읽기(보기 번호), 인과 순서(개념 id 순서).
  *
- * 순서: 단계 확인 → kind·입력 확인 → steps.answer 의 정답과 비교 → user_answers 저장(graded_by='code') → 결과·해설·정답.
+ * 순서: 단계 확인 → kind·입력 확인 → steps.answer 의 정답과 비교 → user_answers 저장(graded_by='code')
+ * → 단계 개념별 학습 기록(B의 ConceptResultRecorder, user_concepts) → 결과·해설·정답.
  * 정답은 compose.py 가 출제 때 코드로 확인해 steps.answer 에 넣은 값이다. 여기서는 비교만 한다.
  * 판단해보기는 루브릭 채점이라 A의 POST /api/judgement 로 보낸다.
  */
@@ -25,12 +27,15 @@ public class AnswerService {
     private static final Logger log = LoggerFactory.getLogger(AnswerService.class);
 
     private final AnswerRepository repository;
+    private final ConceptResultRecorder recorder;
     private final boolean includePending;
     private final JsonMapper json = JsonMapper.builder().build();
 
     public AnswerService(AnswerRepository repository,
+                         ConceptResultRecorder recorder,
                          @Value("${NEWS_INCLUDE_PENDING:false}") boolean includePending) {
         this.repository = repository;
+        this.recorder = recorder;
         this.includePending = includePending;
     }
 
@@ -88,7 +93,8 @@ public class AnswerService {
         String userId = req.userId().toString();
         repository.ensureUser(userId);
         repository.insertAnswer(userId, step.cardId(), step.stepId(), json.writeValueAsString(saved), correct);
-        // TODO(P17): B의 recordConceptResult(userId, step.conceptIds(), correct) 가 생기면 여기서 부른다
+        // P17: 탭3 인과 지도·다시 보는 개념용 user_concepts 기록. 답안 저장과 같은 트랜잭션이라 함께 저장되거나 함께 취소된다
+        recorder.recordConceptResult(userId, step.conceptIds(), correct);
         String explanation = key.get("explanation") instanceof String s ? s : null;
         return new AnswerResult(String.valueOf(step.stepId()), correct, explanation, correctValue);
     }
