@@ -73,10 +73,10 @@ curl -s localhost:8080/api/stocks/NVDA
 | 헤더 | 섹터 태그, 성격 태그, 회사 한 줄 소개 | 어떤 테이블에도 없다 |
 | 헤더 | 한글 종목명 | `issuer_name`(13F 영문), `stock_name`(pykrx 표기)뿐 |
 | 메인 하단 | 변동성 TOP2 | `prices`에서 계산해야 한다 (이 API 범위 밖) |
-| 카드 ②③ | 이유, 지금은 | `reasons.py`가 DB에 저장하지 않는다 |
+| 카드 ②③ | 이유, 지금은 | 004에서 `stock_reasons` 표를 만들었다(C 요청, P19). reasons.py 저장과 이 API 응답 연결은 C가 JSON 모양을 정리한 뒤(#101) |
 | 13F 공시 전 | 안내문 상태 | 공시 전/후 1~2주/그 이후 구분 값 없음 (`filedAt`으로 화면이 판단 가능) |
 
-## 스키마 변경 제안 (004, 적용하지 않음)
+## 스키마 변경 제안 (적용하지 않음. 004는 stock_reasons 로 썼으므로 다음 번호)
 
 ```sql
 ALTER TABLE overlap_results
