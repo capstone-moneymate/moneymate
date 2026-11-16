@@ -180,6 +180,16 @@ def test_step_rows(offline):
     assert rows[0]["answer"] is None
 
 
+def test_judgement_concept_ids_include_chain(offline):
+    # 탭 3 에 같은 개념으로 쌓이게: 판단 단계 content.concept_ids 에 answer.chain 개념이 모두 들어간다 (B 요청)
+    card = good_card(offline)
+    card["steps"][4]["concept_ids"] = ["growth_valuation"]
+    card["steps"][4]["chain"] = ["rate_hold", "growth_valuation"]
+    judge = cp.step_rows(card, seed="s")[4]
+    assert judge["content"]["concept_ids"] == ["growth_valuation", "rate_hold"]  # 원래 순서 + 빠진 chain 개념
+    assert set(judge["answer"]["chain"]) <= set(judge["content"]["concept_ids"])
+
+
 @pytest.mark.parametrize("check, want", [
     # 기간 문제는 문제 기간만 그린다 (더 넓으면 기간 밖의 더 큰 막대가 보여 답이 달라진다)
     ({"metric": "top_volume_date", "start_date": "2026-10-06", "end_date": "2026-10-08"}, ("2026-10-06", "2026-10-08")),
@@ -403,3 +413,16 @@ def test_etf_row_text(trend, day, base, want_trend, want_day):
     assert row["분기 말 대비 추세"] == want_trend
     assert row["전 거래일 대비"] == want_day
     assert row["보유 수량"] == "12,345주" and row["기준일"] == "2026-10-30"
+
+
+def test_unknown_release_time_is_marked_and_prompt_forbids_reaction_reading():
+    # DART 는 시각이 없다 → '발표 시각: 모름'. 프롬프트에 그때 반응 해석 금지 규칙이 있다 (2026-11-16 LX세미콘)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    user = cp.build_user({**SOURCE, "published_at": None}, CLS2, [])
+    assert f"발표 시각: {cp.UNKNOWN_TIME}" in user
+    assert "발표 시각을 모르는 자료" in cp.PROMPT and "반응을 해석하는 말을 쓰지 않는다" in cp.PROMPT
+
+    at = datetime(2026, 10, 8, 10, 0, tzinfo=ZoneInfo("Asia/Seoul"))
+    assert "발표 시각: 2026-10-08T10:00+09:00" in cp.build_user({**SOURCE, "published_at": at}, CLS2, [])

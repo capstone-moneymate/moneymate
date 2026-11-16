@@ -12,7 +12,9 @@
 - 정정 신고(13F-HR/A): NEW HOLDINGS(기밀 처리 해제 등으로 추가 공개된 종목)는 원본에 더하고,
   RESTATEMENT(전체 다시 제출)는 원본을 대신한다. 유형이 비어 있는 정정은 RESTATEMENT 로 본다
 - config.FILERS 의 extra_ciks 도 같은 큰손으로 수집한다 (행은 실제 제출 법인 CIK 로 저장)
-- 티커: cusip_map 캐시 → edgartools 의 Ticker → OpenFIGI 순. 못 찾으면 NULL
+- 티커: cusip_map 캐시 → (새 CUSIP) OpenFIGI → 없으면 edgartools 의 Ticker. 못 찾으면 NULL
+  SEC 원본 티커는 클래스주를 'LENB' 처럼 적을 때가 있어 OpenFIGI('LEN-B')를 먼저 쓴다 (#99).
+  이미 캐시된 티커를 다시 정하려면 --refresh-tickers
 
 edgartools 5.61.1 기준 API:
 - Company(cik).get_filings(form=..., trigger_full_load=False): Filing 목록. Filing.period_of_report 로 분기를 거른다
@@ -79,6 +81,20 @@ def merge_reports(reports: list[Report]) -> tuple[pd.DataFrame, Report]:
             and r is not base]
     table = pd.concat([base.infotable] + [r.infotable for r in adds], ignore_index=True)
     return shares_by_cusip(table), base
+
+
+def pick_ticker(edgar_raw, figi: str | None) -> tuple[str | None, str]:
+    """새 CUSIP 의 티커와 출처. OpenFIGI 값이 있으면 그것을 쓴다 (클래스주 하이픈 형식, P1).
+
+    SEC 원본 티커는 클래스주를 구분자 없이 적을 때가 있어(Lennar B주 'LENB', 맞는 값 'LEN-B') 정규화로 고칠 수 없다.
+    OpenFIGI 에 없으면(해외 등록 CUSIP 등) edgartools 값을 쓴다. 둘 다 없으면 (None, 'openfigi').
+    """
+    if figi:
+        return figi, "openfigi"
+    edgar = clean_ticker(edgar_raw)
+    if edgar:
+        return edgar, "edgartools"
+    return None, "openfigi"
 
 
 def clean_ticker(raw) -> str | None:
@@ -172,25 +188,30 @@ def collect_period(filer_key: str, period: date) -> list[dict]:
     return rows
 
 
-def resolve_tickers(conn, rows: list[dict]) -> None:
-    """rows 의 ticker 를 채우고 cusip_map 을 갱신한다 (cusip_map → edgartools → OpenFIGI)."""
+def resolve_tickers(conn, rows: list[dict], refresh: bool = False) -> None:
+    """rows 의 ticker 를 채우고 cusip_map 을 갱신한다.
+
+    cusip_map 에 있으면 그 값. 없는 CUSIP(refresh 면 전부)은 OpenFIGI 에 묻고 pick_ticker 로 정한다.
+    edgartools 값과 다르면 출력한다 (#99 Lennar 'LENB' → 'LEN-B').
+    """
     cusips = sorted({r["cusip"] for r in rows})
-    cached = dict(conn.execute(
+    cached = {} if refresh else dict(conn.execute(
         "SELECT cusip, ticker FROM cusip_map WHERE cusip = ANY(%s)", (cusips,)
     ).fetchall())
+    todo = [c for c in cusips if c not in cached]
     new_map: dict[str, tuple[str | None, str, str | None]] = {}  # cusip -> (ticker, source, issuer)
-    for r in rows:
-        c = r["cusip"]
-        if c in cached or c in new_map:
-            continue
-        t = clean_ticker(r["edgar_ticker"])
-        if t:
-            new_map[c] = (t, "edgartools", r["issuer_name"])
-    missing = [c for c in cusips if c not in cached and c not in new_map]
-    if missing:
-        issuers = {r["cusip"]: r["issuer_name"] for r in rows}
-        for c, t in openfigi_tickers(missing).items():
-            new_map[c] = (t, "openfigi", issuers.get(c))
+    if todo:
+        first = {}
+        for r in rows:
+            first.setdefault(r["cusip"], r)
+        figi = openfigi_tickers(todo)
+        for c in todo:
+            r = first[c]
+            ticker, source = pick_ticker(r["edgar_ticker"], figi.get(c))
+            edgar = clean_ticker(r["edgar_ticker"])
+            if edgar and ticker and edgar != ticker:
+                print(f"  티커 다름 {c} {r['issuer_name']}: edgartools {edgar} → OpenFIGI {ticker} 사용")
+            new_map[c] = (ticker, source, r["issuer_name"])
     for c, (t, source, issuer) in new_map.items():
         conn.execute(
             """INSERT INTO cusip_map (cusip, ticker, issuer_name, source) VALUES (%s, %s, %s, %s)
@@ -225,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--period", help="분기 말 (예: 2026-06-30). 없으면 버핏의 가장 최근 13F 분기")
     parser.add_argument("--filer", choices=sorted(config.FILERS), help="한 명만 받기")
     parser.add_argument("--save", action="store_true", help="DB 에 저장")
+    parser.add_argument("--refresh-tickers", action="store_true",
+                        help="cusip_map 캐시를 무시하고 이번 CUSIP 의 티커를 OpenFIGI 로 다시 정한다")
     args = parser.parse_args(argv)
 
     if not config.EDGAR_IDENTITY.strip() or not config.EDGAR_IDENTITY.isascii():
@@ -252,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from db import get_conn
     with get_conn() as conn:
-        resolve_tickers(conn, all_rows)
+        resolve_tickers(conn, all_rows, refresh=args.refresh_tickers)
         save_rows(conn, all_rows)
     no_ticker = sorted({(r["cusip"], r["issuer_name"]) for r in all_rows if not r["ticker"]})
     print(f"\n저장 {len(all_rows)}행. 티커 못 찾음 {len(no_ticker)}개: {no_ticker[:10]}")
