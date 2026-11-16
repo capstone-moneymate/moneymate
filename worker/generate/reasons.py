@@ -25,7 +25,7 @@ from concepts.graph import AMBIGUOUS, Graph, effect, load_graph
 from db import get_conn
 from generate.classify import Concept, load_concepts
 from generate.llm_client import SONNET, create, text_of
-from validate.validators import find_banned
+from validate.validators import check_evidence, find_banned
 
 EVIDENCE_DAYS = 92  # 공시 기준일 앞 이만큼(한 분기)의 자료를 근거 후보로 본다
 MAX_EVIDENCE = 20  # 프롬프트에 넣는 근거 후보 상한 (최근 순)
@@ -216,14 +216,9 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
         where = f"이유 {i}"
         if not r["title"].strip() or not r["body"].strip():
             errors.append(f"{where}: title 과 body 를 채워 주세요")
-        if not r["evidence"]:
-            errors.append(f"{where}: 근거 자료 번호를 1개 이상 고르세요")
-        for no in r["evidence"]:
-            e = by_no.get(no)
-            if e is None:
-                errors.append(f"{where}: 입력에 없는 근거 번호예요: {no}")
-            elif date.fromisoformat(e.published_date) > base_date:  # 기술확정안 "근거 날짜 (탭 2)"
-                errors.append(f"{where}: 근거 {no} 는 공시 기준일({base_date}) 뒤에 나온 자료예요")
+        # 근거 번호·날짜는 B의 근거 날짜 검증기로 본다 (#85 약속, #130). 같은 말의 오류 문장에 더해 같은 번호를 두 번
+        # 고르면 걸린다. 기술확정안 "근거 날짜 (탭 2)": 공시 기준일 이전(같은 날 포함) 자료만
+        errors += check_evidence(r["evidence"], {e.no: e.published_date for e in evidence}, base_date, where)
         if r["start_concept"] == r["end_concept"]:
             errors.append(f"{where}: 시작 개념과 끝 개념이 같아요")
         else:

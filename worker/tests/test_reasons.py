@@ -190,6 +190,12 @@ def test_down_path_keeps_direction(monkeypatch):
     assert out.reasons[0].path == ["rate_hike", "semi_earnings"]
 
 
+def test_same_evidence_twice_is_rejected_by_b_checker():
+    # 근거 검사는 B의 check_evidence (#130). 바꿔 끼우면서 새로 생긴 검사: 같은 번호를 두 번 고르면 걸린다
+    errors = rs.check_reasons([reason(evidence=(1, 1))], EVIDENCE, BASE, GRAPH)
+    assert errors == ["이유 1: 근거 1 를 두 번 골랐어요. 한 번만 쓰세요"]
+
+
 def test_evidence_after_base_date_is_rejected():
     # 기술확정안 "근거 날짜 (탭 2)": 공시 기준일 뒤 자료는 근거가 될 수 없다
     late = EVIDENCE + [rs.Evidence(3, 13, "2026-10-02", "10월 기사", None, "https://example.com/3")]
