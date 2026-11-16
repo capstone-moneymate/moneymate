@@ -89,3 +89,12 @@ ALTER TABLE overlap_results
 - `big_dir`가 있으면 "N명 늘림"을 서버가 `count(*) FILTER (WHERE big_dir = 'up')`로 **세기만** 하면 된다(판정은 worker 한 곳).
 - ETF가 없는 13F 종목까지 메인 상단에 보이려면 overlap.py `co_increased()` 결과를 저장할 테이블(예: `co_increased(calc_date, big_period_end, ticker, filer_keys TEXT[])`)이 필요하다.
 - 종목 헤더의 섹터·성격·소개는 `stock_profiles(ticker PK, name_ko, sector, style, intro)` 같은 정적 테이블을 제안한다(손으로 채움).
+
+## "내 지도에 있어요" 조회 (#100, API 연결 전)
+
+`OverlapService`에 메서드 두 개를 두고, SQL은 `OverlapRepository.xml`의 `findMyMapTickers`·`findMyConceptsForTicker`에 있다. 아직 엔드포인트에는 연결하지 않았다.
+
+- `myMapTickers(userId)`: 사용자가 배운 개념(`user_concepts.total > 0`)과 `concept_tickers`로 연결된 종목들이다. 티커 순이고, 종목마다 개념 목록(id·이름·테마)이 붙는다. 겹침 메인의 배지용이다.
+- `myConceptsForTicker(userId, ticker)`: 종목 하나에 연결된 개념 중 사용자가 배운 것이다. 티커는 대문자로 맞춘다. 종목 상세용이다.
+- 기록이 없는 사용자나 처음 보는 사용자는 빈 목록이다. 팀 검토 전이라 `status`는 거르지 않는다. userId는 UUID 문자열이다. 형식이 틀리면 DB 오류가 나므로, API에 붙일 때 마이페이지처럼 400으로 막는다.
+- 테스트: `OverlapMyMapIntegrationTest` 3개(Testcontainers + `fixtures/my_map.sql`, 손계산은 fixture 맨 위에 있다), `OverlapServiceTest`에 2개를 추가했다.

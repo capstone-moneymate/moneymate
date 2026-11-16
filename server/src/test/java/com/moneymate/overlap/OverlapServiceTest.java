@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moneymate.overlap.OverlapDtos.DirectionPair;
+import com.moneymate.overlap.OverlapDtos.MyMapConcept;
+import com.moneymate.overlap.OverlapDtos.MyMapTicker;
 import com.moneymate.overlap.OverlapDtos.OverlapList;
 import com.moneymate.overlap.OverlapDtos.StockOverlap;
 import java.math.BigDecimal;
@@ -95,5 +97,27 @@ class OverlapServiceTest {
         when(repo.findLatestCalcDate()).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.stock("NVDA")).isInstanceOf(OverlapService.StockNotFound.class);
+    }
+
+    @Test
+    void myMapTickersGroupsConceptsByTicker() {
+        when(repo.findMyMapTickers("u")).thenReturn(List.of(
+                new MyMapRow("MU", "hbm_supply", "HBM 공급 확대", "AI·반도체"),
+                new MyMapRow("MU", "memory_price", "D램 가격", "AI·반도체"),
+                new MyMapRow("NVDA", "gpu_demand", "AI 반도체 수요", "AI·반도체")));
+
+        assertThat(service.myMapTickers("u")).containsExactly(
+                new MyMapTicker("MU", List.of(new MyMapConcept("hbm_supply", "HBM 공급 확대", "AI·반도체"),
+                        new MyMapConcept("memory_price", "D램 가격", "AI·반도체"))),
+                new MyMapTicker("NVDA", List.of(new MyMapConcept("gpu_demand", "AI 반도체 수요", "AI·반도체"))));
+    }
+
+    @Test
+    void myConceptsForTickerNormalizesTicker() {
+        when(repo.findMyConceptsForTicker("u", "NVDA")).thenReturn(List.of(
+                new MyMapRow("NVDA", "gpu_demand", "AI 반도체 수요", "AI·반도체")));
+
+        assertThat(service.myConceptsForTicker("u", " nvda "))
+                .containsExactly(new MyMapConcept("gpu_demand", "AI 반도체 수요", "AI·반도체"));
     }
 }
