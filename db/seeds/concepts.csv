@@ -21,3 +21,4 @@ share_cancel,자사주 소각,기업 공시,event,자기주식 소각;주식 소
 share_count,유통 주식 수,기업 공시,indicator,유통주식수;가중평균유통보통주식수
 issued_shares,발행주식 총수,기업 공시,indicator,발행주식수;총발행주식수
 eps,주당순이익,기업 공시,outcome,EPS;기본주당이익;주당이익
+corp_earnings,기업 순이익,기업 공시,indicator,당기순이익;순이익;기업 실적;지배기업 소유주지분 순이익

@@ -132,4 +132,4 @@ def test_save_candidate_appends_unverified(monkeypatch, tmp_path):
 
 def test_real_dictionary_loads():
     concepts = pr.load_concepts()
-    assert len(concepts) == 22 and {"id", "name", "theme", "kind", "aliases"} <= set(concepts[0])
+    assert len(concepts) == 23 and {"id", "name", "theme", "kind", "aliases"} <= set(concepts[0])
