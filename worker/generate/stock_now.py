@@ -83,7 +83,10 @@ def price_since(rows: list[tuple[date, float]], base_date: date) -> PriceSince |
     if not before or not after or not before[-1][1]:
         return None
     (d0, c0), (d1, c1) = before[-1], after[-1]
-    return PriceSince(d0.isoformat(), float(c0), d1.isoformat(), float(c1), round((float(c1) / float(c0) - 1) * 100, 2))
+    # 미국 종가는 yfinance 에서 1154.2900390625 처럼 와서 문장에 그대로 나왔다 (2026-11-16 MU). 표시용으로 둘째 자리.
+    # 수익률은 반올림 전 값으로 계산한다
+    return PriceSince(d0.isoformat(), round(float(c0), 2), d1.isoformat(), round(float(c1), 2),
+                      round((float(c1) / float(c0) - 1) * 100, 2))
 
 
 def _number_rank(key: str) -> int:

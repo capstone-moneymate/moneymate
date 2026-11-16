@@ -47,6 +47,15 @@ def test_schema_asks_reason_before_concept():
     assert schema["required"] == ["reason", "start_concept"]
 
 
+def test_system_keeps_general_concepts_for_other_industries():
+    # 업종이 안 맞으면 그 업종 개념만 빼고 일반 개념은 고르게 한다 (2026-11-16: "실적 공시라도 고르지 않는다"를
+    # 실적 공시 전체를 고르지 말라는 뜻으로 읽어 기업 순이익이 있는데도 none 이 6건 나왔다)
+    system = cl.build_system(CONCEPTS)
+    assert "그 업종 개념만 빼고" in system and "실적 공시라도 고르지 않는다" not in system
+    # 업종이 맞으면 구체적인 업종 개념이 먼저 (일반 개념 규칙만 넣었더니 반도체 회사 3건도 기업 순이익으로 갔다)
+    assert "업종 개념을 먼저 고른다" in system
+
+
 def test_system_lists_aliases():
     assert "rate_hold | 기준금리 동결 | 금리 | 금리 동결, 금리 유지" in cl.build_system(CONCEPTS)
 

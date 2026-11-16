@@ -44,6 +44,7 @@ def fake_pipeline(monkeypatch, tmp_path, *, etf_code=0, picked_titles=("A", "B")
     monkeypatch.setattr(rd, "score_sources", lambda d: calls.append("score") or cands)
     monkeypatch.setattr(rd, "classify_candidates", lambda c: calls.append("classify") or c)
     monkeypatch.setattr(rd, "compose_selected", lambda p, d: calls.append(("compose", len(p), d)) or [7, 8])
+    monkeypatch.setattr(rd, "refresh_now_views", lambda d: calls.append(("now", d)) or "갱신 0/0종목")
     return calls
 
 
@@ -61,7 +62,60 @@ def test_run_continues_after_etf_failure_and_logs(monkeypatch, tmp_path):
 def test_no_llm_stops_before_classify(monkeypatch, tmp_path):
     calls = fake_pipeline(monkeypatch, tmp_path)
     report = rd.run(date(2026, 11, 13), date(2026, 11, 14), collect=False, llm=False)
+    # --no-llm 이면 카드 ③ 갱신도 건너뛴다 (문장 없는 now_view 로 덮어쓰지 않게)
     assert calls == ["score"] and report.ok and report.card_ids == []
+
+
+def test_now_refresh_runs_after_compose_with_card_date(monkeypatch, tmp_path):
+    calls = fake_pipeline(monkeypatch, tmp_path)
+    report = rd.run(date(2026, 11, 13), date(2026, 11, 14), collect=False)
+    assert calls[-1] == ("now", date(2026, 11, 14))
+    step = next(s for s in report.steps if s.name == "탭2 지금은")
+    assert step.ok and step.detail == "갱신 0/0종목"  # 문자열 결과라 종료 코드로 오해하지 않는다
+
+
+def test_refresh_now_views_updates_each_stock_and_reports_failures(monkeypatch):
+    from generate import reasons, stock_now
+
+    import collectors.prices as prices
+    import db
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def commit(self):
+            pass
+
+    base = date(2026, 9, 30)
+    raw = [{"title": "t", "body": "b", "start_concept": "gpu_demand", "end_concept": "semi_earnings",
+            "path": ["gpu_demand", "semi_earnings"], "direction": "up",
+            "evidence": [{"no": 1, "source_id": 10, "published_date": "2026-09-12", "title": "x",
+                          "issuer_name": "N", "url": "u"}]}]
+    monkeypatch.setattr(db, "get_conn", lambda: Conn())
+    monkeypatch.setattr(rd, "load_published_reasons", lambda conn: [(base, "NVDA", raw), (base, "BAD", raw)])
+    fetched, saved = [], []
+    monkeypatch.setattr(prices, "fetch_us", lambda t, s, e: fetched.append((t, s, e)) or pd.DataFrame())
+    monkeypatch.setattr(prices, "save_prices", lambda conn, df: 0)
+
+    def fake_generate(stock, period, rs_, today):
+        if stock["ticker"] == "BAD":
+            raise ValueError("가격 없음")
+        assert rs_[0].evidence[0].source_id == 10 and today == date(2026, 11, 14)  # JSON → Reason 복원
+        return stock_now.StockNow(period.isoformat(), text="지금은")
+
+    monkeypatch.setattr(stock_now, "generate", fake_generate)
+    monkeypatch.setattr(reasons, "save_now_view", lambda conn, p, t, v: saved.append((t, v["text"])) or 1)
+
+    with pytest.raises(RuntimeError) as e:
+        rd.refresh_now_views(date(2026, 11, 14))
+    # 기준일 10일 전부터 가격을 받고, 실패한 종목이 있어도 나머지는 저장한다
+    assert fetched[0] == ("NVDA", date(2026, 9, 20), date(2026, 11, 14))
+    assert saved == [("NVDA", "지금은")]
+    assert "갱신 1/2종목" in str(e.value) and "BAD: ValueError" in str(e.value)
 
 
 def test_collect_etf_backfills_from_target(monkeypatch):
