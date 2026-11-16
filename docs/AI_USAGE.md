@@ -64,3 +64,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-07 | C | web/src/api/news.ts·cards.ts, types/news.ts·card.ts, pages/tab1/NewsHomePage.tsx, vite.config.ts, .env.example, docs/modules/tab1_learn_screens.md | 탭1 화면을 실제 API(/api/news/home, /api/cards/{id}, /api/answers)에 연결(VITE_USE_MOCK=false), 개발 서버 /api 프록시, null 값 처리, 답 제출 후 홈 갱신, 브라우저로 실제 서버 확인 요청 | - |
 | 2026-11-16 | C | worker/generate/compose.py, tests/test_compose.py, docs/modules/compose.md | 탭 3 기록용으로 판단 단계 content.concept_ids 에 answer.chain 개념을 더해 저장하기 요청 (B 요청), 사전 id 검증 확인 | - |
 | 2026-11-16 | C | server/.../answer/AnswerService.java, AnswerServiceTest.java, docs/modules/answers_api.md | 코드 채점 답안 API 에서 B의 ConceptResultRecorder.recordConceptResult 를 불러 user_concepts 기록 연결과 테스트 요청 (B 요청 R1) | - |
+| 2026-11-16 | B | worker/collectors/etf_holdings.py, docs/modules/etf_holdings.md | 팀원이 알려 준 Windows cp949 출력 오류 재현, 이슈 #112 작성, 경고 출력의 `⚠`를 `[경고]`로 바꾸고 cp949 출력 확인 | - |
