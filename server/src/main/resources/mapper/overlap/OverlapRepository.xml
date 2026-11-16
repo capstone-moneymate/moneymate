@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.overlap.OverlapRepository">
+
+    <select id="findLatestCalcDate" resultType="java.time.LocalDate">
+        SELECT max(calc_date) FROM overlap_results
+    </select>
+
+    <resultMap id="overlapMap" type="com.moneymate.overlap.OverlapRow">
+        <constructor>
+            <arg column="calc_date" javaType="java.time.LocalDate"/>
+            <arg column="ticker" javaType="String"/>
+            <arg column="filer_key" javaType="String"/>
+            <arg column="big_period_end" javaType="java.time.LocalDate"/>
+            <arg column="big_chg_pct" javaType="java.math.BigDecimal"/>
+            <arg column="etf_code" javaType="String"/>
+            <arg column="etf_snapshot_date" javaType="java.time.LocalDate"/>
+            <arg column="etf_trend_chg_pct" javaType="java.math.BigDecimal"/>
+            <arg column="direction" javaType="String"/>
+            <arg column="filer_name" javaType="String"/>
+            <arg column="issuer_name" javaType="String"/>
+            <arg column="change_type" javaType="String"/>
+            <arg column="filed_at" javaType="java.time.LocalDate"/>
+            <arg column="etf_stock_name" javaType="String"/>
+            <arg column="etf_day_chg_pct" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <!--
+      겹침·방향은 overlap_results 값을 그대로 읽는다 (다시 계산하지 않음).
+      h: 같은 큰손·분기·티커의 13F 한 줄. 같은 티커에 CUSIP 이 둘 이상이면 수량이 큰 줄 (overlap.py load_big 과 같은 기준).
+      e: 같은 ETF·스냅샷에서 그 CUSIP 2~7번째 글자 = raw_code 인 줄 (P16. holdings_etf.ticker 는 NULL 일 수 있어 쓰지 않는다).
+         ETF 가 최신 스냅샷에서 전량 정리했으면 행이 없어 이름·어제 변화가 null 이다.
+    -->
+    <select id="findRows" resultMap="overlapMap">
+        SELECT o.calc_date, o.ticker, o.filer_key, o.big_period_end, o.big_chg_pct,
+               o.etf_code, o.etf_snapshot_date, o.etf_trend_chg_pct, o.direction,
+               h.filer_name, h.issuer_name, h.change_type, h.filed_at,
+               e.stock_name AS etf_stock_name, e.day_chg_pct AS etf_day_chg_pct
+          FROM overlap_results o
+          LEFT JOIN LATERAL (
+                SELECT h13.filer_name, h13.issuer_name, h13.change_type, h13.filed_at, h13.cusip
+                  FROM holdings_13f h13
+                 WHERE h13.filer_key = o.filer_key
+                   AND h13.period_end = o.big_period_end
+                   AND h13.ticker = o.ticker
+                 ORDER BY h13.shares DESC, h13.cusip
+                 LIMIT 1) h ON true
+          LEFT JOIN LATERAL (
+                SELECT he.stock_name, he.day_chg_pct
+                  FROM holdings_etf he
+                 WHERE he.etf_code = o.etf_code
+                   AND he.snapshot_date = o.etf_snapshot_date
+                   AND he.raw_code = substr(h.cusip, 2, 6)
+                 LIMIT 1) e ON true
+         WHERE o.calc_date = #{calcDate}
+         <if test="ticker != null">
+           AND o.ticker = #{ticker}
+         </if>
+         ORDER BY o.ticker, o.filer_key, o.etf_code
+    </select>
+</mapper>
