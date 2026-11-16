@@ -104,7 +104,30 @@ def fetch_dart(d: date, api_key: str | None = None) -> list[Source]:
             if page >= int(res["total_page"]):
                 break
             page += 1
-    return dart_rows_to_sources(rows)
+    sources = dart_rows_to_sources(rows)
+    fill_dart_numbers(sources, api_key)
+    return sources
+
+
+def fill_dart_numbers(sources: list[Source], api_key: str | None = None) -> int:
+    """거르기를 통과한 공시마다 원문을 받아 핵심 숫자를 numbers 에 넣는다 (collectors/dart_numbers.py).
+
+    원문을 못 받거나 서식이 달라도 수집은 멈추지 않고 numbers 를 비워 둔다 (경고만). 채운 건수를 돌려준다.
+    """
+    import zipfile
+
+    from collectors.dart_numbers import fetch_document, parse_numbers
+
+    filled = 0
+    for s in sources:
+        try:
+            s.numbers.update(parse_numbers(s.category, s.title, fetch_document(s.source_key, api_key)))
+        except (requests.RequestException, RuntimeError, ValueError, OSError, IndexError,
+                zipfile.BadZipFile) as e:
+            print(f"경고: {s.title} 원문 숫자를 못 읽었어요 ({e.__class__.__name__}: {str(e)[:80]})", file=sys.stderr)
+        filled += bool(s.numbers)
+    print(f"원문 숫자 채움 {filled}/{len(sources)}건")
+    return filled
 
 
 # ------------------------------------------------------------------
