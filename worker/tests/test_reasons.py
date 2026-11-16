@@ -88,6 +88,30 @@ def test_schema_limits_concepts_and_evidence_numbers():
     assert "change" in schema["properties"]["reasons"]["items"]["required"]
 
 
+def test_rate_event_start_needs_that_decision_in_evidence():
+    # 동결뿐인 분기에 rate_hike(down) 으로 "인상이 없었다"를 돌려 쓰지 못하게 한다
+    hold = rs.Evidence(1, 21, "2026-06-17", "FOMC 정책금리 결정", None, "u", {"decision": "hold"})
+    hike = rs.Evidence(2, 22, "2026-09-16", "FOMC 정책금리 결정", None, "u", {"decision": "hike"})
+    base = date(2026, 9, 30)
+    via_hold = reason("금리 인상 없음", "금리가 그대로라 부담이 덜했을 수 있어요.", "rate_hike", "growth_valuation",
+                      evidence=(1,), change="down")
+    errors = rs.check_reasons([via_hold], [hold, hike], base, GRAPH)
+    assert any("실제 'hike' 결정이 있을 때만" in e for e in errors)
+    # 실제 인상 근거가 있고 change 가 up 이면 통과 (경로 검사는 테스트 그래프가 모호한 쌍이라 bond_yield 로 본다)
+    ok = reason("금리 인상", "금리가 올라 부담이 커졌을 수 있어요.", "rate_hike", "bond_yield", evidence=(2,), change="up")
+    assert rs.check_reasons([ok], [hold, hike], base, GRAPH) == []
+    # 인상 근거여도 change 가 down 이면 막는다
+    bad = reason("금리 인상", "본문이에요.", "rate_hike", "bond_yield", evidence=(2,), change="down")
+    assert rs.check_reasons([bad], [hold, hike], base, GRAPH)
+
+
+def test_rate_hold_is_not_a_start_concept():
+    # B 결정: 금리 동결은 조건 붙은 연결·모든 종목에 같은 이유·양이 아닌 사건이라 이유의 시작으로 쓰지 않는다
+    item = rs.output_schema(["rate_hold", "rate_hike", "growth_valuation"], 2)["properties"]["reasons"]["items"]
+    assert item["properties"]["start_concept"]["enum"] == ["rate_hike", "growth_valuation"]
+    assert "rate_hold" in item["properties"]["end_concept"]["enum"]  # 끝 개념으로는 쓸 수 있다
+
+
 def test_change_down_flips_direction_and_matches_reduction(monkeypatch):
     # "AI 투자가 줄어 실적에 누르는 힘 → 줄였다": change 가 없으면 (+1)(+1) = ▲ 로 계산돼 줄임과 반대였다
     down = reason("AI 투자 둔화", "투자가 줄어 수요가 약해졌을 수 있어요.", change="down")
@@ -159,7 +183,9 @@ def test_check_reasons_errors(raw, message):
 
 def test_down_path_keeps_direction(monkeypatch):
     # 누르는 힘 경로도 통과하되 방향을 담아 화면이 ▼ 를 그릴 수 있게 한다
-    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings")])
+    # rate_hike 는 근거에 실제 인상 결정이 있어야 시작 개념이 된다 (DECISION_EVENTS)
+    hike = [rs.Evidence(1, 31, "2026-09-16", "FOMC 정책금리 결정", None, "u", {"decision": "hike"})]
+    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings", evidence=(1,))], evidence=hike)
     assert out.errors == [] and out.reasons[0].direction == "down"
     assert out.reasons[0].path == ["rate_hike", "semi_earnings"]
 
