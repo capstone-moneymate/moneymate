@@ -214,6 +214,14 @@ def test_gives_up_after_repair_limit(monkeypatch):
     assert out.reasons == [] and out.calls == rs.MAX_REPAIRS + 1 and out.errors
 
 
+def test_keeps_passing_reasons_after_repair_limit(monkeypatch):
+    # 끝까지 한 이유만 걸리면 그 이유만 빼고 나머지는 살린다 (사전에 없는 경로 하나 때문에 통째로 rejected 되던 문제)
+    bad = reason("없는 경로", "본문이에요.", start="growth_valuation", end="ai_investment")
+    out, _ = run(monkeypatch, [reason(), bad], [reason(), bad])
+    assert out.errors == [] and len(out.reasons) == 1 and out.reasons[0].title == "AI 투자 확대"
+    assert len(out.dropped) == 1 and "경로가 없어요" in out.dropped[0]
+
+
 def test_no_evidence_skips_api(monkeypatch):
     out, calls = run(monkeypatch, evidence=[])
     assert calls == [] and out.calls == 0 and "근거 자료가 없어요" in out.errors[0]

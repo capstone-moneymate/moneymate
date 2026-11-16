@@ -180,7 +180,40 @@ def fetch_sec_8k(d: date, tickers: list[str], until: date | None = None) -> list
                 ticker=t,
                 market="US",
             ))
+    fill_sec_earnings(out)
     return out
+
+
+def fill_sec_earnings(sources: list[Source]) -> int:
+    """8-K 실적 공시(earnings)에 SEC XBRL 분기 실적 숫자를 붙인다 (collectors/sec_numbers.py). 채운 건수.
+
+    10-Q 가 아직 안 나왔으면 그 분기 값을 못 찾아 비워 둔다 → 나중에 `python -m collectors.sec_numbers --save` 로 채운다.
+    SEC 를 못 부르면 경고만 하고 수집은 계속한다.
+    """
+    from collectors import sec_numbers
+
+    earnings = [s for s in sources if s.category == "earnings" and s.ticker]
+    if not earnings:
+        return 0
+    try:
+        ciks = sec_numbers.load_ciks()
+    except requests.RequestException as e:
+        print(f"경고: SEC 티커 목록을 못 받아 실적 숫자를 건너뛰어요 ({e.__class__.__name__})", file=sys.stderr)
+        return 0
+    facts: dict[str, dict | None] = {}
+    filled = 0
+    for s in earnings:
+        if s.ticker not in facts:
+            try:
+                facts[s.ticker] = sec_numbers.fetch_facts(ciks[s.ticker]) if s.ticker in ciks else None
+            except requests.RequestException as e:
+                print(f"경고: {s.ticker} 실적 숫자를 못 받았어요 ({e.__class__.__name__})", file=sys.stderr)
+                facts[s.ticker] = None
+        if facts[s.ticker]:
+            s.numbers.update(sec_numbers.earnings_numbers(facts[s.ticker], s.published_date))
+        filled += bool(s.numbers)
+    print(f"8-K 실적 숫자 채움 {filled}/{len(earnings)}건")
+    return filled
 
 
 # ------------------------------------------------------------------

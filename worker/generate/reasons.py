@@ -82,6 +82,8 @@ class ReasonsResult:
     calls: int = 0
     # 통과는 했지만 사람이 볼 것: 이유 방향이 큰손 변화와 반대. 있으면 save 가 pending 으로 저장한다 (B·C 합의)
     warnings: list[str] = field(default_factory=list)
+    # 끝까지 검사에 걸려 빼고 나머지 이유만 살렸을 때, 뺀 까닭 (model_info.dropped, status 에는 영향 없음)
+    dropped: list[str] = field(default_factory=list)
 
 
 # --- 근거 후보 ---
@@ -307,6 +309,13 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
         result.errors = errors
         messages += [{"role": "assistant", "content": text},
                      {"role": "user", "content": "다음 문제를 고쳐서 이유 전체를 다시 써 주세요:\n- " + "\n- ".join(errors)}]
+    # 고쳐 쓰기를 다 해도 걸리면, 혼자 검사해서 통과하는 이유만 살린다. 8-K 숫자를 넣었더니 사전에 없는 경로
+    # (revenue → eps 등) 하나 때문에 20종목 중 11곳이 통째로 rejected 됐다 (2026-11-16)
+    good = [r for r in raw if not check_reasons([r], evidence, base_date, g)]
+    if good:
+        result.dropped = [e for e in result.errors if not e.startswith("이유는 ")]
+        result.reasons, result.errors = to_reasons(good, evidence, g), []
+        result.warnings = direction_warnings(result.reasons, direction, change)
     return result
 
 
@@ -376,6 +385,8 @@ def save(conn, base_date: date, ticker: str, direction: str, change: str, result
         info["errors"] = result.errors
     if result.warnings:
         info["warnings"] = result.warnings
+    if result.dropped:
+        info["dropped"] = result.dropped
     conn.execute(
         """INSERT INTO stock_reasons (big_period_end, ticker, direction, change, headline, reasons, now_view,
                                       status, model_info)

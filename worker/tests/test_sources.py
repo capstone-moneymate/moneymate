@@ -95,3 +95,30 @@ def test_fill_dart_numbers_keeps_going_when_one_document_fails(monkeypatch, caps
     assert srcs[0].numbers == {}
     assert srcs[1].numbers == {"소각예정금액(원)": 1000}
     assert "원문 숫자를 못 읽었어요" in capsys.readouterr().err
+
+
+def test_fill_sec_earnings_only_for_earnings_and_survives_sec_errors(monkeypatch):
+    from datetime import date as _date
+
+    import requests
+
+    from collectors import sec_numbers, sources
+    from collectors.sources import Source
+
+    def src(cat, ticker):
+        return Source("sec_8k", f"{ticker}-{cat}", cat, f"{ticker} 8-K", "u", _date(2026, 4, 29), ticker=ticker,
+                      market="US")
+
+    srcs = [src("earnings", "MSFT"), src("material_agreement", "MSFT"), src("earnings", "FAIL")]
+    monkeypatch.setattr(sec_numbers, "load_ciks", lambda: {"MSFT": 1, "FAIL": 2})
+
+    def fetch(cik):
+        if cik == 2:
+            raise requests.ConnectionError("SEC")
+        return {"facts": {}}
+
+    monkeypatch.setattr(sec_numbers, "fetch_facts", fetch)
+    monkeypatch.setattr(sec_numbers, "earnings_numbers", lambda facts, d: {"매출액": 1})
+    assert sources.fill_sec_earnings(srcs) == 1
+    assert srcs[0].numbers == {"매출액": 1}
+    assert srcs[1].numbers == {} and srcs[2].numbers == {}  # 계약 공시는 안 채우고, SEC 오류는 비워 둔다
