@@ -293,6 +293,49 @@ def compose_selected(picked: list[Candidate], card_date: date) -> list[int]:
 # 실행
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# 4. 탭 2 카드 ③ 지금은 갱신 (기준일 이후 주가·자료·오늘 배운 개념은 날마다 바뀐다)
+# ------------------------------------------------------------------
+
+def load_published_reasons(conn) -> list[tuple[date, str, list[dict]]]:
+    """가장 최근 13F 분기의 published 이유 카드 (분기, 티커, reasons JSON). 카드 ②는 분기마다 scripts/run_reasons.py 가 만든다."""
+    return conn.execute(
+        """SELECT big_period_end, ticker, reasons FROM stock_reasons
+           WHERE status = 'published' AND big_period_end = (SELECT max(big_period_end) FROM stock_reasons)
+           ORDER BY ticker""",
+    ).fetchall()
+
+
+def refresh_now_views(today: date) -> str:
+    """published 이유 카드마다 미국 종목 가격을 기준일부터 채우고 카드 ③(now_view)을 다시 만든다.
+
+    결과는 "갱신 n/m종목" 문자열 (run_step 은 int 를 종료 코드로 보므로 개수를 int 로 돌려주지 않는다).
+    종목 하나가 실패해도 나머지는 계속하고, 하나라도 실패하면 마지막에 예외로 단계 실패를 알린다.
+    """
+    from collectors.prices import fetch_us, save_prices
+    from db import get_conn
+    from generate import reasons, stock_now
+
+    done, failed = 0, []
+    with get_conn() as conn:
+        rows = load_published_reasons(conn)
+    for period, ticker, raw in rows:
+        try:
+            with get_conn() as conn:
+                save_prices(conn, fetch_us(ticker, period - timedelta(days=10), today))
+                conn.commit()
+            now = stock_now.generate({"ticker": ticker}, period, reasons.reasons_from_json(raw), today)
+            with get_conn() as conn:
+                done += reasons.save_now_view(conn, period, ticker, now.to_json())
+                conn.commit()
+        except Exception as e:  # noqa: BLE001  종목 하나 때문에 나머지를 멈추지 않는다
+            failed.append(f"{ticker}: {e.__class__.__name__}: {str(e)[:80]}")
+    summary = f"갱신 {done}/{len(rows)}종목"
+    if failed:
+        raise RuntimeError(f"{summary}, 실패: {'; '.join(failed)}")
+    return summary
+
+
 def previous_trading_day(today: date) -> date:
     from collectors.prices import kr_trading_days
 
@@ -312,6 +355,8 @@ def run(target: date, card_date: date, collect: bool = True, llm: bool = True) -
         picked = select(top, MAX_CARDS)
         print(f"  고른 자료 {len(picked)}건: " + ", ".join(c.extra["source"]["title"][:20] for c in picked))
         report.card_ids = run_step(report, "출제", compose_selected, picked, card_date) or []
+    if llm:  # --no-llm 이면 문장 없는 카드 ③으로 덮어쓰지 않게 건너뛴다
+        run_step(report, "탭2 지금은", refresh_now_views, card_date)
     write_log(report)
     print(f"\n{'완료' if report.ok else '실패한 단계가 있어요'}: 카드 {report.card_ids or '없음'}")
     return report
