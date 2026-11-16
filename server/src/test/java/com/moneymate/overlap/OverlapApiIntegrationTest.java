@@ -22,7 +22,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
 
 /**
- * 겹침 API 통합 테스트. 빈 PostgreSQL 16 에 db/migrations(001~003)와 fixtures/overlap.sql 을 넣고
+ * 겹침 API 통합 테스트. 빈 PostgreSQL 16 에 db/migrations(001~)와 fixtures/overlap.sql 을 넣고
  * 실제 SQL·MyBatis 매핑·JSON 응답을 확인한다. Docker 가 없으면 건너뛴다.
  */
 @SpringBootTest
@@ -63,7 +63,25 @@ class OverlapApiIntegrationTest {
                {"filerKey":"druckenmiller","etfCode":"0015B0","direction":"same"},
                {"filerKey":"druckenmiller","etfCode":"426030","direction":"diff"},
                {"filerKey":"thiel","etfCode":"0015B0","direction":"same"},
-               {"filerKey":"thiel","etfCode":"426030","direction":"diff"}]}""";
+               {"filerKey":"thiel","etfCode":"426030","direction":"diff"}]""";
+
+    static final String USER = "11111111-1111-1111-1111-111111111111";
+
+    /** 카드 ②③ (fixture 의 2026-06-30 published). learned 자리는 사용자에 따라 바꿔 끼운다 */
+    static String nvdaReasons(boolean learned) {
+        return """
+            "reasons":{"bigPeriodEnd":"2026-06-30","direction":"diff","change":"up","headline":"왜 방향이 다를까요?",
+             "reasons":[{"title":"AI 투자 확대","body":"데이터센터 투자가 늘어 GPU 수요가 커졌을 수 있어요.",
+               "path":[{"id":"ai_investment","name":"AI 데이터센터 투자","learned":false},
+                       {"id":"gpu_demand","name":"AI 반도체 수요","learned":%s},
+                       {"id":"semi_earnings","name":"반도체 기업 실적","learned":false}],
+               "direction":"up","inMyMap":%s,
+               "evidence":[{"no":4,"publishedDate":"2026-06-12","title":"데이터센터 투자 발표",
+                            "issuerName":"Microsoft","url":"https://example.com/a"}]}],
+             "now":{"baseDate":"2026-06-30",
+               "price":{"fromDate":"2026-06-30","fromClose":100.0,"toDate":"2026-11-14","toClose":112.5,"returnPct":12.5},
+               "laterSources":[],"linked":[],"text":null}}""".formatted(learned, learned);
+    }
 
     static final String GOOGL = """
             {"calcDate":"2026-11-14","ticker":"GOOGL","issuerName":"ALPHABET INC","etfStockName":"ALPHABET INC-CL A",
@@ -71,7 +89,7 @@ class OverlapApiIntegrationTest {
                {"filerKey":"ackman","filerName":"Pershing Square Inc.","changeType":"decrease",
                 "chgPct":-0.25,"periodEnd":"2026-06-30","filedAt":"2026-08-14"}],
              "etfs":[{"etfCode":"0015B0","snapshotDate":"2026-11-13","trendChgPct":0.1,"dayChgPct":0.0}],
-             "pairs":[{"filerKey":"ackman","etfCode":"0015B0","direction":"diff"}]}""";
+             "pairs":[{"filerKey":"ackman","etfCode":"0015B0","direction":"diff"}]""";
 
     @Autowired
     MockMvc mvc;
@@ -81,23 +99,44 @@ class OverlapApiIntegrationTest {
         // 2026-11-13 행(direction none)은 빠지고, AAPL 은 ETF 가 없어 겹침 행이 없으므로 안 나온다
         mvc.perform(get("/api/overlaps"))
                 .andExpect(status().isOk())
-                .andExpect(content().json("{\"calcDate\":\"2026-11-14\",\"stocks\":[" + GOOGL + "," + NVDA + "]}",
+                .andExpect(content().json("{\"calcDate\":\"2026-11-14\",\"stocks\":[" + GOOGL + "}," + NVDA + "}]}",
                         JsonCompareMode.STRICT));
     }
 
     @Test
     void stockDetailByTickerPathVariable() throws Exception {
         // 426030 최신 스냅샷은 holdings_etf.ticker 가 NULL 이어도 raw_code(CUSIP 2~7번째)로 어제 변화를 찾는다
+        // 카드 ②③ 은 published 중 가장 최근 분기(2026-06-30). 더 최근 pending 과 오래된 published 는 빠진다.
+        // userId 가 없으면 배운 개념 표시가 없다. 카드 ③ 의 errors 는 내보내지 않는다
         mvc.perform(get("/api/stocks/NVDA"))
                 .andExpect(status().isOk())
-                .andExpect(content().json(NVDA, JsonCompareMode.STRICT));
+                .andExpect(content().json(NVDA + "," + nvdaReasons(false) + ",\"myConcepts\":[]}",
+                        JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void stockDetailWithUserShowsMyMap() throws Exception {
+        // 사용자가 gpu_demand 를 배워서: 이유 경로의 그 개념이 learned, 이유는 inMyMap,
+        // concept_tickers(gpu_demand -> NVDA)로 myConcepts 에 들어간다
+        mvc.perform(get("/api/stocks/NVDA").param("userId", USER))
+                .andExpect(status().isOk())
+                .andExpect(content().json(NVDA + "," + nvdaReasons(true)
+                        + ",\"myConcepts\":[{\"id\":\"gpu_demand\",\"name\":\"AI 반도체 수요\",\"theme\":\"AI·반도체\"}]}",
+                        JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void invalidUserIdIs400() throws Exception {
+        mvc.perform(get("/api/stocks/NVDA").param("userId", "abc"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
     void stockDetailNormalizesLowercaseTicker() throws Exception {
-        mvc.perform(get("/api/stocks/googl"))
+        // GOOGL 은 rejected 만 있어 reasons 가 null (화면은 대체 문구)
+        mvc.perform(get("/api/stocks/googl").param("userId", USER))
                 .andExpect(status().isOk())
-                .andExpect(content().json(GOOGL, JsonCompareMode.STRICT));
+                .andExpect(content().json(GOOGL + ",\"reasons\":null,\"myConcepts\":[]}", JsonCompareMode.STRICT));
     }
 
     @Test
