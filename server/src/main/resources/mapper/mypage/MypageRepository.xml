@@ -53,4 +53,31 @@
          <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
          ORDER BY c.id
     </select>
+
+    <resultMap id="answerCountsMap" type="com.moneymate.mypage.AnswerCounts">
+        <constructor>
+            <arg column="graded" javaType="_int"/>
+            <arg column="correct" javaType="_int"/>
+            <arg column="judgements" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 날짜는 KST 로 자른다 (created_at 은 timestamptz, conventions P10). 오래 쉰 사용자도 최근 1년이면 충분 -->
+    <select id="findAnswerDays" resultType="java.time.LocalDate">
+        SELECT DISTINCT (ua.created_at AT TIME ZONE 'Asia/Seoul')::date AS day
+          FROM user_answers ua
+         WHERE ua.user_id = CAST(#{userId} AS uuid)
+         ORDER BY day DESC
+         LIMIT 400
+    </select>
+
+    <!-- 종합 정답률 = 맞은 답안 / 채점된 답안. 판단 채점도 is_correct(60점 이상)를 저장하므로 함께 센다 -->
+    <select id="countAnswers" resultMap="answerCountsMap">
+        SELECT COUNT(*) FILTER (WHERE ua.is_correct IS NOT NULL) AS graded,
+               COUNT(*) FILTER (WHERE ua.is_correct)             AS correct,
+               COUNT(*) FILTER (WHERE s.kind = 'judgement')      AS judgements
+          FROM user_answers ua
+          JOIN steps s ON s.id = ua.step_id
+         WHERE ua.user_id = CAST(#{userId} AS uuid)
+    </select>
 </mapper>

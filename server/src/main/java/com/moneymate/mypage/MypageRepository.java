@@ -1,5 +1,6 @@
 package com.moneymate.mypage;
 
+import java.time.LocalDate;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -19,4 +20,10 @@ public interface MypageRepository {
 
     /** 개념 id 목록의 이름·테마. 학습 기록은 읽지 않아 correct·total 은 0, id 순. */
     List<ConceptRow> findConcepts(@Param("ids") List<String> ids);
+
+    /** 답안을 낸 날 (KST 날짜, 중복 없이 최근 순). 연속 학습 계산용. */
+    List<LocalDate> findAnswerDays(@Param("userId") String userId);
+
+    /** 채점된 답안 수·맞은 수·판단해보기 제출 수. 기록이 없으면 0, 0, 0. */
+    AnswerCounts countAnswers(@Param("userId") String userId);
 }

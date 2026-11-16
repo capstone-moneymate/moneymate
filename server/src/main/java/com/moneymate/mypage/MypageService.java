@@ -5,11 +5,16 @@ import com.moneymate.mypage.MypageDtos.MapEdge;
 import com.moneymate.mypage.MypageDtos.MapNode;
 import com.moneymate.mypage.MypageDtos.Review;
 import com.moneymate.mypage.MypageDtos.ReviewConcept;
+import com.moneymate.mypage.MypageDtos.Summary;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,6 +26,8 @@ import org.springframework.stereotype.Service;
  *
  * 다시 보는 개념: total > 0 인 개념 전부. 정답률 낮은 순 → 푼 횟수 적은 순 → id 순.
  * 기록이 없으면 빈 배열 (users 에 행을 넣지 않는다).
+ *
+ * 홈 숫자(summary): 연속 학습(KST), 배운 개념 수, 종합 정답률(user_answers 의 is_correct), 판단해보기 횟수.
  */
 @Service
 public class MypageService {
@@ -31,10 +38,19 @@ public class MypageService {
             .thenComparingInt(ConceptRow::total)
             .thenComparing(ConceptRow::id);
 
-    private final MypageRepository repository;
+    static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
+    private final MypageRepository repository;
+    private final Clock clock;
+
+    @Autowired
     public MypageService(MypageRepository repository) {
+        this(repository, Clock.system(KST));
+    }
+
+    MypageService(MypageRepository repository, Clock clock) {
         this.repository = repository;
+        this.clock = clock;
     }
 
     public CausalMap map(String userId) {
@@ -79,5 +95,31 @@ public class MypageService {
     /** correct / total (소수, 0.5 = 50%). total 이 0 이면 0. */
     static double accuracy(ConceptRow c) {
         return c.total() == 0 ? 0.0 : (double) c.correct() / c.total();
+    }
+
+    public Summary summary(String userId) {
+        LocalDate today = LocalDate.now(clock.withZone(KST));
+        List<LocalDate> days = repository.findAnswerDays(userId);
+        AnswerCounts counts = repository.countAnswers(userId);
+        int concepts = repository.findLearnedConcepts(userId).size();
+        Double accuracy = counts.graded() == 0 ? null : (double) counts.correct() / counts.graded();
+        return new Summary(streak(days, today), days.contains(today), concepts, accuracy,
+                counts.graded(), counts.judgements());
+    }
+
+    /**
+     * 연속 학습 일수. days 는 답안을 낸 KST 날짜(순서·중복 상관없음).
+     * 오늘 풀었으면 오늘부터, 오늘 아직 안 풀었으면 어제부터 거꾸로 하루씩 이어진 날을 센다.
+     * (오늘 하루 동안은 끊긴 것으로 치지 않는다. 오늘 끝까지 안 풀면 내일 0 이 된다)
+     */
+    static int streak(List<LocalDate> days, LocalDate today) {
+        Set<LocalDate> set = Set.copyOf(days);
+        LocalDate d = set.contains(today) ? today : today.minusDays(1);
+        int n = 0;
+        while (set.contains(d)) {
+            n++;
+            d = d.minusDays(1);
+        }
+        return n;
     }
 }
