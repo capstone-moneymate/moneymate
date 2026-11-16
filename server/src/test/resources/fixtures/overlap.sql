@@ -36,3 +36,36 @@ INSERT INTO overlap_results (calc_date, ticker, filer_key, big_period_end, big_c
     ('2026-11-14', 'NVDA',  'thiel',         '2026-06-30', NULL,  '0015B0', '2026-11-13', 0.05,     'same'),
     ('2026-11-14', 'NVDA',  'thiel',         '2026-06-30', NULL,  '426030', '2026-11-13', -0.16318, 'diff'),
     ('2026-11-14', 'GOOGL', 'ackman',        '2026-06-30', -0.25, '0015B0', '2026-11-13', 0.1,      'diff');
+
+-- ---- 카드 ②③과 "내 지도에 있어요" (#101) ----
+-- NVDA 는 2026-06-30 published 가 나와야 한다: 더 최근 2026-09-30 은 pending, 2026-03-31 published 는 오래됨.
+-- GOOGL 은 rejected 만 있어 reasons 가 null. JSON 모양은 docs/modules/reasons.md "저장 모양" (snake_case).
+-- 사용자 1111… 은 gpu_demand 를 배움(2/3) -> 이유 경로의 gpu_demand 가 learned, inMyMap true,
+--   concept_tickers 의 gpu_demand -> NVDA 로 myConcepts [gpu_demand]. semi_earnings 는 total 0 이라 안 배움.
+INSERT INTO concepts (id, name, theme, kind) VALUES
+    ('ai_investment', 'AI 데이터센터 투자', 'AI·반도체', 'event'),
+    ('gpu_demand', 'AI 반도체 수요', 'AI·반도체', 'indicator'),
+    ('semi_earnings', '반도체 기업 실적', 'AI·반도체', 'outcome');
+
+INSERT INTO users (id) VALUES ('11111111-1111-1111-1111-111111111111');
+INSERT INTO user_concepts (user_id, concept_id, correct, total) VALUES
+    ('11111111-1111-1111-1111-111111111111', 'gpu_demand', 2, 3),
+    ('11111111-1111-1111-1111-111111111111', 'semi_earnings', 0, 0);
+
+INSERT INTO concept_tickers (concept_id, ticker, market, reason, source) VALUES
+    ('gpu_demand', 'NVDA', 'US', 'GPU', 'https://www.sec.gov/a');
+
+INSERT INTO stock_reasons (big_period_end, ticker, direction, change, headline, reasons, now_view, status) VALUES
+    ('2026-09-30', 'NVDA', 'diff', 'up', '왜 방향이 다를까요?', '[]', NULL, 'pending'),
+    ('2026-06-30', 'NVDA', 'diff', 'up', '왜 방향이 다를까요?',
+     '[{"title":"AI 투자 확대","body":"데이터센터 투자가 늘어 GPU 수요가 커졌을 수 있어요.",
+        "start_concept":"ai_investment","end_concept":"semi_earnings",
+        "path":["ai_investment","gpu_demand","semi_earnings"],"direction":"up",
+        "evidence":[{"no":4,"source_id":10,"published_date":"2026-06-12","title":"데이터센터 투자 발표",
+                     "issuer_name":"Microsoft","url":"https://example.com/a"}]}]',
+     '{"base_date":"2026-06-30",
+       "price":{"from_date":"2026-06-30","from_close":100.0,"to_date":"2026-11-14","to_close":112.5,"return_pct":12.5},
+       "later_sources":[],"linked":[],"text":null,"errors":["문장 검사 실패"]}',
+     'published'),
+    ('2026-03-31', 'NVDA', 'same', 'up', '왜 다 늘렸을까요?', '[]', NULL, 'published'),
+    ('2026-06-30', 'GOOGL', 'diff', 'down', '왜 방향이 다를까요?', '[]', NULL, 'rejected');

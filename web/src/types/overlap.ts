@@ -58,3 +58,94 @@ export interface OverlapList {
   calcDate: string | null
   stocks: StockOverlap[]
 }
+
+// ---------------------------------------------------------------- 종목 상세 카드 ②③ (#101)
+
+/** 카드 ② 인과 경로의 개념 하나. learned 는 이 사용자가 배운 개념인지 */
+export interface PathConcept {
+  id: string
+  name: string
+  learned: boolean
+}
+
+/** 카드 ② 근거 자료. no 는 C 가 붙인 번호이고 화면이 1부터 다시 매긴다. 기사 본문은 없다 */
+export interface ReasonEvidence {
+  no: number | null
+  publishedDate: string
+  title: string
+  /** 발표 기관·언론사. 없을 수 있다 */
+  issuerName: string | null
+  url: string
+}
+
+/** 카드 ② 이유 하나 */
+export interface StockReason {
+  title: string
+  body: string
+  /** 원인 → … → 결과 (B 의 개념 사전 경로) */
+  path: PathConcept[]
+  /** 시작 개념이 커질 때 끝 개념이 받는 힘: up(▲ 올리는 힘) / down(▼ 누르는 힘) */
+  direction: 'up' | 'down'
+  /** 경로에 배운 개념이 있으면 true ("내 지도에 있어요") */
+  inMyMap: boolean
+  evidence: ReasonEvidence[]
+}
+
+/** 카드 ③ 기준일 이후 주가. returnPct 는 퍼센트 값 (12.5 = 12.5%) */
+export interface NowPrice {
+  fromDate: string
+  fromClose: number
+  toDate: string
+  toClose: number
+  returnPct: number
+}
+
+/** 카드 ③ 기준일 뒤 자료. numbers 는 공시에서 코드가 뽑은 값 */
+export interface NowSource {
+  publishedDate: string
+  title: string
+  url: string
+  numbers: Record<string, number | string>
+}
+
+/** 카드 ③ 이유 경로 개념 중 오늘 탭 1 카드가 다룬 개념 */
+export interface NowLinked {
+  conceptId: string
+  name: string
+  reasonTitle: string
+}
+
+/** 카드 ③ 지금은. text 는 문장 검사를 못 넘으면 null (사실만 보여 준다) */
+export interface StockNow {
+  baseDate: string
+  price: NowPrice | null
+  laterSources: NowSource[]
+  linked: NowLinked[]
+  text: string | null
+}
+
+/** 카드 ②③ (stock_reasons published 최근 분기 한 줄) */
+export interface StockReasons {
+  bigPeriodEnd: string
+  direction: Direction
+  change: 'up' | 'down'
+  headline: string
+  reasons: StockReason[]
+  /** 카드 ③ 이 아직 없으면 null */
+  now: StockNow | null
+}
+
+/** "내 지도에 있어요" 개념 (#100 매핑) */
+export interface MyMapConcept {
+  id: string
+  name: string
+  theme: string
+}
+
+/** GET /api/stocks/{ticker}?userId= 응답 */
+export interface StockDetail extends StockOverlap {
+  /** published 이유가 없으면 null (화면은 대체 문구) */
+  reasons: StockReasons | null
+  /** 이 종목과 연결된 개념 중 배운 것 */
+  myConcepts: MyMapConcept[]
+}

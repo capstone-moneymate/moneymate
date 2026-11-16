@@ -5,17 +5,33 @@ import com.moneymate.overlap.OverlapDtos.EtfChange;
 import com.moneymate.overlap.OverlapDtos.FilerChange;
 import com.moneymate.overlap.OverlapDtos.MyMapConcept;
 import com.moneymate.overlap.OverlapDtos.MyMapTicker;
+import com.moneymate.overlap.OverlapDtos.NowLinked;
+import com.moneymate.overlap.OverlapDtos.NowPrice;
+import com.moneymate.overlap.OverlapDtos.NowSource;
 import com.moneymate.overlap.OverlapDtos.OverlapList;
+import com.moneymate.overlap.OverlapDtos.PathConcept;
+import com.moneymate.overlap.OverlapDtos.ReasonEvidence;
+import com.moneymate.overlap.OverlapDtos.StockDetail;
+import com.moneymate.overlap.OverlapDtos.StockNow;
 import com.moneymate.overlap.OverlapDtos.StockOverlap;
+import com.moneymate.overlap.OverlapDtos.StockReason;
+import com.moneymate.overlap.OverlapDtos.StockReasons;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
 
 /**
  * 탭2 겹침 목록과 종목 상세 (A, 5~6주차).
@@ -25,6 +41,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class OverlapService {
+
+    private static final Logger log = LoggerFactory.getLogger(OverlapService.class);
 
     private final OverlapRepository repository;
 
@@ -41,14 +59,83 @@ public class OverlapService {
         return new OverlapList(calcDate.get().toString(), group(rows));
     }
 
-    public StockOverlap stock(String ticker) {
+    /**
+     * 종목 상세: 겹침(카드 ①) + 카드 ②③(stock_reasons published 최근 분기, 없으면 null)
+     * + "내 지도에 있어요". userId 가 null 이면 배운 개념 표시만 빠진다.
+     */
+    public StockDetail stock(String ticker, String userId) {
         String normalized = normalizeTicker(ticker);
         LocalDate calcDate = repository.findLatestCalcDate().orElseThrow(() -> new StockNotFound(normalized));
         List<StockOverlap> stocks = group(repository.findRows(calcDate, normalized));
         if (stocks.isEmpty()) {
             throw new StockNotFound(normalized);
         }
-        return stocks.get(0);
+        StockReasons reasons = repository.findPublishedReasons(normalized)
+                .map(row -> reasonsOf(row, userId))
+                .orElse(null);
+        List<MyMapConcept> mine = userId == null ? List.of() : myConceptsForTicker(userId, normalized);
+        return new StockDetail(stocks.get(0), reasons, mine);
+    }
+
+    /**
+     * stock_reasons 한 줄을 화면 모양으로 옮긴다. 이유를 만들거나 고치지 않고, 경로 개념에 이름과
+     * "배운 개념인지"만 붙인다. JSON 이 깨졌으면 이유가 없는 것처럼 null (화면은 대체 문구).
+     */
+    StockReasons reasonsOf(StockReasonsRow row, String userId) {
+        List<StoredReasons.Reason> stored;
+        StoredReasons.NowView now;
+        try {
+            stored = StoredReasons.readReasons(row.reasonsJson());
+            now = StoredReasons.readNowView(row.nowViewJson());
+        } catch (JacksonException e) {
+            log.warn("stock_reasons JSON 을 읽지 못했어요 ({} {}): {}", row.bigPeriodEnd(), row.headline(),
+                    e.getOriginalMessage());
+            return null;
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        stored.forEach(r -> ids.addAll(nullToEmpty(r.path())));
+        Map<String, String> names = new HashMap<>();
+        Set<String> learned = new HashSet<>();
+        if (!ids.isEmpty()) {
+            List<String> idList = List.copyOf(ids);
+            repository.findConceptNames(idList).forEach(c -> names.put(c.id(), c.name()));
+            if (userId != null) {
+                learned.addAll(repository.findLearnedAmong(userId, idList));
+            }
+        }
+        List<StockReason> reasons = stored.stream().map(r -> {
+            List<PathConcept> path = nullToEmpty(r.path()).stream()
+                    .map(id -> new PathConcept(id, names.getOrDefault(id, id), learned.contains(id)))
+                    .toList();
+            List<ReasonEvidence> evidence = nullToEmpty(r.evidence()).stream()
+                    .map(e -> new ReasonEvidence(e.no(), e.publishedDate(), e.title(), e.issuerName(), e.url()))
+                    .toList();
+            return new StockReason(r.title(), r.body(), path, r.direction(),
+                    path.stream().anyMatch(PathConcept::learned), evidence);
+        }).toList();
+        return new StockReasons(str(row.bigPeriodEnd()), row.direction(), row.change(), row.headline(),
+                reasons, nowOf(now));
+    }
+
+    private static StockNow nowOf(StoredReasons.NowView n) {
+        if (n == null) {
+            return null;
+        }
+        StoredReasons.Price p = n.price();
+        NowPrice price = p == null ? null
+                : new NowPrice(p.fromDate(), p.fromClose(), p.toDate(), p.toClose(), p.returnPct());
+        List<NowSource> sources = nullToEmpty(n.laterSources()).stream()
+                .map(s -> new NowSource(s.publishedDate(), s.title(), s.url(),
+                        s.numbers() == null ? Map.of() : s.numbers()))
+                .toList();
+        List<NowLinked> linked = nullToEmpty(n.linked()).stream()
+                .map(l -> new NowLinked(l.conceptId(), l.name(), l.reasonTitle()))
+                .toList();
+        return new StockNow(n.baseDate(), price, sources, linked, n.text());
+    }
+
+    private static <T> List<T> nullToEmpty(List<T> list) {
+        return list == null ? List.of() : list;
     }
 
     /**
