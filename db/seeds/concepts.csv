@@ -22,3 +22,6 @@ share_count,유통 주식 수,기업 공시,indicator,유통주식수;가중평�
 issued_shares,발행주식 총수,기업 공시,indicator,발행주식수;총발행주식수
 eps,주당순이익,기업 공시,outcome,EPS;기본주당이익;주당이익
 corp_earnings,기업 순이익,기업 공시,indicator,당기순이익;순이익;기업 실적;지배기업 소유주지분 순이익
+supply_contract_win,공급계약 체결,기업 공시,event,수주;공급계약;단일판매ㆍ공급계약체결
+order_backlog,수주잔고,기업 공시,indicator,수주잔액;기말수주잔고
+revenue,매출,기업 공시,indicator,매출액;매출 인식
