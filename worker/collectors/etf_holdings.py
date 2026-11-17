@@ -13,7 +13,8 @@
 - P16: 구성종목 코드(CUSIP 2~7번째 글자)는 raw_code 에 그대로, ticker 는 cusip_map 으로 맞춰 채운다(못 찾으면 NULL).
        6자리가 다른 회사와 겹칠 수 있어 종목명도 비교해, 다르면 채우지 않고 출력한다.
        주식만 저장하고 원화현금 010010, 설정현금액 H00000, 선물은 뺀다.
-       설정 단위가 바뀌면 전 종목 수량이 같은 비율로 변하므로 경고한다
+       설정 단위가 바뀌거나 1CU 안 현금 비중이 바뀌면 전 종목 수량이 같은 비율로 변하므로 경고한다
+       (KoAct 2026년 7~9월 경고 5건은 모두 현금 비중 조정이었다. findings.md B칸)
 """
 import os
 import re
@@ -83,8 +84,9 @@ def holdings_from_pykrx(raw: pd.DataFrame, etf_code: str, snapshot_date: date) -
 def unit_change_ratio(prev: dict[str, Decimal], curr: dict[str, Decimal]) -> float | None:
     """두 스냅샷에 모두 있는 종목의 수량이 전부 같은 비율로 변했으면 그 비율, 아니면 None.
 
-    1CU 수량은 운용사가 사고팔면 종목마다 다르게 변한다. 전 종목이 같은 비율(예: 2배)로 변했다면
-    매매가 아니라 설정 단위를 바꾼 것이라, 그대로 두면 추세가 전부 "늘림"으로 잘못 나온다.
+    1CU 수량은 운용사가 사고팔면 종목마다 다르게 변한다. 전 종목이 같은 비율로 변했다면 종목을 고른 매매가 아니라
+    설정 단위 변경(예: 2배)이나 1CU 안 현금 비중 조정(예: 현금이 늘어 주식이 ×0.98)이라, 그대로 두면 추세가 전 종목
+    같은 쪽으로 밀린다.
     """
     common = [k for k in curr if k in prev and prev[k] > 0]
     if len(common) < UNIT_CHANGE_MIN_COMMON:
@@ -248,7 +250,9 @@ def collect_day(conn, etf_code: str, d: date) -> int | None:
     ratio = unit_change_ratio(prev, dict(zip(df["raw_code"], df["shares"])))
     if ratio is not None:
         print(f"  [경고] {etf_code} {prev_date} → {d}: 전 종목 수량이 {ratio:.4f}배로 같이 변함. "
-              "설정 단위 변경으로 보인다. 추세 계산 전에 운용사 공지를 확인할 것")
+              "설정 단위 변경이나 1CU 안 현금 비중 조정으로 보인다. 원화현금(010010)이 반대로 움직였으면 "
+              "현금 비중 조정인데, 현금 변화 크기로 설명되지 않는 만큼(예: 2026-07-31)은 따로 확인하고, "
+              "현금이 같이 움직이지 않았으면 운용사 공시·공지를 확인할 것 (findings.md B칸)")
     n = save_holdings(conn, df)
     print(f"  {etf_code} {d}: 주식 {len(df)}종목, 새로 저장 {n}줄")
     return n
