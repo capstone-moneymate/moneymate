@@ -35,7 +35,8 @@ class JudgementServiceTest {
             "[{\"text\":\"3% 동결\",\"keywords\":[\"3%\"]}]",
             "[{\"name\":\"기준금리 동결\",\"aliases\":[\"동결\"]}]",
             "[]",
-            new String[] {"rate_hold"});
+            new String[] {"rate_hold"},
+            null);
     static final String ANSWER = "금리가 동결되어 예대금리차가 유지되니 은행 이익이 버틸 것 같다.";
     // 2026-11-05 01:30 KST (= 11-04 16:30 UTC). 오늘 시작은 2026-11-05 00:00 KST
     static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-04T16:30:00Z"), ZoneOffset.UTC);
@@ -85,6 +86,7 @@ class JudgementServiceTest {
         assertThat(sent.getValue().answer()).isEqualTo(ANSWER);
         assertThat(sent.getValue().chain()).isEqualTo(STEP.chainJson());
         assertThat(sent.getValue().cardId()).isEqualTo(3L);
+        assertThat(sent.getValue().debate()).isNull();  // 토론이 아직 없는 카드
 
         ArgumentCaptor<String> savedFeedback = ArgumentCaptor.forClass(String.class);
         verify(repo).ensureUser(USER.toString());
@@ -97,6 +99,43 @@ class JudgementServiceTest {
         assertThat(back.reasons()).isEqualTo(REASONS);
         // P17: 판단 단계 chain 개념을 맞음으로 기록
         verify(recorder).recordConceptResult(USER.toString(), new String[] {"rate_hold"}, true);
+    }
+
+    @Test
+    void explainReturnsDebateWithoutGradingOrSaving() {
+        when(repo.findExplanation(7L)).thenReturn(Optional.of(new JudgementExplanation("낙관", "비관")));
+
+        assertThat(service.explain(7L)).isEqualTo(new JudgementExplanation("낙관", "비관"));
+        verify(client, org.mockito.Mockito.never()).judge(any());
+        verify(repo, org.mockito.Mockito.never()).ensureUser(anyString());
+    }
+
+    @Test
+    void explainWithoutDebateIsEmpty() {
+        when(repo.findExplanation(7L)).thenReturn(Optional.empty());
+        assertThat(service.explain(7L)).isEqualTo(JudgementExplanation.EMPTY);
+    }
+
+    @Test
+    void explainUnknownStepThrows() {
+        when(repo.findStep(99L)).thenReturn(Optional.empty());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.explain(99L))
+                .isInstanceOf(JudgementExceptions.StepNotFound.class);
+    }
+
+    @Test
+    void sendsPublishedDebateToJudgeServer() {
+        String debate = "{\"bull\":\"동결은 은행에 도움이 될 수 있어요.\",\"bear\":\"연체가 늘면 부담이 될 수 있어요.\"}";
+        when(repo.findStep(7L)).thenReturn(Optional.of(new JudgementStep(7L, 3L, STEP.keyFactsJson(),
+                STEP.chainJson(), STEP.counterJson(), STEP.conceptIds(), debate)));
+        when(client.judge(any())).thenReturn(new JudgeApiResponse(new Rubric(2, 3, 1), 6, 67, "claude",
+                REASONS, FEEDBACK));
+
+        service.judge(req(ANSWER));
+
+        ArgumentCaptor<JudgeApiRequest> sent = ArgumentCaptor.forClass(JudgeApiRequest.class);
+        verify(client).judge(sent.capture());
+        assertThat(sent.getValue().debate()).isEqualTo(debate);
     }
 
     @Test

@@ -267,3 +267,57 @@ def test_api_feedback_when_judge_raises(monkeypatch):
     assert d["grader"] == "rule"
     assert d["feedback"]["think_more"] == judge.FIXED_THINK_MORE
     assert [c["used"] for c in d["feedback"]["chain"]] == [True, False, True]
+
+
+# --- 토론 (debate.py 가 미리 만든 낙관·비관, conventions P21) ---
+
+DEBATE = {"bull": "동결 → 예대금리차 유지 → 은행 실적에 도움이 될 수 있어요.",
+          "bear": "경기 둔화로 연체가 늘면 은행 실적에 부담이 될 수 있어요."}
+
+
+def _data_of(params) -> dict:
+    content = params["messages"][0]["content"]
+    return json.loads(content.removeprefix("<data>\n").removesuffix("\n</data>"))
+
+
+def test_debate_goes_into_prompt_data_but_not_score(monkeypatch):
+    create, calls = fake_create(payload(reasoning=3, rebuttal=2))
+    monkeypatch.setattr(judge, "create", create)
+    r = judge.grade(ANSWER, FACTS, CHAIN, COUNTER, debate=DEBATE)
+    assert _data_of(calls[0][1])["debate"] == DEBATE
+    # 점수는 토론과 무관: 증거 2(코드) + Claude 3·2 = 7 -> 78
+    assert r.rubric == {"evidence": 2, "reasoning": 3, "rebuttal": 2} and r.score == 78
+
+
+def test_no_debate_key_without_debate_or_half_debate():
+    def data(**kw):
+        return json.loads(judge.build_user(ANSWER, FACTS, CHAIN, COUNTER, **kw)
+                          .removeprefix("<data>\n").removesuffix("\n</data>"))
+
+    assert "debate" not in data()
+    assert "debate" not in data(debate={"bull": "x", "bear": ""})
+
+
+def test_api_passes_debate_to_grade(monkeypatch):
+    create, calls = fake_create(payload())
+    monkeypatch.setattr(judge, "create", create)
+    monkeypatch.setattr(judge_api, "_judge", judge)
+    body = {"answer": ANSWER, "key_facts": FACTS, "chain": CHAIN, "counter": COUNTER, "card_id": 3,
+            "debate": DEBATE}
+    d = TestClient(judge_api.app).post("/judge", json=body).json()
+    assert d["grader"] == "claude"
+    assert _data_of(calls[0][1])["debate"] == DEBATE
+
+
+def test_api_null_debate_is_same_as_missing(monkeypatch):
+    create, calls = fake_create(payload())
+    monkeypatch.setattr(judge, "create", create)
+    monkeypatch.setattr(judge_api, "_judge", judge)
+    body = {"answer": ANSWER, "key_facts": FACTS, "chain": CHAIN, "counter": COUNTER, "debate": None}
+    assert TestClient(judge_api.app).post("/judge", json=body).status_code == 200
+    assert "debate" not in _data_of(calls[0][1])
+
+
+def test_api_rejects_empty_debate_text():
+    body = {"answer": ANSWER, "debate": {"bull": "", "bear": "x"}}
+    assert TestClient(judge_api.app).post("/judge", json=body).status_code == 422

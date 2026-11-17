@@ -45,7 +45,25 @@ def fake_pipeline(monkeypatch, tmp_path, *, etf_code=0, picked_titles=("A", "B")
     monkeypatch.setattr(rd, "classify_candidates", lambda c: calls.append("classify") or c)
     monkeypatch.setattr(rd, "compose_selected", lambda p, d: calls.append(("compose", len(p), d)) or [7, 8])
     monkeypatch.setattr(rd, "refresh_now_views", lambda d: calls.append(("now", d)) or "갱신 0/0종목")
+    monkeypatch.setattr(rd, "debate_cards", lambda ids: calls.append(("debate", list(ids))) or "published 2/2")
     return calls
+
+
+def test_debate_runs_on_composed_cards(monkeypatch, tmp_path):
+    calls = fake_pipeline(monkeypatch, tmp_path)
+    report = rd.run(date(2026, 11, 13), date(2026, 11, 14), collect=False)
+    # 출제한 카드 id 그대로 토론을 만든다 (출제 다음 단계)
+    # 그다음 탭2 지금은 갱신이 이어진다
+    assert calls[-3:] == [("compose", 2, date(2026, 11, 14)), ("debate", [7, 8]), ("now", date(2026, 11, 14))]
+    debate = next(s for s in report.steps if s.name == "토론")
+    assert debate.detail == "published 2/2"
+
+
+def test_no_debate_without_cards(monkeypatch, tmp_path):
+    calls = fake_pipeline(monkeypatch, tmp_path)
+    monkeypatch.setattr(rd, "compose_selected", lambda p, d: [])
+    rd.run(date(2026, 11, 13), date(2026, 11, 14), collect=False)
+    assert not any(isinstance(c, tuple) and c[0] == "debate" for c in calls)
 
 
 def test_run_continues_after_etf_failure_and_logs(monkeypatch, tmp_path):

@@ -94,8 +94,9 @@ def output_schema() -> dict:
 
 def build_user(text: str, key_facts: list[dict], chain: list[dict], counter: list[dict],
                evidence: int = 0, matched_facts: list[str] | None = None,
-               matched_concepts: list[str] | None = None) -> str:
-    """답안과 코드 채점 결과를 JSON 데이터로 감싸 넘긴다 (답안 속 지시문이 프롬프트처럼 읽히지 않게)."""
+               matched_concepts: list[str] | None = None, debate: dict | None = None) -> str:
+    """답안과 코드 채점 결과를 JSON 데이터로 감싸 넘긴다 (답안 속 지시문이 프롬프트처럼 읽히지 않게).
+    debate: 카드의 낙관·비관 토론 {"bull", "bear"} (debate.py 가 미리 만들어 둔 것, 없으면 None)."""
     data = {
         "answer": text,
         "chain": [{"name": c["name"], "aliases": c.get("aliases", [])} for c in chain],
@@ -108,11 +109,14 @@ def build_user(text: str, key_facts: list[dict], chain: list[dict], counter: lis
             "matched_concepts": matched_concepts or [],
         },
     }
+    if debate and debate.get("bull") and debate.get("bear"):
+        data["debate"] = {"bull": debate["bull"], "bear": debate["bear"]}
     return "<data>\n" + json.dumps(data, ensure_ascii=False) + "\n</data>"
 
 
 def ask_claude(text: str, key_facts: list[dict], chain: list[dict], counter: list[dict],
-               card_id: int | None = None, rule: rule_judge.RuleResult | None = None) -> dict:
+               card_id: int | None = None, rule: rule_judge.RuleResult | None = None,
+               debate: dict | None = None) -> dict:
     """Sonnet 1회 호출. 파싱만 하고 자르기·합계·금지 표현은 grade 가 한다."""
     rule = rule or rule_judge.grade(text, key_facts, chain, counter)
     resp = create(
@@ -124,7 +128,7 @@ def ask_claude(text: str, key_facts: list[dict], chain: list[dict], counter: lis
         system=[{"type": "text", "text": PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": build_user(
             text, key_facts, chain, counter,
-            rule.rubric["evidence"], rule.matched_facts, rule.matched_concepts)}],
+            rule.rubric["evidence"], rule.matched_facts, rule.matched_concepts, debate)}],
         output_config={"effort": EFFORT, "format": {"type": "json_schema", "schema": output_schema()}},
     )
     if resp.stop_reason != "end_turn":
@@ -136,12 +140,13 @@ def ask_claude(text: str, key_facts: list[dict], chain: list[dict], counter: lis
 
 
 def grade(text: str, key_facts: list[dict], chain: list[dict], counter: list[dict] | None = None,
-          card_id: int | None = None) -> JudgeResult:
+          card_id: int | None = None, debate: dict | None = None) -> JudgeResult:
+    """debate 는 피드백(더 생각할 점) 재료일 뿐 점수 기준은 바꾸지 않는다. 규칙 채점 전환 때는 쓰지 않는다."""
     counter = counter or []
     rule = rule_judge.grade(text, key_facts, chain, counter)  # 증거 점수와 규칙 채점 대체값
 
     try:
-        data = ask_claude(text, key_facts, chain, counter, card_id, rule)
+        data = ask_claude(text, key_facts, chain, counter, card_id, rule, debate)
         llm = {k: clip(data[k], k) for k in LLM_KEYS}
         reasons = {k: clean_text(data[f"{k}_reason"]) for k in LLM_KEYS}
         path = chain_path(chain, rule.matched_concepts)

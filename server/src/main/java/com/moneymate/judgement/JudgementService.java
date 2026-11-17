@@ -94,7 +94,7 @@ public class JudgementService {
         try {
             result = judgeClient.judge(new JudgeApiRequest(
                     req.answer(), step.keyFactsJson(), step.chainJson(), step.counterJson(),
-                    step.cardId(), step.stepId()));
+                    step.cardId(), step.stepId(), step.debateJson()));
         } catch (RestClientException e) {
             log.warn("채점 서버 호출 실패 (stepId={}): {}", step.stepId(), e.toString());
             save(userId, step, req, hash, null, null, null, null, null);
@@ -110,6 +110,12 @@ public class JudgementService {
         recorder.recordConceptResult(userId, step.conceptIds(), correct);
         return new JudgementResponse(result.score(), correct, result.rubric(), reasons,
                 byClaude ? "claude" : "rule", false, null, result.feedback());
+    }
+
+    /** 근거 없이 설명을 볼 때. 채점·저장·호출 제한 없이 DB 의 토론만 돌려준다 (LLM 호출 없음). */
+    public JudgementExplanation explain(long stepId) {
+        repository.findStep(stepId).orElseThrow(() -> new JudgementExceptions.StepNotFound(stepId));
+        return repository.findExplanation(stepId).orElse(JudgementExplanation.EMPTY);
     }
 
     private void save(String userId, JudgementStep step, JudgementRequest req, String hash, Boolean correct,

@@ -11,10 +11,12 @@
             <arg column="counter_json" javaType="String"/>
             <arg column="concept_ids" javaType="[Ljava.lang.String;"
                  typeHandler="org.apache.ibatis.type.ArrayTypeHandler"/>
+            <arg column="debate_json" javaType="String"/>
         </constructor>
     </resultMap>
 
-    <!-- steps.answer 의 chain·counter 는 개념 id 배열이다. 순서를 지켜 concepts 의 이름·별칭 JSON 으로 바꾼다 -->
+    <!-- steps.answer 의 chain·counter 는 개념 id 배열이다. 순서를 지켜 concepts 의 이름·별칭 JSON 으로 바꾼다.
+         토론은 card_debates 의 published 줄만 (P21). 없으면 NULL -->
     <select id="findStep" resultMap="stepMap">
         SELECT s.id      AS step_id,
                s.card_id AS card_id,
@@ -25,9 +27,29 @@
                (SELECT COALESCE(json_agg(json_build_object('name', k.name, 'aliases', k.aliases) ORDER BY t.ord), '[]'::json)::text
                   FROM jsonb_array_elements_text(COALESCE(s.answer -> 'counter', '[]'::jsonb)) WITH ORDINALITY AS t(id, ord)
                   JOIN concepts k ON k.id = t.id) AS counter_json,
-               ARRAY(SELECT jsonb_array_elements_text(COALESCE(s.answer -> 'chain', '[]'::jsonb))) AS concept_ids
+               ARRAY(SELECT jsonb_array_elements_text(COALESCE(s.answer -> 'chain', '[]'::jsonb))) AS concept_ids,
+               (SELECT json_build_object('bull', d.bull, 'bear', d.bear)::text
+                  FROM card_debates d
+                 WHERE d.card_id = s.card_id
+                   AND d.status = 'published') AS debate_json
           FROM steps s
           JOIN cards c ON c.id = s.card_id
+         WHERE s.id = #{stepId}
+           AND s.kind = 'judgement'
+    </select>
+
+    <resultMap id="explanationMap" type="com.moneymate.judgement.JudgementExplanation">
+        <constructor>
+            <arg column="bull" javaType="String"/>
+            <arg column="bear" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- "모르겠어요, 설명 볼래요": 토론은 published 만 (P21) -->
+    <select id="findExplanation" resultMap="explanationMap">
+        SELECT d.bull, d.bear
+          FROM steps s
+          JOIN card_debates d ON d.card_id = s.card_id AND d.status = 'published'
          WHERE s.id = #{stepId}
            AND s.kind = 'judgement'
     </select>

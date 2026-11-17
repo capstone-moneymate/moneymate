@@ -12,6 +12,9 @@ public interface JudgementRepository {
     /** 판단해보기 단계의 채점 재료. 없거나 kind 가 judgement 가 아니면 빈 값. */
     Optional<JudgementStep> findStep(@Param("stepId") long stepId);
 
+    /** 판단 단계 카드의 published 토론. 판단 단계가 아니거나 토론이 없으면 빈 값. */
+    Optional<JudgementExplanation> findExplanation(@Param("stepId") long stepId);
+
     /** 사용자가 since 이후 낸 판단 답안 수 (하루 호출 제한). */
     int countJudgementsSince(@Param("userId") String userId, @Param("since") OffsetDateTime since);
 

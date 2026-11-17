@@ -31,10 +31,30 @@ class JudgeClientTest {
     }
 
     JudgeApiRequest request() {
+        return request(null);
+    }
+
+    JudgeApiRequest request(String debate) {
         return new JudgeApiRequest("동결 때문에 은행 이익이 는다",
                 "[{\"text\":\"3% 동결\",\"keywords\":[\"3%\"]}]",
                 "[{\"name\":\"기준금리 동결\",\"aliases\":[\"동결\"]}]",
-                "[]", 3L, 7L);
+                "[]", 3L, 7L, debate);
+    }
+
+    @Test
+    void sendsDebateAsJsonObject() {
+        // card_debates 에서 만든 JSON 문자열이 문자열이 아니라 객체로 끼워진다 (judge_api.py Debate)
+        server.expect(requestTo("http://judge/judge"))
+                .andExpect(content().json("""
+                        {"debate":{"bull":"도움이 될 수 있어요","bear":"부담이 될 수 있어요"}}""",
+                        JsonCompareMode.LENIENT))
+                .andRespond(withSuccess("""
+                        {"rubric":{"evidence":0,"reasoning":0,"rebuttal":0},"total":0,"score":0,
+                         "matched_facts":[],"matched_concepts":[],"grader":"rule"}""",
+                        MediaType.APPLICATION_JSON));
+
+        client.judge(request("{\"bull\":\"도움이 될 수 있어요\",\"bear\":\"부담이 될 수 있어요\"}"));
+        server.verify();
     }
 
     @Test
@@ -46,7 +66,7 @@ class JudgeClientTest {
                         {"answer":"동결 때문에 은행 이익이 는다",
                          "key_facts":[{"text":"3% 동결","keywords":["3%"]}],
                          "chain":[{"name":"기준금리 동결","aliases":["동결"]}],
-                         "counter":[], "card_id":3, "step_id":7}""", JsonCompareMode.STRICT))
+                         "counter":[], "card_id":3, "step_id":7, "debate":null}""", JsonCompareMode.STRICT))
                 .andRespond(withSuccess("""
                         {"rubric":{"evidence":1,"reasoning":3,"rebuttal":0},"total":4,"score":44,
                          "matched_facts":["3% 동결"],"matched_concepts":["기준금리 동결"],
