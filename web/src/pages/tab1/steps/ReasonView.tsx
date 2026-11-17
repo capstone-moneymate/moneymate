@@ -5,7 +5,7 @@ import type { AnswerResult, JudgementStep } from '@/types/card'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 /** 근거 최소 글자 수. 근거 작성은 필수 (기술확정안 루브릭) */
-const MIN_REASON = 20
+const MIN_REASON = 5
 
 interface ReasonViewProps {
   step: JudgementStep
