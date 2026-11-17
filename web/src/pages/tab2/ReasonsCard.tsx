@@ -1,156 +1,148 @@
+import { useState } from 'react'
+import { Link } from 'react-router'
 import type { ReasonEvidence, StockReason, StockReasons } from '@/types/overlap'
-import { evidenceKey, evidenceNumbers } from './evidenceNumbers'
-import { formatDate } from './labels'
-import { MY_MAP_BADGE, NO_REASONS_TEXT, REASONS_AI_NOTE } from './notices'
+import { CardLabel, CardTitle } from './CardParts'
+import { shortDate } from './labels'
+import { MY_MAP_BADGE, NEW_SKELETON_BADGE, NO_REASONS_TEXT, reasonsFootNote } from './notices'
 
 /**
- * 카드 ② 이유 (AI 추정). 이유는 가로로 넘겨 본다 (서비스흐름 "이유는 카드로 짧게").
- * 근거 번호는 종목 안에서 처음 나온 순서대로 1부터 다시 매긴다. 같은 자료는 같은 번호다.
+ * 카드 ② 이유 (AI 추정, 시안 20·24). 이유마다 인과 뼈대를 칸으로 잇고 끝에 보유 변화를 둔다.
+ * 파란 칸은 사용자가 배운 개념(learned)이다. 근거는 "근거 · 날짜 제목 외 N건"을 눌러 펼친다.
  * 근거는 제목·날짜·출처·원문 링크만 보여 주고 기사 본문은 보여 주지 않는다 (CLAUDE.md 9).
  */
 export const ReasonsCard = ({ data }: { data: StockReasons | null }) => {
+  const label = (
+    <CardLabel no={2}>
+      이유 <span className="font-normal text-slate-500">AI 추정</span>
+    </CardLabel>
+  )
+
   if (!data || data.reasons.length === 0) {
     return (
-      <CardFrame title="이유">
-        <p className="mt-2 text-sm leading-relaxed text-slate-500">{NO_REASONS_TEXT}</p>
-      </CardFrame>
+      <>
+        {label}
+        <CardTitle>왜 움직였을까요?</CardTitle>
+        <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-5 text-[15px] leading-relaxed text-slate-500">
+          {NO_REASONS_TEXT}
+        </p>
+      </>
     )
   }
 
-  const numbers = evidenceNumbers(data.reasons)
+  const end = data.change === 'up' ? '보유 확대' : '보유 축소'
 
   return (
-    <CardFrame title={data.headline}>
-      <p className="mt-1 text-xs text-slate-400">
-        {formatDate(data.bigPeriodEnd)} 분기 말 기록 기준
-      </p>
-      <ul
-        className="-mx-4 mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2"
-        aria-label="이유 목록 (옆으로 넘겨 보기)"
-      >
+    <>
+      {label}
+      <CardTitle>{data.headline}</CardTitle>
+      <ul className="mt-4 flex flex-col gap-3">
         {data.reasons.map((r, i) => (
-          <li
-            key={`${i}-${r.title}`}
-            className="w-[85%] shrink-0 snap-center rounded-xl bg-slate-50 p-3.5"
-          >
-            <ReasonItem reason={r} index={i + 1} total={data.reasons.length} numbers={numbers} />
+          <li key={`${i}-${r.title}`} className="rounded-2xl bg-slate-50 px-4 py-4">
+            <ReasonItem reason={r} index={i + 1} end={end} />
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs leading-relaxed text-slate-500">{REASONS_AI_NOTE}</p>
-    </CardFrame>
+      <p className="mt-4 text-[13px] leading-relaxed text-slate-500">
+        {reasonsFootNote(shortDate(data.bigPeriodEnd))}
+      </p>
+    </>
   )
 }
 
 const ReasonItem = ({
   reason,
   index,
-  total,
-  numbers,
+  end,
 }: {
   reason: StockReason
   index: number
-  total: number
-  numbers: Map<string, number>
+  end: string
 }) => {
   return (
     <>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-400 tabular-nums">
-          {index} / {total}
-        </span>
-        {reason.inMyMap && <MyMapBadge />}
+        <h3 className="text-[15px] font-bold text-slate-900">
+          이유 {index} · 근거 {reason.evidence.length}개
+        </h3>
+        {reason.inMyMap ? (
+          <Link
+            to="/mypage/map"
+            className="bg-primary/10 text-primary shrink-0 rounded-full px-3 py-1.5 text-[13px] font-bold"
+          >
+            {MY_MAP_BADGE} ›
+          </Link>
+        ) : (
+          <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-[13px] font-bold text-slate-500">
+            {NEW_SKELETON_BADGE}
+          </span>
+        )}
       </div>
-      <h3 className="mt-1 font-bold text-slate-900">{reason.title}</h3>
-      <p className="mt-1 text-sm leading-relaxed text-slate-700">{reason.body}</p>
 
-      <p className="mt-3 text-xs font-semibold text-slate-500">인과 뼈대</p>
-      <ol className="mt-1 flex flex-wrap items-center gap-1 text-xs">
-        {reason.path.map((c, i) => (
-          <li key={c.id} className="flex items-center gap-1">
-            {i > 0 && (
-              <span aria-hidden className="text-slate-400">
-                →
-              </span>
-            )}
+      <ol className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2" aria-label="인과 뼈대">
+        {reason.path.map((c) => (
+          <li key={c.id} className="flex items-center gap-2">
             <span
-              className={`rounded-full px-2 py-0.5 ${
-                c.learned ? 'bg-primary/10 text-primary font-semibold' : 'bg-white text-slate-700'
+              className={`rounded-lg border px-2.5 py-1.5 text-sm font-bold ${
+                c.learned
+                  ? 'border-primary text-primary bg-blue-50'
+                  : 'border-slate-300 bg-white text-slate-800'
               }`}
             >
               {c.name}
             </span>
+            <span aria-hidden className="text-slate-400">
+              →
+            </span>
           </li>
         ))}
         <li>
-          <ForceText direction={reason.direction} />
+          <span className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-sm font-bold text-white">
+            {end}
+          </span>
         </li>
       </ol>
 
-      {reason.evidence.length > 0 && (
-        <>
-          <p className="mt-3 text-xs font-semibold text-slate-500">근거 자료</p>
-          <ul className="mt-1 space-y-1.5">
-            {reason.evidence.map((e) => (
-              <EvidenceLine key={evidenceKey(e)} evidence={e} no={numbers.get(evidenceKey(e))} />
-            ))}
-          </ul>
-        </>
-      )}
+      {reason.evidence.length > 0 && <EvidenceLine evidence={reason.evidence} />}
     </>
   )
 }
 
-/** 시작 개념이 커질 때 끝 개념이 받는 힘 */
-const ForceText = ({ direction }: { direction: 'up' | 'down' }) => {
-  return direction === 'up' ? (
-    <span className="text-up font-semibold">▲ 올리는 힘</span>
-  ) : (
-    <span className="text-down font-semibold">▼ 누르는 힘</span>
-  )
-}
+/** "근거 · 8/14 제목 외 1건" → 누르면 근거 전체(원문 링크) 펼침 */
+const EvidenceLine = ({ evidence }: { evidence: ReasonEvidence[] }) => {
+  const [open, setOpen] = useState(false)
+  const [first] = evidence
 
-const EvidenceLine = ({ evidence, no }: { evidence: ReasonEvidence; no?: number }) => {
   return (
-    <li className="flex gap-1.5 text-xs leading-relaxed">
-      <span className="shrink-0 font-semibold text-slate-500 tabular-nums">[{no}]</span>
-      <span className="min-w-0">
-        <a
-          href={evidence.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary break-words underline underline-offset-2"
-        >
-          {evidence.title}
-        </a>
-        <span className="block text-slate-400">
-          {evidence.publishedDate}
-          {evidence.issuerName ? ` · ${evidence.issuerName}` : ''}
-        </span>
-      </span>
-    </li>
-  )
-}
-
-export const MyMapBadge = () => {
-  return (
-    <span className="bg-primary/10 text-primary inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold">
-      {MY_MAP_BADGE}
-    </span>
-  )
-}
-
-const CardFrame = ({ title, children }: { title: string; children: React.ReactNode }) => {
-  return (
-    <section className="mx-5 mt-3 rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-2">
-        <p className="text-primary text-xs font-bold">카드 ②</p>
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-          AI 추정
-        </span>
-      </div>
-      <h2 className="mt-0.5 text-lg font-bold text-slate-900">{title}</h2>
-      {children}
-    </section>
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="w-full text-left text-sm leading-relaxed text-slate-500"
+      >
+        근거 · {shortDate(first.publishedDate)} {first.title}
+        {evidence.length > 1 ? ` 외 ${evidence.length - 1}건` : ''}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1.5">
+          {evidence.map((e) => (
+            <li key={e.url} className="text-[13px] leading-relaxed">
+              <a
+                href={e.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary break-words underline underline-offset-2"
+              >
+                {e.title}
+              </a>
+              <span className="block text-slate-400">
+                {e.publishedDate}
+                {e.issuerName ? ` · ${e.issuerName}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
