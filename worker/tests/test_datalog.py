@@ -112,6 +112,24 @@ def test_facts_strings_comments_and_anonymous_vars():
     assert r.get("has_out") == {("국채 금리",)}
 
 
+def test_escaped_quote_does_not_end_string_or_start_comment():
+    # 리뷰 반영: 문자열 안의 \" 뒤에 오는 % 를 주석으로 자르지 않는다
+    r = evaluate(parse('p("a\\"%b"). % 진짜 주석'))
+    assert r.get("p") == {('a"%b',)}
+
+
+def test_anonymous_variable_does_not_collide_with_named_ones():
+    # 리뷰 반영: _ 는 매번 다른 변수라 이름이 _1 인 변수와 섞이지 않는다
+    r = evaluate(parse('q(a, b, c). p(X) :- q(_, _1, X).'))
+    assert r.get("p") == {("c",)}
+
+
+def test_underscore_prefixed_named_variable_allowed_in_head():
+    # 리뷰 반영: _X 는 이름 있는 변수라 머리에 쓸 수 있다 (_ 하나만 막는다)
+    r = evaluate(parse('q(a). p(_X) :- q(_X).'))
+    assert r.get("p") == {("a",)}
+
+
 @pytest.mark.parametrize("text, message", [
     ("p(X) :- q(Y).", "몸통에 없어요"),             # 안전하지 않은 규칙
     ("p(X) :- q(X * 2).", "머리에서만"),            # 곱은 머리에서만

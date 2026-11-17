@@ -23,6 +23,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 MAX_ROUNDS = 10_000  # 곱이 끝없이 커지는 잘못된 규칙을 막는 안전장치 (개념 사전은 몇 회차면 끝난다)
+ANON = "_#"          # 이름 없는 변수(_)의 내부 이름 앞머리. # 은 규칙 글에 쓸 수 없어 _1·_X 같은 이름과 겹치지 않는다
 
 Fact = tuple  # 상수만 담긴 튜플. 예: ("rate_cut", "bond_yield", -1)
 
@@ -82,11 +83,18 @@ _TOKEN = re.compile(r'\s*(?:(:-)|([(),.*])|(-?\d+)|("(?:[^"\\]|\\.)*")|([A-Za-z_
 def _strip_comments(text: str) -> str:
     out = []
     for line in text.splitlines():
-        in_str = False
+        in_str = escaped = False
         for i, ch in enumerate(line):
-            if ch == '"':
-                in_str = not in_str
-            elif not in_str and (ch == "%" or line.startswith("//", i)):
+            if in_str:
+                if escaped:
+                    escaped = False          # \" 의 따옴표는 문자열을 닫지 않는다
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+            elif ch == '"':
+                in_str = True
+            elif ch == "%" or line.startswith("//", i):
                 line = line[:i]
                 break
         out.append(line)
@@ -173,7 +181,7 @@ class _Parser:
         if kind == "name":
             if value == "_":
                 self.anon += 1
-                return Var(f"_{self.anon}")
+                return Var(f"{ANON}{self.anon}")
             return Var(value) if value[0].isupper() or value[0] == "_" else value
         raise DatalogError(f"값이 와야 하는데 {value!r} 가 왔어요")
 
@@ -200,7 +208,7 @@ def _check_rule(rule: Rule) -> Rule:
     unsafe = sorted(v for v in _vars(rule.head) if v not in body_vars)
     if unsafe:
         raise DatalogError(f"머리의 변수 {', '.join(unsafe)} 가 몸통에 없어요: {rule}")
-    if any(v.startswith("_") for v in _vars(rule.head)):
+    if any(v.startswith(ANON) for v in _vars(rule.head)):
         raise DatalogError(f"머리에는 이름 없는 변수(_)를 쓸 수 없어요: {rule}")
     return rule
 
@@ -293,7 +301,7 @@ def evaluate(program: Program, facts: dict[str, set[Fact]] | None = None) -> Res
 def _fmt(atom: Atom) -> str:
     def term(t):
         if isinstance(t, Var):
-            return "_" if t.name.startswith("_") else t.name
+            return "_" if t.name.startswith(ANON) else t.name
         if isinstance(t, Product):
             return " * ".join(term(f) for f in t.factors)
         return f'"{t}"' if isinstance(t, str) else str(t)
