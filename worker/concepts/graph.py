@@ -1,5 +1,8 @@
 """개념 사전 경로 탐색 (B). 개념 사이의 연결(올리는 힘 / 누르는 힘)을 부호 있는 방향 그래프로 읽고,
-시작 개념에서 결과 개념까지의 경로·최종 방향·모호성을 코드가 계산한다.
+시작 개념에서 결과 개념까지의 경로·최종 방향·모호성을 계산한다.
+
+방향과 모호성은 규칙(concepts/rules.dl)을 Datalog 엔진(concepts/datalog.py)으로 고정점까지 계산해 정한다 (#156).
+경로 나열(퀴즈 정답 순서)은 아래 signed_paths 가 하고, effect() 가 두 결과가 같은지 매번 확인한다.
 
 실행 (worker/ 에서):
     python -m concepts.graph                                        # 순환 검사 + 모호한 개념 쌍 목록
@@ -16,9 +19,13 @@ import argparse
 import csv
 import sys
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
+from concepts import datalog
+
 SEEDS = Path(__file__).resolve().parents[2] / "db" / "seeds"
+RULES = Path(__file__).with_name("rules.dl")
 UP, DOWN, AMBIGUOUS = "up", "down", "ambiguous"
 SIGN = {UP: 1, DOWN: -1}
 
@@ -103,11 +110,52 @@ def signed_paths(g: Graph, start: str, end: str) -> list[tuple[list[str], int]]:
     return sorted(found, key=lambda p: (len(p[0]), p[0]))
 
 
+@dataclass(frozen=True)
+class Derived:
+    """규칙 엔진이 낸 결론. effects[(시작, 결과)] = 받는 영향의 부호들, ambiguous = 모호한 쌍."""
+    effects: dict[tuple[str, str], frozenset[int]]
+    ambiguous: frozenset[tuple[str, str]]
+    rounds: int
+
+
+@lru_cache(maxsize=1)
+def _rules() -> datalog.Program:
+    return datalog.parse(RULES.read_text(encoding="utf-8"))
+
+
+def edge_facts(g: Graph) -> frozenset[tuple[str, str, int]]:
+    """연결 → Datalog 사실 edge(원인, 결과, 부호)."""
+    return frozenset((src, dst, s) for src, outs in g.out.items() for dst, s in outs)
+
+
+@lru_cache(maxsize=32)
+def _derive(edges: frozenset[tuple[str, str, int]]) -> Derived:
+    result = datalog.evaluate(_rules(), {"edge": set(edges)})
+    effects: dict[tuple[str, str], set[int]] = {}
+    for x, y, s in result.get("effect"):
+        effects.setdefault((x, y), set()).add(s)
+    return Derived(effects={k: frozenset(v) for k, v in effects.items()},
+                   ambiguous=frozenset(result.get("ambiguous")), rounds=result.rounds)
+
+
+def derive(g: Graph) -> Derived:
+    """그래프의 연결에 규칙을 고정점까지 적용한 결론. 연결이 같으면 다시 계산하지 않는다."""
+    return _derive(edge_facts(g))
+
+
 def effect(g: Graph, start: str, end: str, change: str = UP) -> Effect:
     """start 가 change(up: 커짐/일어남, down: 줄어듦) 했을 때 end 가 받는 힘.
-    모든 경로의 부호가 같으면 그 방향, 다르면 ambiguous, 경로가 없으면 None."""
+    받는 영향이 한 방향이면 그 방향, 두 방향 모두면 ambiguous, 없으면 None.
+
+    방향은 규칙 엔진(rules.dl)의 결론이고, paths 는 그 결론을 이루는 경로(퀴즈 정답 순서용)다.
+    두 계산이 어긋나면(사전에 순환이 생긴 경우 등) 조용히 넘어가지 않고 오류를 낸다.
+    """
     paths = [(p, s * SIGN[change]) for p, s in signed_paths(g, start, end)]
-    signs = {s for _, s in paths}
+    d = derive(g)
+    signs = {s * SIGN[change] for s in d.effects.get((start, end), ())}
+    if signs != {s for _, s in paths} or ((start, end) in d.ambiguous) != (len(signs) > 1):
+        raise RuntimeError(f"규칙 엔진과 경로 계산이 달라요: {start} → {end} "
+                           f"(엔진 {sorted(signs)}, 경로 {sorted({s for _, s in paths})}). 사전에 순환이 있는지 확인하세요")
     if not signs:
         direction = None
     elif len(signs) > 1:
@@ -118,15 +166,8 @@ def effect(g: Graph, start: str, end: str, change: str = UP) -> Effect:
 
 
 def ambiguous_pairs(g: Graph) -> list[Effect]:
-    """방향이 다른 경로가 함께 있는 (시작, 결과) 쌍 전부."""
-    out = []
-    for start in sorted(g.out):
-        for end in sorted(g.out):
-            if start != end:
-                e = effect(g, start, end)
-                if e.direction == AMBIGUOUS:
-                    out.append(e)
-    return out
+    """방향이 다른 경로가 함께 있는 (시작, 결과) 쌍 전부. 규칙 ambiguous(X, Y) 의 결론이다."""
+    return [effect(g, start, end) for start, end in sorted(derive(g).ambiguous)]
 
 
 def format_path(g: Graph, path: list[str]) -> str:
@@ -159,13 +200,17 @@ def main(argv: list[str] | None = None) -> int:
     print(f"개념 {len(g.names)}개, 연결 {n_edges}개")
     cyc = find_cycle(g)
     print("순환: 없음" if cyc is None else f"순환: 있음 ({format_path(g, cyc)})")
+    if cyc:
+        return 1
+    d = derive(g)
+    print(f"규칙 엔진(rules.dl): {d.rounds}회차에 고정점, 영향 결론 {sum(len(v) for v in d.effects.values())}개")
     pairs = ambiguous_pairs(g)
     print(f"모호한 개념 쌍: {len(pairs)}개")
     for e in pairs:
         print(f"- {g.names[e.start]} → {g.names[e.end]}")
         for path, s in e.paths:
             print(f"    {'▲' if s == 1 else '▼'} {format_path(g, path)}")
-    return 1 if cyc else 0
+    return 0
 
 
 if __name__ == "__main__":
