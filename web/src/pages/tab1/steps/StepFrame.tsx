@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 
 interface StepFrameProps {
-  /** 작은 파란 라벨 (예: "개념 학습") */
-  label: string
-  heading: string
+  /** 제목 위 작은 표시 (예: "퀴즈 1 / 2"). 단계 이름은 LearnPage 위쪽 STEP 줄에 있다 */
+  badge?: string
+  /** 큰 제목. 판단해보기처럼 제목을 내용 칸 안에 넣는 단계는 비운다 */
+  heading?: string
   children: ReactNode
   /** 아래 고정 버튼 */
   buttonLabel: string
@@ -11,9 +12,9 @@ interface StepFrameProps {
   onButton: () => void
 }
 
-/** 단계 화면 공통 틀: 라벨 → 큰 제목 → 내용 → 아래 파란 버튼 (UI 수정안 카드 넘김과 같은 모양) */
+/** 단계 화면 공통 틀: (배지) → 큰 제목 → 내용 → 아래 파란 버튼 (UI 시안 05~15) */
 export const StepFrame = ({
-  label,
+  badge,
   heading,
   children,
   buttonLabel,
@@ -21,12 +22,18 @@ export const StepFrame = ({
   onButton,
 }: StepFrameProps) => {
   return (
-    <div className="flex flex-1 flex-col px-5 pt-4 pb-5">
-      <p className="text-primary text-sm font-semibold">{label}</p>
-      <h2 className="mt-2 text-xl leading-snug font-bold whitespace-pre-line text-slate-900">
-        {heading}
-      </h2>
-      <div className="mt-5 flex-1">{children}</div>
+    <div className="flex flex-1 flex-col px-5 pt-6 pb-5">
+      {badge && (
+        <span className="text-primary mb-3 self-start rounded-lg bg-blue-50 px-2.5 py-1 text-sm font-bold">
+          {badge}
+        </span>
+      )}
+      {heading && (
+        <h2 className="mb-5 text-2xl leading-snug font-bold whitespace-pre-line text-slate-900">
+          {heading}
+        </h2>
+      )}
+      <div className="flex-1">{children}</div>
       <button
         type="button"
         // 클릭 이벤트를 넘기지 않는다 (onNext(result?)에 이벤트가 결과로 들어가 점수가 틀어졌던 버그)

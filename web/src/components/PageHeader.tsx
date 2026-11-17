@@ -6,7 +6,7 @@ export const PageHeader = () => {
       <button
         type="button"
         aria-label="알림"
-        className="flex size-10 items-center justify-center rounded-full bg-slate-100 text-slate-700"
+        className="flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-700"
       >
         <svg
           width="20"

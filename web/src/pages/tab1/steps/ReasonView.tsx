@@ -5,7 +5,7 @@ import type { AnswerResult, JudgementStep } from '@/types/card'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 /** 근거 최소 글자 수. 근거 작성은 필수 (기술확정안 루브릭) */
-const MIN_REASON = 20
+const MIN_REASON = 5
 
 interface ReasonViewProps {
   step: JudgementStep
@@ -51,47 +51,56 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
 
   return (
     <StepFrame
-      label="판단해보기"
-      heading={step.question}
-      buttonLabel={submit.isPending ? '채점 중…' : '제출하기'}
+      buttonLabel={submit.isPending ? '채점 중…' : '제출하고 피드백 받기'}
       buttonDisabled={!ready || submit.isPending}
       onButton={send}
     >
-      <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">{step.context}</p>
+      {/* UI 시안 15: "지금 당신이라면?" 칸에 질문, 안내(context)는 그 아래 작게 */}
+      <div className="rounded-3xl bg-slate-100 px-5 py-5">
+        <p className="text-sm text-slate-500">지금 당신이라면?</p>
+        <h2 className="mt-2 text-lg leading-relaxed font-bold text-slate-900">{step.question}</h2>
+      </div>
+      {step.context && <p className="mt-2 px-1 text-sm text-slate-500">{step.context}</p>}
 
       {step.choices.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-2">
-          {step.choices.map((c, i) => (
-            <li key={c}>
-              <button
-                type="button"
-                onClick={() => setChoice(i)}
-                className={`w-full rounded-2xl border px-4 py-3.5 text-left text-sm ${
-                  choice === i
-                    ? 'border-primary text-primary bg-blue-50 font-semibold'
-                    : 'border-slate-200 text-slate-800'
-                }`}
-              >
-                {c}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mt-5 text-sm font-semibold text-slate-700">나의 판단</p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {step.choices.map((c, i) => (
+              <li key={c}>
+                <button
+                  type="button"
+                  onClick={() => setChoice(i)}
+                  className={`w-full rounded-2xl px-4 py-4 text-left font-semibold transition ${
+                    choice === i ? 'bg-primary text-white' : 'bg-slate-100 text-slate-800'
+                  }`}
+                >
+                  {c}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
-      <label className="mt-4 block">
-        <span className="text-sm font-semibold text-slate-700">근거</span>
+      <label className="mt-5 block">
+        <span className="text-sm font-semibold text-slate-700">
+          판단 근거 <span className="text-up">(필수)</span>
+        </span>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={5}
-          placeholder="자료 속 숫자와 오늘 배운 개념을 이어서 써 보세요. 반대로 움직일 수 있는 이유도 있으면 좋아요."
-          className="focus:border-primary mt-1.5 w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none"
+          placeholder="뉴스 속 사실과 오늘 배운 개념을 넣어서 이유를 써 보세요"
+          className="focus:ring-primary mt-2 w-full resize-none rounded-3xl bg-slate-100 px-5 py-4 leading-relaxed outline-none focus:ring-2"
         />
-        <span className="text-xs text-slate-400">
+      </label>
+      <div className="mt-1 flex justify-between text-xs text-slate-400">
+        <span className="tabular-nums">
           {reason.trim().length} / 최소 {MIN_REASON}자
         </span>
-      </label>
+        <span>근거로 적용판단 점수를 매겨요</span>
+      </div>
       {limited ? (
         <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
           <p>{limited}</p>
