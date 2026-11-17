@@ -76,6 +76,13 @@ def test_unit_change_allows_rounding_in_fractional_shares():
     assert unit_change_ratio(prev, curr) is not None
 
 
+def test_unit_change_detected_when_most_scale_together():
+    # #141: 예전에는 "모든 종목"이 같은 비율일 때만 경고해서 2026-11-10 KoAct(88%)를 놓쳤다.
+    # 10종목 중 8종목 ×1.064, 2종목은 그날 실제 매매 → 80% 라 경고
+    prev, curr = prev_curr([1.064] * 8 + [1.3, 0.7])
+    assert unit_change_ratio(prev, curr) == pytest.approx(1.064)
+
+
 def test_no_unit_change_for_normal_trading():
     # 운용사가 일부만 사고팔면 비율이 제각각
     prev, curr = prev_curr([1, 1, 1.1, 0.9, 1, 1.3])
