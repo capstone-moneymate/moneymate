@@ -10,12 +10,16 @@
     edge("a", "b", 1).                                         사실: 그냥 참
 - 대문자나 _ 로 시작하면 변수, 정수·"따옴표 문자열"·소문자 이름은 상수. _ 하나는 이름 없는 변수(매번 다른 변수)
 - % 나 // 뒤는 주석
-- 머리의 변수는 몸통에 나와야 한다(안전 규칙). 곱은 머리에서만, 정수끼리만 쓸 수 있다
-- 부정(!)은 아직 없다 (조건부 연결·국면은 다음 단계)
+- 머리의 변수는 몸통의 긍정 원자에 나와야 한다(안전 규칙). 곱은 머리에서만, 정수끼리만 쓸 수 있다
+- 몸통 원자 앞에 ! 를 붙이면 부정: "그런 사실이 없으면 참" (#158). 예:
+    edge_r(X, Y, S, R) :- edge(X, Y, S), regime(R), !overridden(X, Y, R).
+  부정 원자의 이름 있는 변수는 긍정 원자에서 먼저 정해져야 한다. _ 는 "아무거나"라서 !p(X, _) 는 "X 로 시작하는 p 가 하나도 없음"
 
-계산 방식: semi-naive evaluation
-    매 회차에 "지난 회차에 새로 나온 사실(Δ)"이 몸통 어딘가에 하나 이상 들어간 조합만 다시 본다.
-    이미 써 본 사실끼리의 조합은 다시 계산하지 않는다. 새 사실이 하나도 안 나오면 멈춘다(고정점).
+계산 방식: 층별(stratified) semi-naive evaluation
+    "B 가 없으면 A" 를 판단하려면 B 를 먼저 다 알아야 한다. 그래서 규칙을 층으로 나눠 B 를 A 보다 아래 층에 두고,
+    아래 층부터 차례로 고정점까지 계산한다. "A 가 없으면 A" 처럼 부정이 순환에 걸리면 층을 나눌 수 없어 읽을 때 오류.
+    한 층 안에서는 semi-naive: 매 회차에 "지난 회차에 새로 나온 사실(Δ)"이 몸통 어딘가에 하나 이상 들어간 조합만
+    다시 본다. 새 사실이 하나도 안 나오면 그 층을 멈춘다(고정점).
     값의 종류가 유한하면(개념 사전은 부호가 ±1 뿐) 순환이 있어도 반드시 멈춘다.
 """
 import re
@@ -43,12 +47,21 @@ class Product:
 class Atom:
     pred: str
     args: tuple
+    negated: bool = False  # 몸통에서 ! 가 붙은 원자
 
 
 @dataclass(frozen=True)
 class Rule:
     head: Atom
     body: tuple[Atom, ...]
+
+    @property
+    def positive(self) -> tuple[Atom, ...]:
+        return tuple(a for a in self.body if not a.negated)
+
+    @property
+    def negative(self) -> tuple[Atom, ...]:
+        return tuple(a for a in self.body if a.negated)
 
     def __str__(self) -> str:
         return f"{_fmt(self.head)} :- {', '.join(_fmt(a) for a in self.body)}."
@@ -63,7 +76,8 @@ class Program:
 @dataclass
 class Result:
     relations: dict[str, set[Fact]]
-    rounds: int  # 고정점에 닿기까지 돈 회차 (마지막 "새 사실 없음" 회차 포함)
+    rounds: int      # 고정점에 닿기까지 돈 회차 (층마다 마지막 "새 사실 없음" 회차 포함, 모든 층 합)
+    strata: int = 1  # 규칙을 나눈 층 수
 
     def get(self, pred: str) -> set[Fact]:
         return self.relations.get(pred, set())
@@ -77,7 +91,7 @@ class DatalogError(ValueError):
 # 읽기 (규칙 파일 → Program)
 # ------------------------------------------------------------------
 
-_TOKEN = re.compile(r'\s*(?:(:-)|([(),.*])|(-?\d+)|("(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_]*))')
+_TOKEN = re.compile(r'\s*(?:(:-)|([(),.*!])|(-?\d+)|("(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_]*))')
 
 
 def _strip_comments(text: str) -> str:
@@ -140,10 +154,10 @@ class _Parser:
             head = self.atom()
             if self.peek() == ("arrow", ":-"):
                 self.take(":-")
-                body = [self.atom()]
+                body = [self.literal()]
                 while self.peek() == ("punct", ","):
                     self.take(",")
-                    body.append(self.atom())
+                    body.append(self.literal())
                 self.take(".")
                 prog.rules.append(_check_rule(Rule(head, tuple(body))))
             else:
@@ -152,6 +166,14 @@ class _Parser:
                     raise DatalogError(f"사실에는 변수나 곱을 쓸 수 없어요: {_fmt(head)}")
                 prog.facts[head.pred].add(head.args)
         return prog
+
+    def literal(self) -> Atom:
+        """몸통 원자 하나. 앞에 ! 가 있으면 부정."""
+        if self.peek() == ("punct", "!"):
+            self.take("!")
+            a = self.atom()
+            return Atom(a.pred, a.args, negated=True)
+        return self.atom()
 
     def atom(self) -> Atom:
         pred = self.take(kind="name")[1]
@@ -201,7 +223,9 @@ def _vars(atom: Atom) -> set[str]:
 
 
 def _check_rule(rule: Rule) -> Rule:
-    body_vars = set().union(*(_vars(a) for a in rule.body))
+    if not rule.positive:
+        raise DatalogError(f"몸통에 ! 없는 원자가 하나 이상 있어야 해요: {rule}")
+    body_vars = set().union(*(_vars(a) for a in rule.positive))
     for a in rule.body:
         if any(isinstance(t, Product) for t in a.args):
             raise DatalogError(f"곱(*)은 머리에서만 쓸 수 있어요: {rule}")
@@ -210,12 +234,42 @@ def _check_rule(rule: Rule) -> Rule:
         raise DatalogError(f"머리의 변수 {', '.join(unsafe)} 가 몸통에 없어요: {rule}")
     if any(v.startswith(ANON) for v in _vars(rule.head)):
         raise DatalogError(f"머리에는 이름 없는 변수(_)를 쓸 수 없어요: {rule}")
+    for a in rule.negative:
+        free = sorted(v for v in _vars(a) if v not in body_vars and not v.startswith(ANON))
+        if free:
+            raise DatalogError(f"! 원자의 변수 {', '.join(free)} 가 앞의 긍정 원자에 없어요: {rule}")
     return rule
 
 
+def stratify(rules: list[Rule]) -> list[list[Rule]]:
+    """규칙을 층으로 나눈다. 머리 관계는 몸통 관계보다 같거나 높은 층, ! 로 쓴 관계보다는 높은 층.
+
+    관계가 n 개면 층은 n 을 넘을 수 없어서, 넘으면 부정이 순환에 걸린 것이다("A 가 없으면 A").
+    """
+    preds = {r.head.pred for r in rules} | {a.pred for r in rules for a in r.body}
+    level = dict.fromkeys(preds, 0)
+    changed = True
+    while changed:
+        changed = False
+        for r in rules:
+            for a in r.body:
+                need = level[a.pred] + (1 if a.negated else 0)
+                if level[r.head.pred] < need:
+                    level[r.head.pred] = need
+                    changed = True
+                    if need > len(preds):
+                        raise DatalogError(f"부정(!)이 순환에 걸려 층을 나눌 수 없어요: {r}")
+    out: dict[int, list[Rule]] = defaultdict(list)
+    for r in rules:
+        out[level[r.head.pred]].append(r)
+    return [out[k] for k in sorted(out)]
+
+
 def parse(text: str) -> Program:
-    """규칙 파일 글 → Program (규칙 목록, 파일 안의 사실)."""
-    return _Parser(text).program()
+    """규칙 파일 글 → Program (규칙 목록, 파일 안의 사실). 부정이 순환에 걸리면 여기서 오류."""
+    prog = _Parser(text).program()
+    stratify(prog.rules)
+    return prog
 
 
 # ------------------------------------------------------------------
@@ -238,18 +292,26 @@ def _match(atom: Atom, fact: Fact, binding: dict) -> dict | None:
     return out
 
 
-def _join(body: tuple[Atom, ...], delta_at: int, delta: dict, total: dict, i: int = 0, binding: dict | None = None):
-    """몸통을 왼쪽부터 맞춰 나가며 가능한 변수 묶음을 낸다. delta_at 번째 원자만 Δ 에서, 나머지는 전체에서 찾는다."""
+def _holds_none(atoms: tuple[Atom, ...], binding: dict, total: dict) -> bool:
+    """! 원자마다 맞는 사실이 하나도 없으면 True. _ 는 아무 값과 맞는다(아래 층이라 이미 다 계산돼 있다)."""
+    return not any(_match(a, f, binding) is not None for a in atoms for f in total.get(a.pred, ()))
+
+
+def _join(body: tuple[Atom, ...], delta_at: int, delta: dict, total: dict, i: int = 0, binding: dict | None = None,
+          negative: tuple[Atom, ...] = ()):
+    """긍정 원자를 왼쪽부터 맞춰 나가며 가능한 변수 묶음을 낸다. delta_at 번째 원자만 Δ 에서, 나머지는 전체에서 찾는다.
+    끝까지 맞춘 묶음은 ! 원자가 모두 거짓일 때만 낸다."""
     binding = binding if binding is not None else {}
     if i == len(body):
-        yield binding
+        if not negative or _holds_none(negative, binding, total):
+            yield binding
         return
     atom = body[i]
     source = delta if i == delta_at else total
     for fact in source.get(atom.pred, ()):
         b = _match(atom, fact, binding)
         if b is not None:
-            yield from _join(body, delta_at, delta, total, i + 1, b)
+            yield from _join(body, delta_at, delta, total, i + 1, b, negative)
 
 
 def _ground(head: Atom, binding: dict) -> Fact:
@@ -271,31 +333,35 @@ def _ground(head: Atom, binding: dict) -> Fact:
 
 
 def evaluate(program: Program, facts: dict[str, set[Fact]] | None = None) -> Result:
-    """규칙을 사실에 적용해 새 사실이 안 나올 때까지 반복한다. facts 는 파일 밖에서 넣는 사실(개념 사전 연결 등)."""
+    """규칙을 사실에 적용해 새 사실이 안 나올 때까지 반복한다. facts 는 파일 밖에서 넣는 사실(개념 사전 연결 등).
+    층이 여럿이면 아래 층부터 차례로 고정점까지 계산한다."""
     total: dict[str, set[Fact]] = defaultdict(set)
     for source in (program.facts, facts or {}):
         for pred, rows in source.items():
             total[pred] |= {tuple(r) for r in rows}
-    delta = {p: set(rows) for p, rows in total.items()}  # 1회차: 처음 사실이 모두 "새 사실"
 
+    strata = stratify(program.rules)
     rounds = 0
-    while any(delta.values()):
-        rounds += 1
-        if rounds > MAX_ROUNDS:
-            raise DatalogError(f"{MAX_ROUNDS}회차가 넘도록 끝나지 않아요 (곱이 계속 커지는 규칙인지 확인)")
-        new: dict[str, set[Fact]] = defaultdict(set)
-        for rule in program.rules:
-            for k, atom in enumerate(rule.body):
-                if not delta.get(atom.pred):
-                    continue
-                for binding in _join(rule.body, k, delta, total):
-                    fact = _ground(rule.head, binding)
-                    if fact not in total[rule.head.pred]:
-                        new[rule.head.pred].add(fact)
-        for pred, rows in new.items():
-            total[pred] |= rows
-        delta = new
-    return Result(relations=dict(total), rounds=rounds)
+    for rules in strata:
+        delta = {p: set(rows) for p, rows in total.items()}  # 층의 1회차: 지금까지 아는 사실이 모두 "새 사실"
+        while any(delta.values()):
+            rounds += 1
+            if rounds > MAX_ROUNDS:
+                raise DatalogError(f"{MAX_ROUNDS}회차가 넘도록 끝나지 않아요 (곱이 계속 커지는 규칙인지 확인)")
+            new: dict[str, set[Fact]] = defaultdict(set)
+            for rule in rules:
+                pos, neg = rule.positive, rule.negative
+                for k, atom in enumerate(pos):
+                    if not delta.get(atom.pred):
+                        continue
+                    for binding in _join(pos, k, delta, total, negative=neg):
+                        fact = _ground(rule.head, binding)
+                        if fact not in total[rule.head.pred]:
+                            new[rule.head.pred].add(fact)
+            for pred, rows in new.items():
+                total[pred] |= rows
+            delta = new
+    return Result(relations=dict(total), rounds=rounds, strata=len(strata) or 1)
 
 
 def _fmt(atom: Atom) -> str:
@@ -305,4 +371,4 @@ def _fmt(atom: Atom) -> str:
         if isinstance(t, Product):
             return " * ".join(term(f) for f in t.factors)
         return f'"{t}"' if isinstance(t, str) else str(t)
-    return f"{atom.pred}({', '.join(term(a) for a in atom.args)})"
+    return f"{'!' if atom.negated else ''}{atom.pred}({', '.join(term(a) for a in atom.args)})"
