@@ -11,7 +11,9 @@
 - P15: 추세 기준일 = 그 스냅샷이 속한 분기의 분기 말. 그날 스냅샷이 없으면 그 이후 첫 스냅샷(수집 시작일).
        A의 overlap.py 가 ETF 기준 스냅샷을 고르는 방식과 같다
 - P6: 스냅샷 수량·코드는 건드리지 않고 계산 컬럼만 채운다
-- 1CU 기준 수량이라 자금 유입 보정은 하지 않는다 (findings.md B칸)
+- 1CU 기준 수량이라 자금 유입 보정(매일 중앙값 빼기)은 하지 않는다 (findings.md B칸)
+- 대신 전 종목이 같은 비율로 움직인 "공통 이동일"만 그 비율로 나눠 되돌린다 (compute/etf_shift.py, #141).
+  추세는 기준일 이후 공통 이동일 비율을 곱한 배수로, 전일 대비는 그날 비율로 나눈다
 
 화면 표시용 값이다. 겹침 판정은 overlap.py 가 13F 분기 말 기준으로 따로 계산한다 (overlap.md).
 """
@@ -22,6 +24,7 @@ from decimal import Decimal
 
 import config
 from common.quarters import latest_quarter_end
+from compute.etf_shift import adjust, common_shift, day_shift
 
 
 def chg_pct(now: Decimal | None, prev: Decimal | None) -> float | None:
@@ -47,10 +50,24 @@ def previous_date(snapshot: date, dates: list[date]) -> date | None:
     return max(before) if before else None
 
 
-def compute_changes(curr: dict[str, Decimal], base: dict[str, Decimal],
-                    prev: dict[str, Decimal]) -> dict[str, tuple[float | None, float | None]]:
-    """raw_code -> (trend_chg_pct, day_chg_pct). curr 에 있는 종목만 (편출 종목은 그날 행이 없다)."""
-    return {code: (chg_pct(s, base.get(code)), chg_pct(s, prev.get(code))) for code, s in curr.items()}
+def compute_changes(curr: dict[str, Decimal], base: dict[str, Decimal], prev: dict[str, Decimal],
+                    trend_factor: float = 1.0,
+                    day_factor: float = 1.0) -> dict[str, tuple[float | None, float | None]]:
+    """raw_code -> (trend_chg_pct, day_chg_pct). curr 에 있는 종목만 (편출 종목은 그날 행이 없다).
+
+    trend_factor: 기준일 이후 공통 이동 배수, day_factor: 그날 공통 이동 비율. 지금 수량을 나눠 되돌린다 (etf_shift)
+    """
+    return {code: (chg_pct(adjust(s, trend_factor), base.get(code)), chg_pct(adjust(s, day_factor), prev.get(code)))
+            for code, s in curr.items()}
+
+
+def shift_factors(snapshot: date, base_date: date | None, prev_date: date | None,
+                  snapshots: dict[date, dict[str, Decimal]]) -> tuple[float, float]:
+    """(추세 배수, 전일 비율). 추세는 기준일~그날 사이 공통 이동일 비율의 곱, 전일은 그날 하루 비율. 없으면 1."""
+    window = {d: s for d, s in snapshots.items() if base_date and base_date <= d <= snapshot}
+    trend = common_shift(window).factor
+    day = day_shift(snapshots[prev_date], snapshots[snapshot]) if prev_date else None
+    return trend, day or 1.0
 
 
 def summarize(changes: dict[str, tuple[float | None, float | None]],
@@ -89,13 +106,29 @@ def load_snapshot(conn, etf_code: str, d: date | None) -> dict[str, Decimal]:
     return dict(rows)
 
 
+def load_snapshots(conn, etf_code: str, start: date | None, end: date) -> dict[date, dict[str, Decimal]]:
+    """start~end 사이 날짜별 스냅샷 (공통 이동 보정용)."""
+    if start is None:
+        return {}
+    rows = conn.execute(
+        """SELECT snapshot_date, raw_code, shares FROM holdings_etf
+           WHERE etf_code = %s AND snapshot_date BETWEEN %s AND %s""", (etf_code, start, end)
+    ).fetchall()
+    out: dict[date, dict[str, Decimal]] = {}
+    for d, code, shares in rows:
+        out.setdefault(d, {})[code] = shares
+    return out
+
+
 def apply_day(conn, etf_code: str, snapshot: date, dates: list[date]):
-    """한 ETF·한 날짜를 계산해 반영한다. (기준일, 직전일, 변화) 를 돌려준다."""
+    """한 ETF·한 날짜를 계산해 반영한다. (기준일, 직전일, 변화, 추세 배수, 전일 비율) 을 돌려준다."""
     base_date = trend_base_date(snapshot, dates)
     prev_date = previous_date(snapshot, dates)
-    changes = compute_changes(load_snapshot(conn, etf_code, snapshot),
-                              load_snapshot(conn, etf_code, base_date),
-                              load_snapshot(conn, etf_code, prev_date))
+    start = min(d for d in (base_date, prev_date) if d) if (base_date or prev_date) else None
+    snaps = load_snapshots(conn, etf_code, start, snapshot)
+    trend_factor, day_factor = shift_factors(snapshot, base_date, prev_date, snaps)
+    changes = compute_changes(snaps.get(snapshot, {}), snaps.get(base_date, {}), snaps.get(prev_date, {}),
+                              trend_factor, day_factor)
     with conn.cursor() as cur:
         for code, (trend, day) in changes.items():
             cur.execute(
@@ -103,7 +136,7 @@ def apply_day(conn, etf_code: str, snapshot: date, dates: list[date]):
                    WHERE etf_code = %s AND snapshot_date = %s AND raw_code = %s""",
                 (trend, day, base_date, etf_code, snapshot, code),
             )
-    return base_date, prev_date, changes
+    return base_date, prev_date, changes, trend_factor, day_factor
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -123,10 +156,15 @@ def main(argv: list[str] | None = None) -> int:
             if not dates or (only and only not in dates):
                 print(f"[{code}] 건너뜀: 스냅샷이 없음 (collectors/etf_holdings.py 를 먼저)")
                 continue
+            shifted = []
             for d in targets:
-                base_date, prev_date, changes = apply_day(conn, code, d, dates)
+                base_date, prev_date, changes, trend_factor, day_factor = apply_day(conn, code, d, dates)
+                if day_factor != 1.0:
+                    shifted.append(f"{d}({(day_factor - 1) * 100:+.2f}%)")
             print(f"[{code}] {name}: {len(targets)}일 계산. 최신 {d} (추세 기준 {base_date}, 전일 {prev_date or '없음'})")
-            print(f"{'':9s}{summarize(changes)}")
+            print(f"{'':9s}{summarize(changes)}  추세 보정 배수 {trend_factor:.4f}")
+            if shifted:
+                print(f"{'':9s}공통 이동일 {len(shifted)}개: {', '.join(shifted)}")
         if args.save:
             conn.commit()
             print("\nDB 에 반영했습니다.")

@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # worker/ 를 i
 
 import config  # noqa: E402,F401  .env 를 읽어 KRX_ID·KRX_PW 를 환경변수로 올린다
 from common.normalize import normalize_kr_code  # noqa: E402
+from compute.etf_shift import SHIFT_SHARE, day_shift  # noqa: E402
 
 KST = ZoneInfo("Asia/Seoul")  # 배포 서버(UTC)에서도 한국 날짜로 돌도록
 
@@ -42,9 +43,8 @@ ETFS = {
 NON_STOCK_CODES = {"010010", "H00000"}  # 원화현금, 설정현금액
 HOLDING_COLUMNS = ["etf_code", "snapshot_date", "raw_code", "stock_name", "shares"]
 
-# 설정 단위 변경 경고: 겹치는 종목이 이만큼 이상이고, 모든 종목의 수량 비율이 같으면 경고
-UNIT_CHANGE_MIN_COMMON = 5
-UNIT_CHANGE_TOLERANCE = 0.005  # 비율 차이 0.5% 안이면 "같은 비율"로 본다 (소수 수량 반올림 여유)
+# 공통 이동(설정 단위 변경·현금 비중 조정) 경고 기준은 compute/etf_shift.py 하나에 둔다 (#141).
+# 예전에는 "모든 종목"이 같은 비율일 때만 경고해서, 2026-11-10·11-13 KoAct(88%만 같이 움직임)를 놓쳤다
 
 # 종목명 비교에서 빼는 단어: 회사 형태·주식 종류처럼 다른 회사도 흔히 같이 쓰는 말
 GENERIC_NAME_WORDS = {
@@ -82,22 +82,14 @@ def holdings_from_pykrx(raw: pd.DataFrame, etf_code: str, snapshot_date: date) -
 
 
 def unit_change_ratio(prev: dict[str, Decimal], curr: dict[str, Decimal]) -> float | None:
-    """두 스냅샷에 모두 있는 종목의 수량이 전부 같은 비율로 변했으면 그 비율, 아니면 None.
+    """두 스냅샷에 모두 있는 종목의 대부분(SHIFT_SHARE 이상)이 같은 비율로 변했으면 그 비율, 아니면 None.
 
-    1CU 수량은 운용사가 사고팔면 종목마다 다르게 변한다. 전 종목이 같은 비율로 변했다면 종목을 고른 매매가 아니라
-    설정 단위 변경(예: 2배)이나 1CU 안 현금 비중 조정(예: 현금이 늘어 주식이 ×0.98)이라, 그대로 두면 추세가 전 종목
-    같은 쪽으로 밀린다.
+    1CU 수량은 운용사가 사고팔면 종목마다 다르게 변한다. 대부분이 같은 비율로 변했다면 종목을 고른 매매가 아니라
+    설정 단위 변경(예: 2배)이나 1CU 안 현금 비중 조정(예: 현금이 늘어 주식이 ×0.98)이다. 몇 종목은 그날 실제로
+    사고팔 수 있어 "모두"가 아니라 "대부분"으로 본다. 판정은 compute/etf_shift.day_shift 와 같고,
+    추세 계산(etf_trend.py)은 이 비율로 나눠 되돌린다.
     """
-    common = [k for k in curr if k in prev and prev[k] > 0]
-    if len(common) < UNIT_CHANGE_MIN_COMMON:
-        return None
-    ratios = [float(curr[k] / prev[k]) for k in common]
-    mid = sorted(ratios)[len(ratios) // 2]
-    if abs(mid - 1) <= UNIT_CHANGE_TOLERANCE:
-        return None
-    if all(abs(r / mid - 1) <= UNIT_CHANGE_TOLERANCE for r in ratios):
-        return mid
-    return None
+    return day_shift(prev, curr)
 
 
 def fetch_holdings(etf_code: str, d: date, retries: int = 3) -> pd.DataFrame:
@@ -249,7 +241,8 @@ def collect_day(conn, etf_code: str, d: date) -> int | None:
     prev_date, prev = previous_snapshot(conn, etf_code, d)
     ratio = unit_change_ratio(prev, dict(zip(df["raw_code"], df["shares"])))
     if ratio is not None:
-        print(f"  [경고] {etf_code} {prev_date} → {d}: 전 종목 수량이 {ratio:.4f}배로 같이 변함. "
+        print(f"  [경고] {etf_code} {prev_date} → {d}: 종목 {SHIFT_SHARE:.0%} 이상의 수량이 {ratio:.4f}배로 같이 변함 "
+              "(추세 계산 때 이 비율로 나눠 되돌림, compute/etf_shift.py). "
               "설정 단위 변경이나 1CU 안 현금 비중 조정으로 보인다. 원화현금(010010)이 반대로 움직였으면 "
               "현금 비중 조정인데, 현금 변화 크기로 설명되지 않는 만큼(예: 2026-07-31)은 따로 확인하고, "
               "현금이 같이 움직이지 않았으면 운용사 공시·공지를 확인할 것 (findings.md B칸)")
