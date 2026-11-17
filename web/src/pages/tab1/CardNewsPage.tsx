@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
 import { CloseLink } from '@/pages/tab1/CloseLink'
-import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
-/** 카드뉴스: 2~3장을 스토리처럼 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1) */
+/** 카드뉴스: 파란 화면에서 2~3장을 스토리처럼 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1, UI 시안 02~04) */
 export const CardNewsPage = () => {
   const { cardId = '' } = useParams()
   const navigate = useNavigate()
@@ -24,71 +23,72 @@ export const CardNewsPage = () => {
   }
 
   const slide = card.slides[index]
-  const isLast = index === card.slides.length - 1
+  const total = card.slides.length
+  const isLast = index === total - 1
 
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="flex items-center gap-3 px-5 pt-5">
-        {/* 장 수만큼 막대. 지난 장과 지금 장은 파랗게 */}
-        <div className="flex flex-1 gap-1" aria-label={`${index + 1} / ${card.slides.length}장`}>
-          {card.slides.map((s, i) => (
-            <span
-              key={s.label}
-              className={`h-1 flex-1 rounded-full ${i <= index ? 'bg-primary' : 'bg-slate-200'}`}
-            />
-          ))}
-        </div>
-        <CloseLink />
+    <div className="bg-primary flex min-h-full flex-col px-6 pt-7 pb-6 text-white">
+      {/* 장 수만큼 막대. 지난 장과 지금 장은 흰색 */}
+      <div className="flex gap-1.5" aria-label={`${index + 1} / ${total}장`}>
+        {card.slides.map((s, i) => (
+          <span
+            key={s.label}
+            className={`h-1 flex-1 rounded-full ${i <= index ? 'bg-white' : 'bg-white/30'}`}
+          />
+        ))}
       </div>
 
-      <p className="px-5 pt-4 text-sm font-semibold text-slate-500">{card.title}</p>
+      <div className="mt-6 flex items-center justify-between">
+        <span className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold">
+          {[card.theme, `카드 ${index + 1} / ${total}`].filter(Boolean).join(' · ')}
+        </span>
+        <CloseLink tone="onBlue" />
+      </div>
 
-      <div className="flex flex-1 flex-col">
-        <StepFrame
-          label={`${index + 1} · ${slide.label}`}
-          heading={slide.heading}
-          buttonLabel={isLast ? '학습 시작하기 ›' : '다음 카드 ›'}
-          onButton={() => (isLast ? navigate(`/news/${card.id}/learn`) : setIndex(index + 1))}
+      {/* 본문은 화면 가운데 */}
+      <div className="flex flex-1 flex-col justify-center py-8">
+        <p className="text-sm text-white/80">{slide.label}</p>
+        <h2 className="mt-3 text-3xl leading-tight font-bold whitespace-pre-line">
+          {slide.heading}
+        </h2>
+        <p className="mt-4 leading-relaxed text-white/90">{slide.body}</p>
+        {slide.facts && (
+          <dl className="mt-6 rounded-2xl bg-white/10 px-5 py-2">
+            {slide.facts.map((fact) => (
+              <div key={fact.label} className="flex justify-between gap-3 py-3 text-sm">
+                <dt className="text-white/80">{fact.label}</dt>
+                <dd className="text-right font-bold tabular-nums">{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={() => (isLast ? navigate(`/news/${card.id}/learn`) : setIndex(index + 1))}
+          className="text-primary w-full rounded-2xl bg-white py-4 text-base font-bold transition active:scale-[0.99]"
         >
-          <p className="leading-relaxed text-slate-700">{slide.body}</p>
-          {slide.facts && (
-            <dl className="mt-5 rounded-2xl bg-slate-50 px-4 py-2">
-              {slide.facts.map((fact) => (
-                <div key={fact.label} className="flex justify-between py-2 text-sm">
-                  <dt className="text-slate-600">{fact.label}</dt>
-                  <dd className={`font-semibold tabular-nums ${factColor(fact.value)}`}>
-                    {fact.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {index > 0 && (
-            <button
-              type="button"
-              onClick={() => setIndex(index - 1)}
-              className="mt-5 text-sm text-slate-500"
-            >
-              ‹ 이전 카드
-            </button>
-          )}
-        </StepFrame>
+          {isLast ? '이해했어요, 개념 학습 시작 ›' : '다음 카드 ›'}
+        </button>
+        {index > 0 && (
+          <button
+            type="button"
+            onClick={() => setIndex(index - 1)}
+            className="text-sm text-white/80"
+          >
+            ‹ 이전 카드
+          </button>
+        )}
+        <p className="text-center text-xs text-white/60">
+          출처{' '}
+          <a href={card.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+            {card.sourceName}
+          </a>{' '}
+          · 카드 문장은 AI가 쓰고 숫자는 원자료로 계산했어요
+        </p>
       </div>
-
-      <p className="px-5 pb-4 text-center text-xs text-slate-400">
-        출처{' '}
-        <a href={card.sourceUrl} target="_blank" rel="noreferrer" className="underline">
-          {card.sourceName}
-        </a>{' '}
-        · 카드 문장은 AI가 쓰고 숫자는 원자료로 계산했어요
-      </p>
     </div>
   )
-}
-
-/** 상승 빨강 ▲, 하락 파랑 ▼ (ChangeRate 와 같은 규칙) */
-const factColor = (value: string) => {
-  if (value.startsWith('▲')) return 'text-up'
-  if (value.startsWith('▼')) return 'text-down'
-  return 'text-slate-900'
 }

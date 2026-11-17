@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router'
+import { NavLink, useLocation } from 'react-router'
 
 const TABS = [
   { to: '/', label: '뉴스', icon: NewsIcon },
@@ -6,20 +6,37 @@ const TABS = [
   { to: '/mypage', label: '마이페이지', icon: UserIcon },
 ]
 
-/** 하단 탭 3개 */
+/** 카드뉴스(/news/:id)는 화면 전체가 파랗다 (UI 시안 02~04) */
+const BLUE_PAGE = /^\/news\/[^/]+$/
+
+/** 하단 탭 3개. 카드뉴스·학습·결과(/news/…)에서도 뉴스 탭이 켜진다 */
 export const BottomNav = () => {
+  const { pathname } = useLocation()
+  const blue = BLUE_PAGE.test(pathname)
+  const inNews = pathname === '/' || pathname.startsWith('/news/')
+
   return (
-    <nav className="grid shrink-0 grid-cols-3 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className={`grid shrink-0 grid-cols-3 border-t pb-[env(safe-area-inset-bottom)] ${
+        blue ? 'border-transparent bg-[#2f74e0]' : 'border-slate-200 bg-white'
+      }`}
+    >
       {TABS.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
           end={to === '/'}
-          className={({ isActive }) =>
-            `flex flex-col items-center gap-1 py-2.5 text-xs ${
-              isActive ? 'text-primary font-semibold' : 'text-slate-500'
-            }`
-          }
+          className={({ isActive }) => {
+            const active = to === '/' ? inNews : isActive
+            const color = blue
+              ? active
+                ? 'font-semibold text-white'
+                : 'text-white/70'
+              : active
+                ? 'text-primary font-semibold'
+                : 'text-slate-500'
+            return `flex flex-col items-center gap-1 py-2.5 text-xs ${color}`
+          }}
         >
           <Icon />
           {label}
