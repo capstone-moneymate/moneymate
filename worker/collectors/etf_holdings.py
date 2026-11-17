@@ -251,7 +251,8 @@ def collect_day(conn, etf_code: str, d: date) -> int | None:
     if ratio is not None:
         print(f"  [경고] {etf_code} {prev_date} → {d}: 전 종목 수량이 {ratio:.4f}배로 같이 변함. "
               "설정 단위 변경이나 1CU 안 현금 비중 조정으로 보인다. 원화현금(010010)이 반대로 움직였으면 "
-              "현금 비중 조정, 아니면 운용사 공시·공지를 확인할 것 (findings.md B칸)")
+              "현금 비중 조정인데, 현금 변화 크기로 설명되지 않는 만큼(예: 2026-07-31)은 따로 확인하고, "
+              "현금이 같이 움직이지 않았으면 운용사 공시·공지를 확인할 것 (findings.md B칸)")
     n = save_holdings(conn, df)
     print(f"  {etf_code} {d}: 주식 {len(df)}종목, 새로 저장 {n}줄")
     return n
