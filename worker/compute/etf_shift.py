@@ -12,7 +12,7 @@
 
 쓰는 곳
 - compute/etf_trend.py: 추세(trend_chg_pct)는 기준일 이후 m 을 곱한 배수로, 전일 대비(day_chg_pct)는 그날 m 으로 나눈다
-- compute/overlap.py (A): 최신 수량을 common_shift 배수로 나눠 etf_change 에 넣는다
+- compute/overlap.py (A, 후속 작업): 최신 수량을 common_shift 배수로 나눠 etf_change 에 넣는다
 - collectors/etf_holdings.py: 수집할 때 공통 이동일이면 경고한다
 
 손계산 (A 와 맞춘 예시): 기준 100주, 공통 이동일 m = 1.064
@@ -47,12 +47,18 @@ def day_shift(prev: Quantities, curr: Quantities) -> float | None:
     common = [k for k in curr if k in prev and prev[k] and prev[k] > 0]
     if len(common) < MIN_COMMON:
         return None
-    ratios = [float(curr[k]) / float(prev[k]) for k in common]
+    # 비교는 Decimal 로 한다. float 이면 100 → 99.5 (정확히 −0.5%) 가 0.0050000000000000044 가 되어 경계를 넘는다
+    ratios = [_dec(curr[k]) / _dec(prev[k]) for k in common]
     m = median(ratios)
-    if abs(m - 1) <= MIN_MOVE:
+    if abs(m - 1) <= _dec(MIN_MOVE):
         return None
-    together = sum(abs(r / m - 1) <= SAME_TOL for r in ratios)
-    return m if together / len(ratios) >= SHIFT_SHARE else None
+    together = sum(abs(r / m - 1) <= _dec(SAME_TOL) for r in ratios)
+    return float(m) if Decimal(together) / len(ratios) >= _dec(SHIFT_SHARE) else None
+
+
+def _dec(x: Decimal | float | int) -> Decimal:
+    """float 는 문자열로 거쳐 0.005 가 0.005000000000000000104... 가 되지 않게 한다."""
+    return x if isinstance(x, Decimal) else Decimal(str(x))
 
 
 def common_shift(snapshots: Mapping[date, Quantities]) -> Shift:

@@ -66,6 +66,12 @@ def test_small_move_is_not_a_shift():
     assert day_shift(BASE, snap([100.6] * 6)) == pytest.approx(1.006)
 
 
+@pytest.mark.parametrize("value", [99.5, 100.5])
+def test_exact_half_percent_is_not_a_shift(value):
+    # 딱 ±0.5% 는 MIN_MOVE 이하라 공통 이동이 아니다 (float 로 빼면 99.5 쪽이 0.5% 를 살짝 넘어 잡혔다)
+    assert day_shift(BASE, snap([value] * 6)) is None
+
+
 def test_fractional_rounding_still_counts_as_same_ratio():
     # KoAct 소수 수량은 반올림 때문에 정확히 같은 비율이 아니다 (±0.5% 안)
     assert day_shift(BASE, snap([102, 102.2, 101.9, 102, 102.1, 102])) == pytest.approx(1.02)
