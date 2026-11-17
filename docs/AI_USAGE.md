@@ -94,3 +94,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-17 | A | server judgement(JudgementController·JudgementService·JudgementExplanation·mapper), tests, docs/conventions.md(P21), docs/modules/judgement_api.md | 판단 근거 최소 10자와 카드 토론을 보여 주는 GET /api/judgement/explanation("모르겠어요, 설명 볼래요"용) 추가 | - |
 | 2026-11-17 | A | web/src/pages/tab2(EtfPage·StockDetailPage·ReasonsCard·NowCard·CardParts·labels·notices, DirectionChip·FilerChangeText·evidenceNumbers 삭제), docs/modules/tab2_screens.md | 화면 시안 18~25에 맞춰 탭 2 메인(13F 2명 이상 함께 늘림·ETF 함께/최대 늘림·줄임)과 종목 상세(카드 ①②③ 한 장씩 넘기기) 다시 구성, 늘림 기준을 worker 와 같은 +5% 로 맞춤, 390px 캡처로 확인 | - |
 | 2026-11-17 | C | web/src/pages/tab1/steps/ReasonView.tsx, docs/modules/tab1_learn_screens.md | 판단해보기 근거 최소 글자 20 → 5자 (팀 의견), lint·build 확인 | - |
+| 2026-11-17 | C | web/src/components/PageHeader.tsx, AppLayout.tsx | 공통 헤더 알림 버튼 터치 영역 40px → 44px, 앱 프레임에 한글 단어 단위 줄바꿈(break-keep) (탭 2 화면 요청), lint·build·390px 브라우저에서 44×44 확인 | - |
