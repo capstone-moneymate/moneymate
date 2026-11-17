@@ -289,6 +289,17 @@ def compose_selected(picked: list[Candidate], card_date: date) -> list[int]:
     return ids
 
 
+def debate_cards(card_ids: list[int]) -> str:
+    """판단해보기 피드백용 낙관·비관 토론 (A, generate/debate.py). 토론이 rejected 여도 채점은 토론 없이 되므로
+    단계 실패로 보지 않는다. 예외(DB·API 오류)만 실패."""
+    from generate.debate import generate
+
+    results = generate(card_ids)
+    for r in results:
+        print(f"  card_id={r.card_id} 토론 {r.status} 호출 {r.calls}회 {('; '.join(r.errors))[:120]}")
+    return f"published {sum(r.status == 'published' for r in results)}/{len(results)}"
+
+
 # ------------------------------------------------------------------
 # 실행
 # ------------------------------------------------------------------
@@ -355,6 +366,8 @@ def run(target: date, card_date: date, collect: bool = True, llm: bool = True) -
         picked = select(top, MAX_CARDS)
         print(f"  고른 자료 {len(picked)}건: " + ", ".join(c.extra["source"]["title"][:20] for c in picked))
         report.card_ids = run_step(report, "출제", compose_selected, picked, card_date) or []
+        if report.card_ids:
+            run_step(report, "토론", debate_cards, report.card_ids)
     if llm:  # --no-llm 이면 문장 없는 카드 ③으로 덮어쓰지 않게 건너뛴다
         run_step(report, "탭2 지금은", refresh_now_views, card_date)
     write_log(report)

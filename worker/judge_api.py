@@ -56,6 +56,12 @@ class Concept(BaseModel):
     aliases: list[str] = Field(default_factory=list)
 
 
+class Debate(BaseModel):
+    """card_debates 의 published 한 줄 (conventions P21). 피드백 재료일 뿐 점수 기준이 아니다."""
+    bull: str = Field(min_length=1, description="낙관 쪽 해석")
+    bear: str = Field(min_length=1, description="비관 쪽 해석 (낙관을 반박)")
+
+
 class JudgeRequest(BaseModel):
     answer: str = Field(min_length=1, max_length=MAX_ANSWER_CHARS, description="사용자가 쓴 주관식 근거")
     key_facts: list[KeyFact] = Field(default_factory=list, description="카드의 key_facts (증거 채점용)")
@@ -63,6 +69,8 @@ class JudgeRequest(BaseModel):
     counter: list[Concept] = Field(default_factory=list, description="판단을 뒤집을 다른 힘 개념 (반박 채점용)")
     card_id: int | None = Field(default=None, description="llm_cost_log 의 문제별 비용 집계용")
     step_id: int | None = None
+    debate: Debate | None = Field(default=None,
+                                  description="카드의 낙관·비관 토론 (더 생각할 점 재료). 아직 없으면 null")
 
 
 class Rubric(BaseModel):
@@ -154,9 +162,11 @@ def judge(req: JudgeRequest) -> JudgeResponse:
     }
     if _judge is None:
         return _rule_response(args)
+    # 토론은 있을 때만 넘긴다 (토론이 없는 카드·debate 를 모르는 옛 grade 는 지금과 같게)
+    extra = {"debate": req.debate.model_dump()} if req.debate is not None else {}
     try:
         # 응답 만들기(검증)까지 try 안에서: judge.py 결과가 형식에 안 맞아도 500 대신 규칙 채점으로
-        return _judge_response(_judge.grade(**args, card_id=req.card_id), args)
+        return _judge_response(_judge.grade(**args, card_id=req.card_id, **extra), args)
     except Exception:  # noqa: BLE001 - 어떤 실패든 규칙 채점으로 받는다
         log.exception("judge.grade 실패 또는 결과 형식 오류, 규칙 채점으로 전환 (card_id=%s)", req.card_id)
         return _rule_response(args)

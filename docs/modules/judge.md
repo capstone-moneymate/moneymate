@@ -3,7 +3,7 @@
 # worker/generate/judge.py
 
 - **한 줄 설명**: 판단해보기 주관식 근거를 루브릭 9점(증거 0~2 코드 · 추론 0~4 / 반박 0~3 Claude)으로 채점하고, 같은 호출에서 AI 분석 피드백(잘한 점·더 생각할 점·인과 뼈대)을 만든다. Claude가 실패하면 규칙 채점과 고정 문구로 넘어간다 (#55·#56).
-- **입력**: `grade(text, key_facts, chain, counter=None, card_id=None)`. 형식은 rule_judge와 같다(`key_facts` = `[{"text","keywords"}]`, `chain`·`counter` = `[{"name","aliases"}]`). 프롬프트는 `generate/prompts/judge.md`(기준별 점수 설명, 점수별 예시 답안, 피드백 쓰는 법).
+- **입력**: `grade(text, key_facts, chain, counter=None, card_id=None, debate=None)`. `debate`는 카드의 낙관·비관 토론 `{"bull","bear"}`(debate.py, P21)로, 둘 다 있을 때만 프롬프트 데이터에 넣어 "더 생각할 점" 재료로 쓴다(점수 기준 아님). 형식은 rule_judge와 같다(`key_facts` = `[{"text","keywords"}]`, `chain`·`counter` = `[{"name","aliases"}]`). 프롬프트는 `generate/prompts/judge.md`(기준별 점수 설명, 점수별 예시 답안, 피드백 쓰는 법).
 - **하는 일**:
   1. rule_judge로 증거 점수, 찾은 사실·개념, 대체 결과를 먼저 계산한다.
   2. Sonnet을 **1회** 부른다(llm_client.create, module='judge', JSON 스키마 출력, 루브릭 프롬프트 캐시). 1의 결과를 `code_result`로 넘겨 피드백이 점수와 어긋나지 않게 한다.
