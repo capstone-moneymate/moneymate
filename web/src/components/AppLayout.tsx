@@ -8,7 +8,7 @@ import { BottomNav } from '@/components/BottomNav'
 export const AppLayout = () => {
   return (
     <div className="flex min-h-dvh justify-center bg-slate-200 sm:items-center">
-      <div className="flex h-dvh w-full max-w-[390px] flex-col overflow-hidden bg-white sm:h-[844px] sm:rounded-3xl sm:shadow-xl">
+      <div className="flex h-dvh w-full max-w-[390px] flex-col overflow-hidden break-keep bg-white sm:h-[844px] sm:rounded-3xl sm:shadow-xl">
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
