@@ -96,3 +96,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-17 | C | web/src/pages/tab1/steps/ReasonView.tsx, docs/modules/tab1_learn_screens.md | 판단해보기 근거 최소 글자 20 → 5자 (팀 의견), lint·build 확인 | - |
 | 2026-11-17 | C | web/src/components/PageHeader.tsx, AppLayout.tsx | 공통 헤더 알림 버튼 터치 영역 40px → 44px, 앱 프레임에 한글 단어 단위 줄바꿈(break-keep) (탭 2 화면 요청), lint·build·390px 브라우저에서 44×44 확인 | - |
 | 2026-11-18 | C | docs/modules/run_daily.md | #142 토론 단계(출제 → 토론 → 탭2 지금은)를 run_daily 명세에 반영, 다시 돌릴 때 빠진 토론 채우는 방법 기록 | - |
+| 2026-11-18 | C | web/src/pages/tab1(NewsHomePage·CardNewsPage·LearnPage·ResultPage·CloseLink, steps: StepFrame·ConceptView·QuizView·CausalOrderView·ReasonView·AnswerFeedback·AiAnalysis), components/BottomNav.tsx, ProgressBar.tsx 삭제, docs/modules/tab1_learn_screens.md | 탭1 화면을 UI 시안 01~17에 맞춰 다시 구성(홈·파란 카드뉴스·STEP 머리줄·개념 탭·A·B·C 퀴즈·판단 칸·점수 원 결과·AI 피드백), 390×844 브라우저로 실제 DB 카드(심텍) 끝까지 확인 | - |

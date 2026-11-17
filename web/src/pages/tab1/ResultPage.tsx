@@ -1,13 +1,17 @@
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
 import { useLearnStore } from '@/store/learnStore'
-import type { CardDetail, Step } from '@/types/card'
-import { CloseLink } from '@/pages/tab1/CloseLink'
+import type { AnswerResult, CardDetail } from '@/types/card'
+import { BackButton, CloseLink } from '@/pages/tab1/CloseLink'
 import { AiAnalysis } from '@/pages/tab1/steps/AiAnalysis'
 
-/** 결과 화면: 종합 점수, 개념 이해도, 적용 판단, 학습 요약 → 13F·ETF로 (유형 3은 종목 상세로) */
+/**
+ * 결과 화면 (UI 시안 17): 종합 점수 원, 개념 이해도·적용 판단, 오늘의 학습 요약, AI 피드백
+ * → 13F·ETF로 (유형 3은 종목 상세로)
+ */
 export const ResultPage = () => {
   const { cardId = '' } = useParams()
+  const navigate = useNavigate()
   const { data: card } = useCard(cardId)
   const results = useLearnStore((s) => s.results[cardId])
 
@@ -35,57 +39,94 @@ export const ResultPage = () => {
   const total = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null
 
   return (
-    <div className="flex min-h-full flex-col px-5 pt-5 pb-5">
+    <div className="flex min-h-full flex-col px-5 pt-4 pb-5">
       <div className="flex items-center justify-between">
-        <p className="text-primary text-sm font-semibold">학습 완료</p>
+        <BackButton label="카드뉴스 다시 보기" onClick={() => navigate(`/news/${card.id}`)} />
         <CloseLink />
       </div>
-      <h2 className="mt-2 text-xl leading-snug font-bold text-slate-900">{card.title}</h2>
+      <h2 className="mt-5 text-2xl leading-snug font-bold text-slate-900">
+        오늘의 판단,
+        <br />
+        기록했어요
+      </h2>
 
-      <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-5 text-center">
-        <p className="text-sm text-slate-500">종합 점수</p>
-        <p className="text-primary mt-1 text-4xl font-bold tabular-nums">{total ?? '-'}</p>
-      </div>
-      <dl className="mt-2 grid grid-cols-2 gap-2">
+      <ScoreRing value={total} />
+
+      <dl className="mt-6 grid grid-cols-2 gap-2.5">
         <Score label="개념 이해도" value={concept} />
         <Score label="적용 판단" value={judgement} />
       </dl>
 
-      <section className="mt-5">
-        <h3 className="font-bold text-slate-900">학습 요약</h3>
-        <ul className="mt-2 flex flex-col gap-1 text-sm text-slate-700">
-          {summaryLines(card).map((line) => (
-            <li key={line}>· {line}</li>
+      <section className="mt-7">
+        <h3 className="font-bold text-slate-900">오늘의 학습 요약</h3>
+        <ul className="mt-3 flex flex-col gap-2">
+          {summaryLines(card, results).map((line) => (
+            <li
+              key={line}
+              className="flex items-center gap-3 rounded-2xl bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-900"
+            >
+              <CheckIcon />
+              {line}
+            </li>
           ))}
         </ul>
       </section>
 
-      {/* AI 분석: 판단해보기 채점 결과 (모든 유형 공통) */}
+      {/* AI 피드백: 판단해보기 채점 결과 (모든 유형 공통) */}
       {grade && (
-        <div className="mt-5">
+        <div className="mt-6">
           <AiAnalysis grade={grade} />
         </div>
       )}
 
-      <div className="mt-auto flex flex-col gap-2 pt-6">
+      <div className="mt-auto flex flex-col items-center gap-2 pt-7">
         {card.type === 3 && card.ticker ? (
           <Link
             to={`/etf?ticker=${card.ticker}`}
-            className="bg-primary rounded-2xl py-4 text-center font-bold text-white"
+            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
           >
             {card.ticker} 종목 상세로 이어 보기 ›
           </Link>
         ) : (
-          <Link to="/etf" className="bg-primary rounded-2xl py-4 text-center font-bold text-white">
-            13F·ETF에서 이어 보기 ›
+          <Link
+            to="/etf"
+            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
+          >
+            13F·ETF로 실제 행동 복습하기 ›
           </Link>
         )}
-        <Link
-          to="/"
-          className="rounded-2xl bg-slate-100 py-4 text-center font-semibold text-slate-700"
-        >
-          뉴스 홈으로
+        <Link to="/" className="min-h-11 px-4 py-3 text-slate-500">
+          홈으로
         </Link>
+      </div>
+    </div>
+  )
+}
+
+/** 종합 점수 원 (100점이면 한 바퀴) */
+const ScoreRing = ({ value }: { value: number | null }) => {
+  const r = 54
+  const len = 2 * Math.PI * r
+  const ratio = value === null ? 0 : Math.min(Math.max(value, 0), 100) / 100
+
+  return (
+    <div className="relative mx-auto mt-6 size-36">
+      <svg viewBox="0 0 128 128" className="size-full -rotate-90" aria-hidden>
+        <circle cx="64" cy="64" r={r} fill="none" stroke="#e2e8f0" strokeWidth="12" />
+        <circle
+          cx="64"
+          cy="64"
+          r={r}
+          fill="none"
+          stroke="var(--color-primary)"
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeDasharray={`${len * ratio} ${len}`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <p className="text-4xl font-bold text-slate-900 tabular-nums">{value ?? '-'}</p>
+        <p className="mt-0.5 text-xs text-slate-500">종합 점수</p>
       </div>
     </div>
   )
@@ -93,25 +134,52 @@ export const ResultPage = () => {
 
 const Score = ({ label, value }: { label: string; value: number | null }) => {
   return (
-    <div className="rounded-2xl bg-slate-50 px-4 py-3">
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-lg font-bold text-slate-900 tabular-nums">{value ?? '-'}</dd>
+    <div className="rounded-2xl bg-slate-100 px-4 py-4 text-center">
+      <dt className="text-sm text-slate-500">{label}</dt>
+      <dd className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
+        {value === null ? '-' : `${value}점`}
+      </dd>
     </div>
   )
 }
 
-/** 배운 용어와 인과 뼈대 */
-const summaryLines = (card: CardDetail) => {
-  const lines: string[] = []
-  const terms = card.steps.flatMap((s: Step) =>
-    s.kind === 'concept' ? s.terms.map((t) => t.term) : [],
-  )
-  if (terms.length) lines.push(`배운 개념: ${terms.join(', ')}`)
+/** 오늘 한 단계들을 한 줄씩 (카드 → 개념 → 퀴즈 → 인과 → 차트 → 판단) */
+const summaryLines = (card: CardDetail, results: Record<string, AnswerResult>) => {
+  const lines = [`오늘의 뉴스 확인 · ${card.title}`]
+  const terms = card.steps.flatMap((s) => (s.kind === 'concept' ? s.terms.map((t) => t.term) : []))
+  if (terms.length) lines.push(`개념 학습 완료 · ${terms.join(', ')}`)
+
+  const quizzes = card.steps.filter((s) => s.kind === 'quiz')
+  if (quizzes.length) {
+    const right = quizzes.filter((s) => results[s.id]?.isCorrect).length
+    lines.push(`간단 퀴즈 · ${quizzes.length}문제 중 ${right}개 정답`)
+  }
   for (const s of card.steps) {
     if (s.kind === 'causal_order') {
       const labels = s.conceptIds.map((id) => s.items.find((i) => i.conceptId === id)?.label ?? id)
-      lines.push(`인과 뼈대: ${labels.join(' → ')}`)
+      lines.push(`인과관계 · ${labels.join(' → ')}`)
     }
+    if (s.kind === 'chart')
+      lines.push(`차트 읽기 · ${results[s.id]?.isCorrect ? '정답' : '해설 확인'}`)
+    if (s.kind === 'judgement') lines.push('판단 시뮬레이션 완료')
   }
   return lines
+}
+
+function CheckIcon() {
+  return (
+    <span className="bg-primary flex size-6 shrink-0 items-center justify-center rounded-md text-white">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        aria-hidden
+      >
+        <path d="M5 12l5 5 9-10" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  )
 }
