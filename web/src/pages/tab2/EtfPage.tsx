@@ -1,18 +1,25 @@
+import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useEtfDaily, useOverlaps } from '@/api/overlap'
-import { ChangeRate } from '@/components/ChangeRate'
 import { PageHeader } from '@/components/PageHeader'
 import type { EtfMove } from '@/types/etf'
-import type { Direction, StockOverlap } from '@/types/overlap'
-import { DirectionChip } from './DirectionChip'
-import { FilerChangeText } from './FilerChangeText'
-import { daysBetween, etfShortName, filerShortName, formatDate, todayKst } from './labels'
-import { ETF_UNIT_NOTE, FILING_DELAY_NOTE, GUIDE_NOTE, NO_OVERLAP_NOTE } from './notices'
+import type { StockOverlap } from '@/types/overlap'
+import {
+  daysBetween,
+  etfShortName,
+  FILERS,
+  filerPersonName,
+  isBigUp,
+  quarterOf,
+  shortDate,
+  signedPct,
+} from './labels'
+import { ETF_NOTE, F13_NOTE, NO_OVERLAP_NOTE } from './notices'
 
 type View = '13f' | 'etf'
 
 /**
- * 탭2 메인: 상단 스위치로 "13F 공시"(겹침)와 "액티브 ETF"(어제 움직인 종목)를 오간다.
+ * 탭2 메인 (시안 18·22): 상단 스위치로 "13F 공시"와 "액티브 ETF"를 오간다.
  * 선택한 쪽은 주소(?view=etf)에 남겨 종목 상세에서 뒤로 와도 그대로다.
  */
 export const EtfPage = () => {
@@ -23,7 +30,7 @@ export const EtfPage = () => {
     <div className="pb-6">
       <PageHeader />
       <div className="px-5">
-        <div role="tablist" className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+        <div role="tablist" className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1">
           {(
             [
               ['13f', '13F 공시'],
@@ -36,7 +43,7 @@ export const EtfPage = () => {
               role="tab"
               aria-selected={view === key}
               onClick={() => setParams(key === 'etf' ? { view: 'etf' } : {}, { replace: true })}
-              className={`min-h-11 rounded-lg text-sm font-semibold transition ${
+              className={`h-11 rounded-xl text-base font-bold transition ${
                 view === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
               }`}
             >
@@ -47,101 +54,82 @@ export const EtfPage = () => {
       </div>
 
       {view === '13f' ? <OverlapView /> : <EtfDailyView />}
-
-      <div className="mx-5 mt-8 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        <p>{GUIDE_NOTE}</p>
-        <p>{view === '13f' ? FILING_DELAY_NOTE : ETF_UNIT_NOTE}</p>
-      </div>
     </div>
   )
 }
 
-// ---------------------------------------------------------------- 13F 공시 (겹침)
+// ---------------------------------------------------------------- 13F 공시
+
+/** 함께 늘렸다고 보는 최소 인원 (시안 18: "4명 중 2명 이상") */
+const MIN_FILERS = 2
+
+/** 13F 에서 새로 담았거나 +5% 이상 늘린 큰손 (worker 와 같은 기준) */
+const raisedBy = (stock: StockOverlap) => stock.filers.filter(isBigUp)
 
 const OverlapView = () => {
   const { data, isPending, isError } = useOverlaps()
 
   if (isPending) return <StateText>불러오는 중…</StateText>
   if (isError)
-    return <StateText>겹침 종목을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</StateText>
+    return <StateText>13F 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</StateText>
 
-  if (data.stocks.length === 0) {
-    return <StateText>{NO_OVERLAP_NOTE}</StateText>
-  }
+  // 많이 함께 늘린 순, 같으면 티커 순
+  const together = data.stocks
+    .map((stock) => ({ stock, raised: raisedBy(stock) }))
+    .filter(({ raised }) => raised.length >= MIN_FILERS)
+    .sort(
+      (a, b) => b.raised.length - a.raised.length || a.stock.ticker.localeCompare(b.stock.ticker),
+    )
 
-  const periodEnd = data.stocks[0].filers[0]?.periodEnd
-  const filedDates = data.stocks.flatMap((s) => s.filers.map((f) => f.filedAt)).filter(Boolean)
-  const lastFiled = filedDates.length > 0 ? (filedDates.sort().at(-1) as string) : null
+  const periodEnd = data.stocks[0]?.filers[0]?.periodEnd
+  const filed = data.stocks.flatMap((s) => s.filers.map((f) => f.filedAt)).filter(Boolean)
+  const lastFiled = filed.length ? (filed.sort().at(-1) as string) : null
 
   return (
-    <>
-      <section className="mt-5 px-5">
-        <h2 className="text-lg font-bold text-slate-900">큰손과 액티브 ETF가 겹친 종목</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          {[
-            periodEnd && `13F ${formatDate(periodEnd)} 기준`,
-            lastFiled && `공시 후 ${daysBetween(lastFiled, todayKst())}일`,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </p>
-        <ul className="mt-4 flex flex-col gap-3">
-          {data.stocks.map((stock) => (
+    <section className="mt-6 px-5">
+      <h2 className="text-xl font-bold text-slate-900">
+        {periodEnd ? `${quarterOf(periodEnd)} ` : ''}큰손들이 함께 늘린 종목
+      </h2>
+      <p className="mt-1.5 text-sm text-slate-500">
+        {[
+          periodEnd && `${shortDate(periodEnd)} 기준 기록`,
+          periodEnd && lastFiled && `공시 D+${daysBetween(periodEnd, lastFiled)}`,
+          `${FILERS.length}명 중 ${MIN_FILERS}명 이상`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+      </p>
+
+      {together.length === 0 ? (
+        <StateText>{NO_OVERLAP_NOTE(MIN_FILERS)}</StateText>
+      ) : (
+        <ol className="mt-5 flex flex-col gap-4">
+          {together.map(({ stock, raised }, i) => (
             <li key={stock.ticker}>
-              <OverlapCard stock={stock} />
+              <Link
+                to={`/etf/${encodeURIComponent(stock.ticker)}`}
+                className="block rounded-2xl border border-slate-200 bg-white px-4 py-4 transition active:scale-[0.99]"
+              >
+                <div className="flex items-baseline gap-3">
+                  <span className="text-primary text-base font-bold tabular-nums">{i + 1}</span>
+                  <span className="text-lg font-extrabold text-slate-900">{stock.ticker}</span>
+                  <span className="min-w-0 truncate text-base text-slate-500">
+                    {stock.issuerName ?? stock.etfStockName}
+                  </span>
+                  <span className="text-up ml-auto shrink-0 text-[15px] font-bold">
+                    {raised.length}명 늘림
+                  </span>
+                </div>
+                <p className="mt-3 text-[15px] text-slate-500">
+                  {raised.map((f) => filerPersonName(f.filerKey)).join(' · ')}
+                </p>
+              </Link>
             </li>
           ))}
-        </ul>
-      </section>
-
-      <section className="mt-7 px-5">
-        <h2 className="text-lg font-bold text-slate-900">분석</h2>
-        <div className="mt-3 rounded-2xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-400">
-          변동성 TOP2 분석 카드 준비 중
-        </div>
-      </section>
-    </>
-  )
-}
-
-const DIRECTIONS: Direction[] = ['same', 'diff', 'none']
-
-const OverlapCard = ({ stock }: { stock: StockOverlap }) => {
-  const counts = DIRECTIONS.map(
-    (d) => [d, stock.pairs.filter((p) => p.direction === d).length] as const,
-  ).filter(([, n]) => n > 0)
-
-  return (
-    <Link
-      to={`/etf/${encodeURIComponent(stock.ticker)}`}
-      className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition active:scale-[0.99]"
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="text-lg font-bold text-slate-900">{stock.ticker}</span>
-        <span className="truncate text-xs text-slate-500">
-          {stock.issuerName ?? stock.etfStockName}
-        </span>
-        <span aria-hidden className="ml-auto text-slate-300">
-          ›
-        </span>
-      </div>
-      <ul className="mt-2 flex flex-col gap-1">
-        {stock.filers.map((f) => (
-          <li key={f.filerKey} className="flex items-center justify-between gap-2">
-            <span className="text-sm text-slate-700">{filerShortName(f.filerKey)}</span>
-            <FilerChangeText change={f} />
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-slate-500">
-        액티브 ETF {stock.etfs.map((e) => etfShortName(e.etfCode)).join('·')} 보유
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {counts.map(([d, n]) => (
-          <DirectionChip key={d} direction={d} count={n} />
-        ))}
-      </div>
-    </Link>
+        </ol>
+      )}
+      <Note>{F13_NOTE}</Note>
+    </section>
   )
 }
 
@@ -153,95 +141,111 @@ const EtfDailyView = () => {
   if (isPending) return <StateText>불러오는 중…</StateText>
   if (isError)
     return <StateText>ETF 변화를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</StateText>
+  if (data.etfs.length === 0) return <StateText>아직 액티브 ETF 보유 기록이 없어요.</StateText>
 
-  if (data.etfs.length === 0) {
-    return <StateText>아직 액티브 ETF 보유 기록이 없어요.</StateText>
-  }
-
-  const dates = [...new Set(data.etfs.map((e) => e.snapshotDate))]
-  const thresholdText = `${Math.round(data.threshold * 100)}%`
+  const dates = [...new Set(data.etfs.map((e) => e.snapshotDate))].sort()
+  // 시안 22: 함께 늘린 종목 + 가장 많이 늘린 1개 + 가장 많이 줄인 1개
+  const top = data.topIncrease[0]
+  const bottom = data.topDecrease[0]
 
   return (
-    <section className="mt-5 px-5">
-      <h2 className="text-lg font-bold text-slate-900">어제 매니저들이 움직인 종목</h2>
-      <p className="mt-1 text-xs text-slate-500">
-        {data.etfs.map((e) => etfShortName(e.etfCode)).join('·')} ·{' '}
-        {dates.map(formatDate).join(', ')} 기준 · 하루 {thresholdText} 이상 변화
+    <section className="mt-6 px-5">
+      <h2 className="text-xl font-bold text-slate-900">어제 매니저들이 움직인 종목</h2>
+      <p className="mt-1.5 text-sm text-slate-500">
+        {data.etfs.map((e) => etfShortName(e.etfCode)).join(' · ')} ·{' '}
+        {dates.map(shortDate).join(', ')} 장 마감
       </p>
 
-      <MoveSection title="두 ETF가 함께 늘림" emptyText="두 ETF가 함께 늘린 종목이 없어요.">
+      <ul className="mt-5 flex flex-col gap-4">
         {data.together.map((t) => (
-          <li key={t.rawCode} className="flex min-h-12 items-center gap-2 py-2">
+          <MoveCard
+            key={t.rawCode}
+            label="두 ETF가 함께 늘렸어요"
+            labelClass="text-primary"
+            ticker={t.ticker}
+          >
             <StockName ticker={t.ticker} name={t.stockName} />
-            <span className="ml-auto flex flex-col items-end gap-0.5">
-              {t.moves.map((m) => (
-                <span key={m.etfCode} className="text-xs whitespace-nowrap">
-                  <span className="mr-1 text-slate-500">{etfShortName(m.etfCode)}</span>
-                  <ChangeRate value={m.dayChgPct} className="tabular-nums" />
-                </span>
-              ))}
+            <span className="text-up ml-auto shrink-0 text-[15px] font-bold tabular-nums">
+              {t.moves
+                .map((m) => `${etfShortName(m.etfCode)} ${signedPct(m.dayChgPct)}`)
+                .join(' · ')}
             </span>
-          </li>
+          </MoveCard>
         ))}
-      </MoveSection>
-
-      <MoveSection title="가장 많이 늘림" emptyText={`${thresholdText} 이상 늘린 종목이 없어요.`}>
-        {data.topIncrease.map((m) => (
-          <MoveRow key={`${m.etfCode}-${m.rawCode}`} move={m} />
-        ))}
-      </MoveSection>
-
-      <MoveSection title="가장 많이 줄임" emptyText={`${thresholdText} 이상 줄인 종목이 없어요.`}>
-        {data.topDecrease.map((m) => (
-          <MoveRow key={`${m.etfCode}-${m.rawCode}`} move={m} />
-        ))}
-      </MoveSection>
+        {top && <TopCard label="가장 많이 늘림" move={top} />}
+        {bottom && <TopCard label="가장 많이 줄임" move={bottom} />}
+      </ul>
+      {data.together.length === 0 && !top && !bottom && (
+        <StateText>
+          어제는 하루 {Math.round(data.threshold * 100)}% 이상 수량을 바꾼 종목이 없어요.
+        </StateText>
+      )}
+      <Note>{ETF_NOTE}</Note>
     </section>
   )
 }
 
-const MoveSection = ({
-  title,
-  emptyText,
+const TopCard = ({ label, move }: { label: string; move: EtfMove }) => (
+  <MoveCard
+    label={`${label} · ${etfShortName(move.etfCode)}`}
+    labelClass="text-slate-500"
+    ticker={move.ticker}
+  >
+    <StockName ticker={move.ticker} name={move.stockName} />
+    <span
+      className={`ml-auto shrink-0 text-lg font-bold tabular-nums ${move.dayChgPct > 0 ? 'text-up' : 'text-down'}`}
+    >
+      {move.dayChgPct > 0 ? '▲' : '▼'} {signedPct(move.dayChgPct)}
+    </span>
+  </MoveCard>
+)
+
+const MoveCard = ({
+  label,
+  labelClass,
+  ticker,
   children,
 }: {
-  title: string
-  emptyText: string
-  children: React.ReactNode[]
+  label: string
+  labelClass: string
+  ticker: string | null
+  children: ReactNode
 }) => {
-  return (
-    <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-      <h3 className="text-sm font-bold text-slate-900">{title}</h3>
-      {children.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-400">{emptyText}</p>
-      ) : (
-        <ul className="mt-1 divide-y divide-slate-100">{children}</ul>
-      )}
-    </div>
+  const body = (
+    <>
+      <p className={`text-sm font-bold ${labelClass}`}>{label}</p>
+      <div className="mt-3 flex items-baseline gap-2">{children}</div>
+    </>
   )
-}
-
-const MoveRow = ({ move }: { move: EtfMove }) => {
+  const cls = 'block rounded-2xl border border-slate-200 bg-white px-4 py-4'
   return (
-    <li className="flex min-h-12 items-center gap-2 py-2">
-      <StockName ticker={move.ticker} name={move.stockName} />
-      <span className="ml-auto flex items-center gap-2 whitespace-nowrap">
-        <span className="text-xs text-slate-500">{etfShortName(move.etfCode)}</span>
-        <ChangeRate value={move.dayChgPct} className="text-sm tabular-nums" />
-      </span>
+    <li>
+      {/* 티커로 바꾸지 못한 종목은 상세로 갈 수 없다 */}
+      {ticker ? (
+        <Link
+          to={`/etf/${encodeURIComponent(ticker)}`}
+          className={`${cls} transition active:scale-[0.99]`}
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className={cls}>{body}</div>
+      )}
     </li>
   )
 }
 
-const StockName = ({ ticker, name }: { ticker: string | null; name: string | null }) => {
-  return (
-    <span className="min-w-0">
-      <span className="block text-sm font-semibold text-slate-900">{ticker ?? name ?? '-'}</span>
-      {ticker && name && <span className="block truncate text-xs text-slate-500">{name}</span>}
-    </span>
-  )
-}
+const StockName = ({ ticker, name }: { ticker: string | null; name: string | null }) => (
+  <span className="flex min-w-0 items-baseline gap-2">
+    <span className="text-lg font-extrabold text-slate-900">{ticker ?? name ?? '-'}</span>
+    {ticker && name && <span className="truncate text-base text-slate-500">{name}</span>}
+  </span>
+)
 
-const StateText = ({ children }: { children: React.ReactNode }) => {
-  return <p className="px-5 pt-6 text-sm leading-relaxed text-slate-500">{children}</p>
-}
+const Note = ({ children }: { children: ReactNode }) => (
+  <p className="mt-5 text-center text-[13px] leading-relaxed text-slate-500">{children}</p>
+)
+
+const StateText = ({ children }: { children: ReactNode }) => (
+  <p className="pt-6 text-sm leading-relaxed text-slate-500">{children}</p>
+)

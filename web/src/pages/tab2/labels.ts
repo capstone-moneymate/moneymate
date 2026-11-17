@@ -1,4 +1,4 @@
-import type { ChangeType, Direction } from '@/types/overlap'
+import type { FilerChange } from '@/types/overlap'
 
 /**
  * 탭2 이름·라벨 상수. 서버는 영어 상수와 코드만 내려 주고 한글은 여기서 바꾼다.
@@ -7,13 +7,13 @@ import type { ChangeType, Direction } from '@/types/overlap'
 
 /**
  * 큰손 4명 (worker/config.py FILERS 와 같은 키, 같은 순서).
- * 13F 는 법인 단위 기록이라 법인명 기준으로 쓰고 사람은 괄호로 덧붙인다 (docs/findings.md).
+ * 13F 는 법인 단위 기록이라 법인명(name)을 두고, 화면 시안(18~25)은 사람 이름(short)으로 보여 준다.
  */
 export const FILERS = [
-  { key: 'buffett', name: 'Berkshire Hathaway', person: '버핏의 회사' },
-  { key: 'druckenmiller', name: 'Duquesne', person: '드러켄밀러의 회사' },
-  { key: 'thiel', name: 'Thiel Macro', person: '틸의 회사' },
-  { key: 'ackman', name: 'Pershing Square', person: '애크먼의 회사' },
+  { key: 'buffett', name: 'Berkshire Hathaway', person: '버핏의 회사', short: '워런 버핏' },
+  { key: 'druckenmiller', name: 'Duquesne', person: '드러켄밀러의 회사', short: '드러켄밀러' },
+  { key: 'thiel', name: 'Thiel Macro', person: '틸의 회사', short: '피터 틸' },
+  { key: 'ackman', name: 'Pershing Square', person: '애크먼의 회사', short: '빌 애크먼' },
 ] as const
 
 /** 액티브 ETF 이름 (docs/findings.md). 목록에 없는 코드는 코드 그대로 보여 준다 */
@@ -23,35 +23,36 @@ const ETF_NAMES: Record<string, { short: string; full: string }> = {
 }
 
 export const etfShortName = (code: string) => ETF_NAMES[code]?.short ?? code
-export const etfFullName = (code: string) => ETF_NAMES[code]?.full ?? code
 
-export const filerShortName = (key: string) => FILERS.find((f) => f.key === key)?.name ?? key
+/** 시안 18·19 의 사람 이름 ("드러켄밀러 · 피터 틸 · 빌 애크먼") */
+export const filerPersonName = (key: string) => FILERS.find((f) => f.key === key)?.short ?? key
 
-/** 13F 변화 종류 → 화면 문구. increase·decrease 는 변화율을 같이 보여 준다 */
-export const CHANGE_TYPE_LABEL: Record<ChangeType, string> = {
-  new: '새로 담음',
-  increase: '늘림',
-  decrease: '줄임',
-  exit: '모두 정리',
-  unchanged: '변화 없음',
-}
-
-/** 방향 비교 → 화면 문구 */
-export const DIRECTION_LABEL: Record<Direction, string> = {
-  same: '같은 방향',
-  diff: '방향 다름',
-  none: '비교 보류',
-}
-
-/** '2026-06-30' → '6월 30일' */
-export const formatDate = (date: string) => {
+/** '2026-09-30' → '9/30' (시안 표기) */
+export const shortDate = (date: string) => {
   const [, month, day] = date.split('-').map(Number)
-  return `${month}월 ${day}일`
+  return `${month}/${day}`
 }
 
-/** 오늘(KST) 날짜 'YYYY-MM-DD' */
-export const todayKst = () =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
+/** 분기 말 날짜 → '3분기' */
+export const quarterOf = (date: string) => `${Math.ceil(Number(date.split('-')[1]) / 3)}분기`
+
+/** 분기 말 날짜 → '7~9월' */
+export const quarterMonths = (date: string) => {
+  const month = Number(date.split('-')[1])
+  return `${month - 2}~${month}월`
+}
+
+/** 소수 변화율 → '+6.0%' / '−5.4%' (digits 자리) */
+export const signedPct = (value: number, digits = 1) =>
+  `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value * 100).toFixed(digits)}%`
+
+/**
+ * 13F 에서 "늘림"으로 보는가. worker 의 big_direction(compute/overlap.py)과 같은 기준:
+ * 새로 담았거나(new), 직전 분기 대비 +5%(config.INCREASE_THRESHOLD) 이상. 기준을 바꾸면 둘 다 고친다.
+ */
+export const INCREASE_THRESHOLD = 0.05
+export const isBigUp = (f: FilerChange) =>
+  f.changeType === 'new' || (f.chgPct !== null && f.chgPct >= INCREASE_THRESHOLD)
 
 /** 두 날짜(YYYY-MM-DD) 사이 일수 */
 export const daysBetween = (from: string, to: string) =>
