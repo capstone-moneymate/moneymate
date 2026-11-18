@@ -219,6 +219,28 @@ class OverlapServiceTest {
         assertThat(service.stock("NVDA", null).reasons()).isNull();
     }
 
+    @Test
+    void sideIsPassedThroughForTwoSidedReasons() {
+        // 큰손과 ETF 가 반대로 움직인 종목은 이유마다 side(big / etf)가 저장된다. 서버는 그대로 옮기고, 없으면 null
+        stockExists();
+        String json = """
+                [{"title":"투자 둔화","body":"b","start_concept":"ai_investment","end_concept":"semi_earnings",
+                  "path":["ai_investment","semi_earnings"],"direction":"down","side":"big","evidence":[]},
+                 {"title":"실적 확인","body":"b","start_concept":"ai_investment","end_concept":"semi_earnings",
+                  "path":["ai_investment","semi_earnings"],"direction":"up","side":"etf","evidence":[]}]""";
+        when(repo.findPublishedReasons("NVDA")).thenReturn(Optional.of(new StockReasonsRow(
+                PERIOD, "diff", "down", "왜 방향이 다를까요?", json, null)));
+
+        assertThat(service.stock("NVDA", null).reasons().reasons())
+                .extracting("side", "direction").containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("big", "down"),
+                        org.assertj.core.groups.Tuple.tuple("etf", "up"));
+        // 예전 저장분(side 없음)은 null
+        when(repo.findPublishedReasons("NVDA")).thenReturn(Optional.of(new StockReasonsRow(
+                PERIOD, "same", "up", "h", REASONS_JSON, null)));
+        assertThat(service.stock("NVDA", null).reasons().reasons()).extracting("side").containsOnlyNulls();
+    }
+
     // ---- 이유가 전부 버려진 종목 (#164) ----
 
     @Test

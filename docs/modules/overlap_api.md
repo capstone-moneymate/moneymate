@@ -105,6 +105,7 @@ ALTER TABLE overlap_results
 
 - `reasons`: `stock_reasons`에서 그 티커의 `status = 'published'` 중 가장 최근 `big_period_end` 한 줄이다(P19). 없거나 JSON이 깨졌으면 `null`이고, 화면은 대체 문구를 보여 준다. C가 저장한 snake_case JSON(`docs/modules/reasons.md` "저장 모양")을 서버가 camelCase로 옮긴다. 이유를 만들거나 고치지 않고, 아래 두 가지만 더한다.
   - 경로 개념마다 `concepts.name`과 `learned`(사용자가 배운 개념, `user_concepts.total > 0`)를 붙인다. 사전에 없는 id는 이름 대신 id를 쓴다.
+  - 이유마다 `side`를 그대로 옮긴다(2026-11-19 B). 큰손과 ETF가 반대로 움직인 종목은 `big`(큰손 쪽, 분기 말 이전 근거) / `etf`(ETF 쪽, 분기 말 이후 근거)이고, 그 밖과 예전 저장분은 null이다(reasons.md "양쪽 이유").
   - 이유마다 `inMyMap`(경로에 배운 개념이 하나라도 있음)을 붙인다.
   - 화면용이 아닌 값은 내보내지 않는다: `start_concept`·`end_concept`(경로에 있음), 근거의 `source_id`, 카드 ③의 `errors`, `model_info`.
 - `reasons.now`: 카드 ③이다. `now_view`가 NULL이면 `null`이다. `price.returnPct`는 C가 저장한 퍼센트 값 그대로다(12.5 = 12.5%). conventions P2(변화율은 소수)와 다르니 C에게 확인할 안건이다.

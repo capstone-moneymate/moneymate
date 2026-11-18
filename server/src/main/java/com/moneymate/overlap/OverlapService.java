@@ -120,7 +120,7 @@ public class OverlapService {
                     .map(e -> new ReasonEvidence(e.no(), e.publishedDate(), e.title(), e.issuerName(), e.url()))
                     .toList();
             return new StockReason(r.title(), r.body(), path, r.direction(),
-                    path.stream().anyMatch(PathConcept::learned), evidence);
+                    path.stream().anyMatch(PathConcept::learned), evidence, r.side());
         }).toList();
         return new StockReasons(str(row.bigPeriodEnd()), row.direction(), row.change(), row.headline(),
                 reasons, nowOf(now));
