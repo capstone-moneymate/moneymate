@@ -73,8 +73,17 @@ public class OverlapService {
         StockReasons reasons = repository.findPublishedReasons(normalized)
                 .map(row -> reasonsOf(row, userId))
                 .orElse(null);
+        boolean rejected = reasons == null && isRejected(repository.findLatestReasonsStatus(normalized));
         List<MyMapConcept> mine = userId == null ? List.of() : myConceptsForTicker(userId, normalized);
-        return new StockDetail(stocks.get(0), reasons, mine);
+        return new StockDetail(stocks.get(0), reasons, rejected, mine);
+    }
+
+    /**
+     * 보여 줄 이유가 없을 때, 가장 최근 분기 이유가 검사에서 전부 버려졌는지(rejected).
+     * 예전 분기만 rejected 이고 최근 분기는 아직 안 만들었으면 false (준비 중 문구).
+     */
+    private static boolean isRejected(Optional<String> latestStatus) {
+        return latestStatus.map("rejected"::equals).orElse(false);
     }
 
     /**

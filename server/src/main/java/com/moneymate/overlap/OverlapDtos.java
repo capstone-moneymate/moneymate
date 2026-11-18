@@ -97,11 +97,13 @@ public final class OverlapDtos {
     /**
      * GET /api/stocks/{ticker}. 겹침 필드(StockOverlap)는 목록 항목과 같은 자리에 펼치고 카드 ②③과
      * "내 지도에 있어요"를 더한다. reasons 는 published 이유가 없으면 null,
+     * reasonsRejected 는 reasons 가 null 이고 가장 최근 분기 이유가 검사에서 전부 버려졌을 때(rejected) true (#164),
      * myConcepts 는 이 종목에 연결된 개념(#100) 중 사용자가 배운 것 (userId 가 없으면 빈 목록).
      */
     public record StockDetail(
             @JsonUnwrapped StockOverlap overlap,
             StockReasons reasons,
+            boolean reasonsRejected,
             List<MyMapConcept> myConcepts) {
     }
 

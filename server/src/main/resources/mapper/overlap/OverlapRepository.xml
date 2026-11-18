@@ -82,6 +82,15 @@
          LIMIT 1
     </select>
 
+    <!-- 그 티커의 가장 최근 분기 이유 상태 (published / rejected / pending). 이유가 전부 버려졌는지 화면에 알릴 때 쓴다 (#164) -->
+    <select id="findLatestReasonsStatus" resultType="String">
+        SELECT status
+          FROM stock_reasons
+         WHERE ticker = #{ticker}
+         ORDER BY big_period_end DESC
+         LIMIT 1
+    </select>
+
     <resultMap id="conceptNameMap" type="com.moneymate.overlap.ConceptNameRow">
         <constructor>
             <arg column="id" javaType="String"/>

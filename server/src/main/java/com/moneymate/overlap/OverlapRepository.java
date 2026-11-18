@@ -19,6 +19,9 @@ public interface OverlapRepository {
     /** stock_reasons 에서 그 티커의 가장 최근 분기 published 한 줄 (P19). 없으면 빈 값. */
     Optional<StockReasonsRow> findPublishedReasons(@Param("ticker") String ticker);
 
+    /** stock_reasons 에서 그 티커의 가장 최근 분기 상태 (published / rejected / pending). 줄이 없으면 빈 값. */
+    Optional<String> findLatestReasonsStatus(@Param("ticker") String ticker);
+
     /** 개념 id 들의 이름. 사전에 없는 id 는 빠진다. ids 는 비어 있으면 안 된다. */
     List<ConceptNameRow> findConceptNames(@Param("ids") List<String> ids);
 

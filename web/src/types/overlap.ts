@@ -146,6 +146,8 @@ export interface MyMapConcept {
 export interface StockDetail extends StockOverlap {
   /** published 이유가 없으면 null (화면은 대체 문구) */
   reasons: StockReasons | null
+  /** reasons 가 null 이고 가장 최근 분기 이유가 검사에서 전부 버려졌으면 true (#164). 화면은 "찾지 못했어요" 고정 문구 */
+  reasonsRejected: boolean
   /** 이 종목과 연결된 개념 중 배운 것 */
   myConcepts: MyMapConcept[]
 }
