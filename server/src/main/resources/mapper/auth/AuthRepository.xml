@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.auth.AuthRepository">
+
+    <resultMap id="accountMap" type="com.moneymate.auth.AuthRepository$Account">
+        <constructor>
+            <arg column="user_id" javaType="String"/>
+            <arg column="login_id" javaType="String"/>
+            <arg column="password_hash" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findByLoginId" resultMap="accountMap">
+        SELECT id::text AS user_id, login_id, password_hash
+          FROM users
+         WHERE login_id = #{loginId}
+    </select>
+
+    <select id="findLoginId" resultType="String">
+        SELECT login_id
+          FROM users
+         WHERE id = CAST(#{userId} AS uuid)
+           AND login_id IS NOT NULL
+    </select>
+
+    <insert id="ensureUser">
+        INSERT INTO users (id) VALUES (CAST(#{userId} AS uuid))
+        ON CONFLICT (id) DO NOTHING
+    </insert>
+
+    <!-- login_id 가 이미 다른 행에 있으면 UNIQUE 위반(DuplicateKeyException)이 난다. 서비스가 409 로 바꾼다 -->
+    <update id="attachLogin">
+        UPDATE users
+           SET login_id = #{loginId}, password_hash = #{passwordHash}
+         WHERE id = CAST(#{userId} AS uuid)
+           AND login_id IS NULL
+    </update>
+</mapper>

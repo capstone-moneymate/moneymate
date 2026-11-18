@@ -1,9 +1,27 @@
 import axios from 'axios'
+import { getLoginId, resetUserId } from '@/lib/userId'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   timeout: 10_000,
   headers: { 'Content-Type': 'application/json' },
+})
+
+/**
+ * 로그인이 풀린 채 계정 userId 로 부르면 서버가 401 을 준다 (서버 재시작, 7일 지남).
+ * 새 익명 ID 로 돌리고 로그인 화면으로 보낸다. /api/auth/* 의 401 은 화면이 직접 다룬다.
+ */
+apiClient.interceptors.response.use(undefined, (error: unknown) => {
+  if (
+    axios.isAxiosError(error) &&
+    error.response?.status === 401 &&
+    !error.config?.url?.startsWith('/api/auth/') &&
+    getLoginId()
+  ) {
+    resetUserId()
+    window.location.assign('/login?expired=1')
+  }
+  return Promise.reject(error)
 })
 
 /**
