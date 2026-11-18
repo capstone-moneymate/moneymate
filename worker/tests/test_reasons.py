@@ -118,10 +118,64 @@ def test_change_down_flips_direction_and_matches_reduction(monkeypatch):
     out, _ = run(monkeypatch, [down], change="down")
     r = out.reasons[0]
     assert (r.change, r.direction) == ("down", "down") and out.warnings == []
-    # 예전 응답(칸 없음)은 up 으로 계산 → 줄임 종목이면 경고만 남고 통과한다 (거부하지 않음)
-    out, _ = run(monkeypatch, [reason()], change="down")
-    assert out.errors == [] and out.reasons and len(out.warnings) == 1
-    assert "ai_investment(up) → semi_earnings 힘이 up 인데 큰손은 줄임" in out.warnings[0]
+    # 예전 응답(칸 없음)은 up 으로 계산 → 줄임 종목과 반대라 다시 쓰게 하고, 맞게 고치면 통과한다 (아래 테스트들)
+
+
+def test_direction_mismatch_retries_once_then_passes(monkeypatch):
+    # 2026-11-18 B 제안: 방향이 반대면 "큰손 방향과 맞는 경로만" 한 번 다시 쓰게 한다
+    fixed = reason("AI 투자 둔화", "투자가 줄어 수요가 약해졌을 수 있어요.", change="down")
+    out, calls = run(monkeypatch, [reason()], [fixed], change="down")
+    assert out.errors == [] and out.calls == 2 and out.warnings == []
+    assert [r.title for r in out.reasons] == ["AI 투자 둔화"]
+    feedback = calls[1]["messages"][-1]["content"]
+    assert "큰손은 이 종목을 줄임했어요" in feedback
+    assert "ai_investment(up) → semi_earnings 힘이 up 인데 큰손은 줄임" in feedback
+
+
+def test_direction_mismatch_after_retry_drops_only_wrong_reasons(monkeypatch):
+    # 다시 써도 반대인 이유는 빼고, 맞는 이유는 살린다. 뺀 까닭은 warnings 에 남는다 (status 는 published)
+    good = reason("AI 투자 둔화", "투자가 줄어 수요가 약해졌을 수 있어요.", change="down")
+    wrong = reason("호실적 뒤 차익 실현", "실적이 좋아 판 것일 수 있어요.")
+    out, calls = run(monkeypatch, [good, wrong], [good, wrong], change="down")
+    assert out.calls == 1 + rs.MAX_DIRECTION_RETRIES and out.errors == []
+    assert [r.title for r in out.reasons] == ["AI 투자 둔화"]
+    assert len(out.warnings) == 1 and "호실적 뒤 차익 실현" in out.warnings[0]
+
+
+def test_direction_mismatch_with_no_matching_reason_is_rejected(monkeypatch):
+    # MU·AAPL·COHR "호실적 뒤 차익 실현" 같은 경우: 맞는 이유가 하나도 없으면 errors → save 가 rejected
+    wrong = reason("호실적 뒤 차익 실현", "실적이 좋아 판 것일 수 있어요.")
+    out, _ = run(monkeypatch, [wrong], [wrong], change="down")
+    assert out.reasons == [] and out.errors == ["큰손 변화와 방향이 맞는 이유가 없어요"]
+    assert len(out.warnings) == 1
+
+
+def test_diff_stock_does_not_retry_for_direction(monkeypatch):
+    # 엇갈린 종목은 어느 쪽 이유든 되므로 다시 쓰게 하지 않는다
+    out, calls = run(monkeypatch, [reason()], direction="diff", change="down")
+    assert out.errors == [] and len(out.reasons) == 1 and len(calls) == 1
+
+
+class _Conn:
+    def __init__(self):
+        self.params = None
+
+    def execute(self, sql, params=None):
+        self.params = params
+
+
+@pytest.mark.parametrize("reasons, errors, want", [
+    (["r"], [], "published"),
+    ([], ["큰손 변화와 방향이 맞는 이유가 없어요"], "rejected"),
+    ([], [], "rejected"),
+])
+def test_save_status_has_no_pending(reasons, errors, want):
+    # 방향 경고가 있어도 pending 으로 두지 않는다 (뺀 이유는 model_info.warnings 에만)
+    r = rs.Reason("t", "b", "ai_investment", "semi_earnings", [], "up", [], "up")
+    result = rs.ReasonsResult("왜 다 줄였을까요?", [r] if reasons else [], errors, warnings=["뺀 이유"])
+    conn = _Conn()
+    assert rs.save(conn, BASE, "MU", "same", "down", result, None) == want
+    assert want in conn.params
 
 
 def test_change_flips_direction_on_single_edge():
@@ -185,7 +239,9 @@ def test_down_path_keeps_direction(monkeypatch):
     # 누르는 힘 경로도 통과하되 방향을 담아 화면이 ▼ 를 그릴 수 있게 한다
     # rate_hike 는 근거에 실제 인상 결정이 있어야 시작 개념이 된다 (DECISION_EVENTS)
     hike = [rs.Evidence(1, 31, "2026-09-16", "FOMC 정책금리 결정", None, "u", {"decision": "hike"})]
-    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings", evidence=(1,))], evidence=hike)
+    # 큰손 방향 검사(늘림인데 ▼ 이유 → 다시 쓰기)와 섞이지 않게 엇갈린(diff) 종목으로 본다
+    out, _ = run(monkeypatch, [reason(start="rate_hike", end="semi_earnings", evidence=(1,))], evidence=hike,
+                 direction="diff")
     assert out.errors == [] and out.reasons[0].direction == "down"
     assert out.reasons[0].path == ["rate_hike", "semi_earnings"]
 
