@@ -5,11 +5,12 @@ import { PageHeader } from '@/components/PageHeader'
 import type { EtfMove } from '@/types/etf'
 import type { StockOverlap } from '@/types/overlap'
 import {
+  bigChangeLabel,
   daysBetween,
   etfShortName,
   FILERS,
   filerPersonName,
-  isBigUp,
+  isBigHeld,
   quarterOf,
   shortDate,
   signedPct,
@@ -60,11 +61,14 @@ export const EtfPage = () => {
 
 // ---------------------------------------------------------------- 13F 공시
 
-/** 함께 늘렸다고 보는 최소 인원 (시안 18: "4명 중 2명 이상") */
+/** 겹친다고 보는 최소 인원 (시안 18: "4명 중 2명 이상") */
 const MIN_FILERS = 2
 
-/** 13F 에서 새로 담았거나 +5% 이상 늘린 큰손 (worker 와 같은 기준) */
-const raisedBy = (stock: StockOverlap) => stock.filers.filter(isBigUp)
+/**
+ * 이번 분기 말에 그 종목을 들고 있는 큰손 (#164). 예전 기준 "함께 늘린 종목"은 3분기에 0개라
+ * 방향과 상관없이 보유로 세고, 방향은 라벨로만 보여 준다. 겹침 결과에 있는 종목이라 ETF 도 들고 있다.
+ */
+const heldBy = (stock: StockOverlap) => stock.filers.filter(isBigHeld)
 
 const OverlapView = () => {
   const { data, isPending, isError } = useOverlaps()
@@ -73,13 +77,11 @@ const OverlapView = () => {
   if (isError)
     return <StateText>13F 기록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.</StateText>
 
-  // 많이 함께 늘린 순, 같으면 티커 순
+  // 보유한 큰손이 많은 순, 같으면 티커 순
   const together = data.stocks
-    .map((stock) => ({ stock, raised: raisedBy(stock) }))
-    .filter(({ raised }) => raised.length >= MIN_FILERS)
-    .sort(
-      (a, b) => b.raised.length - a.raised.length || a.stock.ticker.localeCompare(b.stock.ticker),
-    )
+    .map((stock) => ({ stock, held: heldBy(stock) }))
+    .filter(({ held }) => held.length >= MIN_FILERS)
+    .sort((a, b) => b.held.length - a.held.length || a.stock.ticker.localeCompare(b.stock.ticker))
 
   const periodEnd = data.stocks[0]?.filers[0]?.periodEnd
   const filed = data.stocks.flatMap((s) => s.filers.map((f) => f.filedAt)).filter(Boolean)
@@ -88,7 +90,7 @@ const OverlapView = () => {
   return (
     <section className="mt-6 px-5">
       <h2 className="text-xl font-bold text-slate-900">
-        {periodEnd ? `${quarterOf(periodEnd)} ` : ''}큰손들이 함께 늘린 종목
+        {periodEnd ? `${quarterOf(periodEnd)} ` : ''}큰손 여러 명이 담은 종목
       </h2>
       <p className="mt-1.5 text-sm text-slate-500">
         {[
@@ -104,7 +106,7 @@ const OverlapView = () => {
         <StateText>{NO_OVERLAP_NOTE(MIN_FILERS)}</StateText>
       ) : (
         <ol className="mt-5 flex flex-col gap-4">
-          {together.map(({ stock, raised }, i) => (
+          {together.map(({ stock, held }, i) => (
             <li key={stock.ticker}>
               <Link
                 to={`/etf/${encodeURIComponent(stock.ticker)}`}
@@ -116,12 +118,12 @@ const OverlapView = () => {
                   <span className="min-w-0 truncate text-base text-slate-500">
                     {stock.issuerName ?? stock.etfStockName}
                   </span>
-                  <span className="text-up ml-auto shrink-0 text-[15px] font-bold">
-                    {raised.length}명 늘림
+                  <span className="ml-auto shrink-0 text-[15px] font-bold text-slate-900">
+                    {held.length}명 보유
                   </span>
                 </div>
                 <p className="mt-3 text-[15px] text-slate-500">
-                  {raised.map((f) => filerPersonName(f.filerKey)).join(' · ')}
+                  {held.map((f) => `${filerPersonName(f.filerKey)} ${bigChangeLabel(f)}`).join(' · ')}
                 </p>
               </Link>
             </li>
