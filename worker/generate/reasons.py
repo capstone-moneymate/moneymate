@@ -31,6 +31,9 @@ EVIDENCE_DAYS = 92  # 공시 기준일 앞 이만큼(한 분기)의 자료를 �
 MAX_EVIDENCE = 20  # 프롬프트에 넣는 근거 후보 상한 (최근 순)
 MAX_REASONS = 3  # 화면은 이유를 카드처럼 넘겨 본다 (서비스흐름 "이유는 카드로 짧게")
 MAX_REPAIRS = 1  # 코드 검사에 걸리면 이유를 돌려주고 한 번 더 쓰게 한다
+# 이유 방향이 큰손 변화와 반대면 "큰손 방향과 맞는 경로만" 이만큼 다시 쓰게 한다. 그래도 반대인 이유는 버리고,
+# 하나도 안 남으면 rejected (2026-11-18 B 제안: "차익 실현"처럼 사전 밖 설명을 막고, 설명 못 하면 안 보여 준다)
+MAX_DIRECTION_RETRIES = 1
 
 # 카드 ② 제목 (서비스흐름 3.4). direction 은 A의 overlap_results.direction (conventions.md P3: same / diff / none),
 # change 는 큰손 쪽 변화 up / down (같은 방향이면 ETF 도 같다). none 은 한쪽만 움직여 "다"를 빼고 그 변화로 묻는다
@@ -80,7 +83,8 @@ class ReasonsResult:
     reasons: list[Reason] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)  # 끝내 통과하지 못한 이유 (비어 있으면 통과)
     calls: int = 0
-    # 통과는 했지만 사람이 볼 것: 이유 방향이 큰손 변화와 반대. 있으면 save 가 pending 으로 저장한다 (B·C 합의)
+    # 다시 쓰게 해도 방향이 큰손 변화와 반대라 뺀 이유 (model_info.warnings 기록용, status 에는 영향 없음).
+    # 2026-11-16 에는 이게 있으면 pending 으로 저장했지만, 11-18 B 제안으로 빼고 남은 이유만 살린다
     warnings: list[str] = field(default_factory=list)
     # 끝까지 검사에 걸려 빼고 나머지 이유만 살렸을 때, 뺀 까닭 (model_info.dropped, status 에는 영향 없음)
     dropped: list[str] = field(default_factory=list)
@@ -254,9 +258,8 @@ def to_reasons(raw: list[dict], evidence: list[Evidence], g: Graph) -> list[Reas
 def direction_warnings(reasons: list[Reason], direction: str, change: str) -> list[str]:
     """큰손이 한쪽으로 움직인 종목(same·none)에서 이유의 힘이 그 변화와 반대인 것.
 
-    경고가 있으면 save 가 pending 으로 저장해 화면에 안 나가고 사람이 본다 (2026-11-16 B·C 합의).
-    다시 쓰게(거부) 하지 않는 까닭: 끝 개념마다 '커지면 늘릴 이유'인지 사전에 정보가 없어서
-    (비용·금리처럼 커지면 줄일 이유인 개념도 있다) 맞는 이유를 버릴 수 있다.
+    generate 가 이게 있으면 한 번 다시 쓰게 하고, 그래도 남은 것은 뺀다 (2026-11-18 B 제안).
+    2분기 실데이터에서 반대인데 맞는 이유는 없었고, 반대 이유는 "호실적 뒤 차익 실현"처럼 사전 밖 설명이었다.
     diff(방향이 엇갈림)는 이유가 어느 쪽을 설명해도 되므로 보지 않는다.
     """
     if direction == "diff":
@@ -280,7 +283,8 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
     g = g or load_graph()
 
     messages = [{"role": "user", "content": build_user(stock, direction, change, facts, evidence)}]
-    for _ in range(MAX_REPAIRS + 1):
+    repairs = retries = 0
+    while True:
         resp = create(
             "reasons",
             note=f"ticker={stock.get('ticker')} base={base_date}",
@@ -297,20 +301,40 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
         text = text_of(resp)
         raw = json.loads(text)["reasons"]
         errors = check_reasons(raw, evidence, base_date, g)
-        if not errors:
-            result.reasons, result.errors = to_reasons(raw, evidence, g), []
-            result.warnings = direction_warnings(result.reasons, direction, change)
-            return result
-        result.errors = errors
-        messages += [{"role": "assistant", "content": text},
-                     {"role": "user", "content": "다음 문제를 고쳐서 이유 전체를 다시 써 주세요:\n- " + "\n- ".join(errors)}]
-    # 고쳐 쓰기를 다 해도 걸리면, 혼자 검사해서 통과하는 이유만 살린다. 8-K 숫자를 넣었더니 사전에 없는 경로
-    # (revenue → eps 등) 하나 때문에 20종목 중 11곳이 통째로 rejected 됐다 (2026-11-16)
-    good = [r for r in raw if not check_reasons([r], evidence, base_date, g)]
-    if good:
-        result.dropped = [e for e in result.errors if not e.startswith("이유는 ")]
-        result.reasons, result.errors = to_reasons(good, evidence, g), []
-        result.warnings = direction_warnings(result.reasons, direction, change)
+        if errors and repairs < MAX_REPAIRS:
+            repairs += 1
+            result.errors = errors
+            messages += [{"role": "assistant", "content": text},
+                         {"role": "user", "content": "다음 문제를 고쳐서 이유 전체를 다시 써 주세요:\n- " + "\n- ".join(errors)}]
+            continue
+        if errors:
+            # 고쳐 쓰기를 다 해도 걸리면, 혼자 검사해서 통과하는 이유만 살린다. 8-K 숫자를 넣었더니 사전에 없는 경로
+            # (revenue → eps 등) 하나 때문에 20종목 중 11곳이 통째로 rejected 됐다 (2026-11-16)
+            good = [r for r in raw if not check_reasons([r], evidence, base_date, g)]
+            if not good:
+                result.reasons, result.errors = [], errors
+                return result
+            result.dropped = [e for e in errors if not e.startswith("이유는 ")]
+            raw = good
+        result.reasons, result.errors = to_reasons(raw, evidence, g), []
+        warnings = direction_warnings(result.reasons, direction, change)
+        if warnings and retries < MAX_DIRECTION_RETRIES:
+            retries += 1
+            want = "늘림" if change == "up" else "줄임"
+            messages += [{"role": "assistant", "content": text},
+                         {"role": "user", "content": (
+                             f"큰손은 이 종목을 {want}했어요. 아래 이유는 사전 경로의 힘이 그 변화와 반대예요:\n- "
+                             + "\n- ".join(warnings)
+                             + f"\n큰손 방향({want})과 맞는 경로만 골라 이유 전체를 다시 써 주세요. "
+                             "근거 자료로 맞는 경로를 찾을 수 없으면 그 이유는 빼 주세요.")}]
+            continue
+        break
+    # 다시 써도 방향이 반대인 이유는 뺀다. 하나도 안 남으면 rejected (설명 못 하면 안 보여 준다)
+    if warnings:
+        result.warnings = warnings
+        result.reasons = [r for r in result.reasons if direction == "diff" or r.direction == change]
+        if not result.reasons:
+            result.errors = ["큰손 변화와 방향이 맞는 이유가 없어요"]
     return result
 
 
@@ -360,21 +384,14 @@ def save(conn, base_date: date, ticker: str, direction: str, change: str, result
          now_view: dict | None, model_info: dict | None = None) -> str:
     """stock_reasons 한 줄 (분기·종목마다 1줄, 다시 만들면 덮어쓰고 updated_at 갱신). 저장한 status 를 돌려준다.
 
-    status (P19 + 2026-11-16 B·C 합의):
-    - 이유가 없거나 errors 가 남으면 rejected
-    - 이유는 통과했지만 방향 경고(큰손 변화와 반대)가 있으면 pending: 화면에 안 나가고(서버는 published 만) 사람이
-      model_info.warnings 를 보고 published 로 바꾸거나 다시 만든다. 카드 ②는 "왜 늘렸나/줄였나"를 설명하는 곳이라
-      반대 방향 이유가 정답처럼 읽히면 안 되고, 13F 는 분기에 20종목 정도라 사람이 볼 수 있다 (2분기 실데이터에서
-      반대인데 맞는 이유는 없었다)
-    - 그 밖은 published
+    status (P19 + 2026-11-18 B 제안):
+    - 이유가 없거나 errors 가 남으면 rejected (방향이 맞는 이유가 하나도 없을 때도 generate 가 errors 를 남긴다)
+    - 그 밖은 published. 방향이 반대라 뺀 이유는 model_info.warnings 에 남는다.
+      예전(11-16~17)에는 방향 경고가 있으면 pending 으로 두고 사람이 봤지만, 2분기 pending 3건(MU·AAPL·COHR "호실적 뒤
+      차익 실현")이 모두 사전 밖 설명이라 B 와 rejected 로 정하고, 다시 쓰기 → 빼기로 바꿨다
     now_view: stock_now.StockNow.to_json() (카드 ③). 아직 안 만들었으면 None → NULL.
     """
-    if not result.reasons or result.errors:
-        status = "rejected"
-    elif result.warnings:
-        status = "pending"
-    else:
-        status = "published"
+    status = "rejected" if not result.reasons or result.errors else "published"
     info = {"calls": result.calls, **(model_info or {})}
     if result.errors:
         info["errors"] = result.errors

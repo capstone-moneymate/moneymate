@@ -169,12 +169,12 @@ def test_save_published_with_now_view():
     assert params[7] == "published" and params[8].obj == {"calls": 1, "model": "sonnet"}
 
 
-def test_save_direction_warnings_as_pending():
-    # 큰손과 반대 방향 이유가 있으면 pending: 화면(서버는 published 만)에 안 나가고 사람이 본다 (B·C 합의)
+def test_save_keeps_dropped_direction_warnings_but_publishes():
+    # 2026-11-18 B 제안: 방향이 반대인 이유는 generate 가 빼므로 남은 이유는 published. 뺀 까닭만 model_info 에 남긴다
     conn = FakeConn()
     result = ReasonsResult("왜 다 늘렸을까요?", REASONS, calls=1, warnings=["이유 1: 반대"])
-    assert rs.save(conn, BASE, "NVDA", "same", "up", result, None) == "pending"
-    assert conn.calls[0][1][7] == "pending"
+    assert rs.save(conn, BASE, "NVDA", "same", "up", result, None) == "published"
+    assert conn.calls[0][1][7] == "published"
     assert conn.calls[0][1][8].obj == {"calls": 1, "warnings": ["이유 1: 반대"]}
     assert conn.calls[0][1][5].obj[0]["change"] == "up"  # 시작 개념 변화도 저장
 
