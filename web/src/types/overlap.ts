@@ -89,6 +89,11 @@ export interface StockReason {
   /** 경로에 배운 개념이 있으면 true ("내 지도에 있어요") */
   inMyMap: boolean
   evidence: ReasonEvidence[]
+  /**
+   * 양쪽 이유일 때 설명하는 쪽: big(큰손, 분기 말 이전 근거) / etf(ETF, 분기 말 이후 근거).
+   * 큰손과 ETF 가 반대로 움직인 종목만 있고, 그 밖은 null. 이 쪽의 direction 은 그 쪽 변화와 같다 (worker 검사)
+   */
+  side: 'big' | 'etf' | null
 }
 
 /** 카드 ③ 기준일 이후 주가. returnPct 는 퍼센트 값 (12.5 = 12.5%) */

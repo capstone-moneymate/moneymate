@@ -80,7 +80,11 @@ export const StockDetailPage = () => {
         ) : index === 0 ? (
           <ChangedCard stock={data} />
         ) : index === 1 ? (
-          <ReasonsCard data={data.reasons} rejected={data.reasonsRejected} />
+          <ReasonsCard
+            data={data.reasons}
+            rejected={data.reasonsRejected}
+            etfUntil={latestSnapshot(data.etfs)}
+          />
         ) : (
           <NowCard reasons={data.reasons} />
         )}
@@ -99,6 +103,10 @@ export const StockDetailPage = () => {
 }
 
 // ---------------------------------------------------------------- 카드 ① 무엇이 바뀌었나
+
+/** ETF 최신 스냅샷 날짜 (YYYY-MM-DD 라 글자 비교로 가장 늦은 날). 없으면 null */
+const latestSnapshot = (etfs: EtfChange[]) =>
+  etfs.reduce<string | null>((a, e) => (a === null || e.snapshotDate > a ? e.snapshotDate : a), null)
 
 /** ETF 가 분기 말 이후 늘렸는지 (새로 담았으면 trendChgPct 가 null) */
 const etfUp = (e: EtfChange) => e.trendChgPct === null || e.trendChgPct > 0

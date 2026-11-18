@@ -98,6 +98,7 @@ const nvdaDetail: StockDetail = {
             url: 'https://example.com/b',
           },
         ],
+        side: 'big',
       },
       {
         title: '메모리 가격 부담',
@@ -110,13 +111,15 @@ const nvdaDetail: StockDetail = {
         inMyMap: false,
         evidence: [
           {
-            no: 11,
-            publishedDate: '2026-05-28',
-            title: '(예시) 1분기 실적 발표',
+            no: 12,
+            publishedDate: '2026-08-27',
+            title: '(예시) 2분기 실적 발표',
             issuerName: '예시 기업',
-            url: 'https://example.com/b',
+            url: 'https://example.com/c',
           },
         ],
+        // 양쪽 이유 예시: 큰손(6/30 까지)은 늘렸고 ETF(6/30 이후)는 줄인 쪽 설명
+        side: 'etf',
       },
     ],
     now: {
