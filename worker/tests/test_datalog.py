@@ -3,7 +3,7 @@ import pytest
 from concepts import datalog
 from concepts.datalog import DatalogError, evaluate, parse
 from concepts.graph import (DOWN, NORMAL, RULES, UP, ambiguous_pairs, build_graph, derive, effect, load_graph,
-                            regimes, signed_paths)
+                            regime_out, regimes, signed_paths)
 
 RULES_TEXT = RULES.read_text(encoding="utf-8")
 BASE_RULES = "\n".join(str(r) for r in parse(RULES_TEXT).rules[:3])  # 평상시 규칙 3줄 (1~4단계 예시용)
@@ -18,7 +18,7 @@ def effects(result):
 
 
 def test_rules_file():
-    # 교수님께 보여줄 규칙 파일: 평상시 영향 2줄 + 모호 1줄, 국면별 조건부 연결 6줄 (#158)
+    # 교수님께 보여줄 규칙 파일: 평상시 영향 2줄 + 모호 1줄, 국면별 조건부 연결 6줄 (#158), 정답 경로 8줄 (#170)
     prog = parse(RULES_TEXT)
     assert [str(r) for r in prog.rules] == [
         "effect(X, Y, S) :- edge(X, Y, S).",
@@ -30,6 +30,14 @@ def test_rules_file():
         "effect_r(X, Y, S, R) :- edge_r(X, Y, S, R).",
         "effect_r(X, Z, S1 * S2, R) :- effect_r(X, Y, S1, R), edge_r(Y, Z, S2, R).",
         "ambiguous_r(X, Y, R) :- effect_r(X, Y, 1, R), effect_r(X, Y, -1, R).",
+        "reach0(Y, Y) :- concept(Y).",
+        "reach0(X, Y) :- effect(X, Y, _).",
+        "step(X, Z, X, B) :- effect(X, Z, _), edge(X, B, _), reach0(B, Z).",
+        "step(X, Z, A, B) :- step(X, Z, _, A), edge(A, B, _), reach0(B, Z).",
+        "reach0_r(Y, Y, R) :- concept(Y), regime(R).",
+        "reach0_r(X, Y, R) :- effect_r(X, Y, _, R).",
+        "step_r(X, Z, X, B, R) :- effect_r(X, Z, _, R), edge_r(X, B, _, R), reach0_r(B, Z, R).",
+        "step_r(X, Z, A, B, R) :- step_r(X, Z, _, A, R), edge_r(A, B, _, R), reach0_r(B, Z, R).",
     ]
     # overridden 을 먼저 다 알아야 !overridden 을 판단할 수 있어 2개 층으로 나뉜다
     layers = datalog.stratify(prog.rules)
@@ -79,7 +87,7 @@ def test_semi_naive_matches_naive_on_real_dictionary():
     # semi-naive(새 사실만 다시 보기) 결과가 "매 회차 전부 다시 보기"와 같은지 실제 사전으로 확인
     g = load_graph()
     edges = {(s, d, sign) for s, outs in g.out.items() for d, sign in outs}
-    extra = {"cond_edge": set(g.cond), "regime": {(r,) for r in regimes(g)}}
+    extra = {"cond_edge": set(g.cond), "regime": {(r,) for r in regimes(g)}, "concept": {(c,) for c in g.names}}
     fast = run(edges, **extra)
     prog = parse(RULES_TEXT)
     total = {"edge": set(edges), **extra}
@@ -92,8 +100,25 @@ def test_semi_naive_matches_naive_on_real_dictionary():
                 break
             for p, f in added:
                 total.setdefault(p, set()).add(f)
-    for pred in ("effect", "ambiguous", "edge_r", "effect_r", "ambiguous_r"):
+    for pred in ("effect", "ambiguous", "edge_r", "effect_r", "ambiguous_r", "reach0", "step", "reach0_r", "step_r"):
         assert fast.get(pred) == total.get(pred, set()), pred
+
+
+def search_paths(g, start, end, regime=NORMAL):
+    """#170 전의 경로 탐색 (같은 개념을 두 번 지나지 않는 모든 경로). 규칙으로 바꾼 signed_paths 와 비교하는 기준."""
+    out = regime_out(g, regime)
+    found = []
+
+    def walk(node, path, sign):
+        if node == end and len(path) > 1:
+            found.append((list(path), sign))
+            return
+        for nxt, s in out[node]:
+            if nxt not in path:
+                walk(nxt, path + [nxt], sign * s)
+
+    walk(start, [start], 1)
+    return sorted(found, key=lambda p: (len(p[0]), p[0]))
 
 
 def test_engine_agrees_with_path_search_for_every_pair():
@@ -104,9 +129,57 @@ def test_engine_agrees_with_path_search_for_every_pair():
         for end in g.out:
             if start == end:
                 continue
-            path_signs = {s for _, s in signed_paths(g, start, end)}
+            path_signs = {s for _, s in search_paths(g, start, end)}
             assert set(d.effects.get((start, end), ())) == path_signs, (start, end)
             effect(g, start, end, UP)  # 어긋나면 RuntimeError
+
+
+# ------------------------------------------------------------------
+# 정답 경로도 규칙으로 (#170): step(X, Z, A, B) = 연결 A → B 가 X → Z 경로 위에 있다
+# ------------------------------------------------------------------
+
+def test_step_keeps_only_edges_that_lead_to_the_end():
+    # 손계산: a → b → c 와 a → d (d 에서는 c 로 못 감). a → c 경로 위의 연결은 a → b, b → c 둘뿐
+    g = build_graph({k: k for k in "abcd"}, [("a", "b", "up"), ("b", "c", "down"), ("a", "d", "up")])
+    assert derive(g).steps[("a", "c")] == {("a", "b"), ("b", "c")}
+    assert signed_paths(g, "a", "c") == [(["a", "b", "c"], -1)]
+    assert ("a", "d") not in derive(g).steps.get(("a", "c"), set())
+
+
+def test_step_branches_give_every_path():
+    # 손계산: x → y → z (+1)(+1) 와 x → w → z (+1)(-1). 연결 4개가 모두 경로 위에 있고 경로 2개, 모호
+    g = build_graph({k: k for k in "xywz"}, [("x", "y", "up"), ("y", "z", "up"), ("x", "w", "up"), ("w", "z", "down")])
+    assert derive(g).steps[("x", "z")] == {("x", "y"), ("y", "z"), ("x", "w"), ("w", "z")}
+    assert signed_paths(g, "x", "z") == [(["x", "w", "z"], -1), (["x", "y", "z"], 1)]
+    assert effect(g, "x", "z").direction == "ambiguous"
+
+
+def test_no_path_means_no_steps():
+    g = build_graph({k: k for k in "ab"}, [("a", "b", "up")])
+    assert signed_paths(g, "b", "a") == [] and ("b", "a") not in derive(g).steps
+
+
+def test_rule_paths_match_old_search_for_every_pair_and_regime():
+    # 실제 사전 모든 국면 × 모든 (시작, 결과) 쌍에서 규칙으로 만든 경로 = 예전 탐색 경로 (순서·부호까지)
+    g = load_graph()
+    n_multi = 0
+    for r in regimes(g):
+        for start in g.out:
+            for end in g.out:
+                if start != end:
+                    got = signed_paths(g, start, end, r)
+                    assert got == search_paths(g, start, end, r), (r, start, end)
+                    n_multi += len(got) > 1
+    # 경로가 2개인 쌍: 인플레이션 → 국채 금리·은행 마진·성장주, AI 투자·GPU 수요 → 반도체 실적 (국면마다 5쌍)
+    assert n_multi == 5 * len(regimes(g))
+
+
+def test_real_dictionary_answer_order_from_rules():
+    # 탭 1 정답 순서 예: 인하 → 국채 금리 → 성장주 가치평가. step 결론 2개를 이어 붙인 것
+    g = load_graph()
+    assert derive(g).steps[("rate_cut", "growth_valuation")] == {("rate_cut", "bond_yield"),
+                                                                 ("bond_yield", "growth_valuation")}
+    assert effect(g, "rate_cut", "growth_valuation").paths == [(["rate_cut", "bond_yield", "growth_valuation"], 1)]
 
 
 def test_effect_raises_when_engine_and_paths_disagree():

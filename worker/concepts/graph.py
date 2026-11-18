@@ -2,7 +2,8 @@
 시작 개념에서 결과 개념까지의 경로·최종 방향·모호성을 계산한다.
 
 방향과 모호성은 규칙(concepts/rules.dl)을 Datalog 엔진(concepts/datalog.py)으로 고정점까지 계산해 정한다 (#156).
-경로 나열(퀴즈 정답 순서)은 아래 signed_paths 가 하고, effect() 가 두 결과가 같은지 매번 확인한다.
+경로(퀴즈 정답 순서)도 규칙 step 이 "경로 위에 있는 연결"을 정하고, signed_paths 는 그 연결을 이어 붙이기만 한다 (#170).
+effect() 는 방향 결론과 경로 부호가 같은지 매번 확인한다.
 국면(regime)별 조건부 연결은 db/seeds/cond_edges.csv 의 사실과 rules.dl 4~6 규칙으로 계산한다 (#158).
 국면을 주지 않으면 평상시(normal)라 조건부 연결이 없던 때와 결과가 같다.
 
@@ -145,38 +146,48 @@ def find_any_cycle(g: Graph) -> tuple[str, list[str]] | None:
 
 
 def signed_paths(g: Graph, start: str, end: str, regime: str = NORMAL) -> list[tuple[list[str], int]]:
-    """start -> end 의 모든 단순 경로와 그 경로의 부호(연결 부호의 곱). 짧은 경로부터, 같으면 이름순.
-    regime 을 주면 그 국면의 연결(조건부 연결이 기본 연결을 대신함)로 찾는다."""
+    """start -> end 의 모든 경로와 그 경로의 부호(연결 부호의 곱). 짧은 경로부터, 같으면 이름순.
+    regime 을 주면 그 국면의 연결(조건부 연결이 기본 연결을 대신함)로 본다.
+
+    어떤 연결이 경로에 들어가는지는 규칙 step / step_r(rules.dl 7~9)의 결론이다 (#170).
+    여기서는 그 연결만 시작 개념부터 순서대로 이어 붙인다. 갈라지는 곳(경로가 둘 이상인 쌍)에서는 모두 낸다.
+    """
     for cid in (start, end):
         if cid not in g.out:
             raise ValueError(f"개념 사전에 없는 개념: {cid}")
-    out = regime_out(g, regime)
+    out = regime_out(g, regime)   # 모르는 국면이면 오류. 연결 부호를 읽는 데만 쓴다
+    d = derive(g)
+    on_path = d.steps.get((start, end), frozenset()) if regime == NORMAL else d.steps_r.get((start, end, regime), frozenset())
     found = []
 
-    def walk(node: str, path: list[str], sign: int) -> None:
+    def follow(node: str, path: list[str], sign: int) -> None:
         if node == end and len(path) > 1:
             found.append((list(path), sign))
             return
         for nxt, s in out[node]:
-            if nxt not in path:
+            # nxt not in path: 순환이 생긴 사전에서 끝없이 돌지 않게 막는다 (그런 사전은 effect() 가 오류를 낸다)
+            if (node, nxt) in on_path and nxt not in path:
                 path.append(nxt)
-                walk(nxt, path, sign * s)
+                follow(nxt, path, sign * s)
                 path.pop()
 
-    walk(start, [start], 1)
+    follow(start, [start], 1)
     return sorted(found, key=lambda p: (len(p[0]), p[0]))
 
 
 @dataclass(frozen=True)
 class Derived:
     """규칙 엔진이 낸 결론. effects[(시작, 결과)] = 평상시 받는 영향의 부호들, ambiguous = 평상시 모호한 쌍.
-    effects_r[(시작, 결과, 국면)]·ambiguous_r 은 국면별 결론(rules.dl 4~6)."""
+    effects_r[(시작, 결과, 국면)]·ambiguous_r 은 국면별 결론(rules.dl 4~6).
+    steps[(시작, 결과)] = 그 경로 위에 있는 연결 (A, B) 들 (rules.dl 7~8), steps_r 은 국면별 (rules.dl 9)."""
     effects: dict[tuple[str, str], frozenset[int]]
     ambiguous: frozenset[tuple[str, str]]
     rounds: int
     effects_r: dict[tuple[str, str, str], frozenset[int]] = field(default_factory=dict)
     ambiguous_r: frozenset[tuple[str, str, str]] = frozenset()
     strata: int = 1
+    steps: dict[tuple[str, str], frozenset[tuple[str, str]]] = field(default_factory=dict)
+    steps_r: dict[tuple[str, str, str], frozenset[tuple[str, str]]] = field(default_factory=dict)
 
 
 @lru_cache(maxsize=1)
@@ -196,21 +207,32 @@ def _group(rows) -> dict:
     return {k: frozenset(v) for k, v in out.items()}
 
 
+def _group_steps(rows) -> dict:
+    """step(X, Z, A, B[, R]) → {(X, Z[, R]): {(A, B), ...}}"""
+    out: dict = {}
+    for x, z, a, b, *r in rows:
+        out.setdefault((x, z, *r), set()).add((a, b))
+    return {k: frozenset(v) for k, v in out.items()}
+
+
 @lru_cache(maxsize=32)
-def _derive(edges: frozenset[tuple[str, str, int]], cond: frozenset[tuple[str, str, int, str]]) -> Derived:
+def _derive(edges: frozenset[tuple[str, str, int]], cond: frozenset[tuple[str, str, int, str]],
+            concepts: frozenset[str] = frozenset()) -> Derived:
     facts = {"edge": set(edges), "cond_edge": set(cond),
-             "regime": {(NORMAL,)} | {(r,) for *_, r in cond}}
+             "regime": {(NORMAL,)} | {(r,) for *_, r in cond},
+             "concept": {(c,) for c in concepts} | {(c,) for e in edges for c in e[:2]}}
     result = datalog.evaluate(_rules(), facts)
     # effect_r 은 (X, Y, S, R) 라 부호를 맨 뒤로 옮겨 묶는다
     effects_r = _group((x, y, r, s) for x, y, s, r in result.get("effect_r"))
     return Derived(effects=_group(result.get("effect")), ambiguous=frozenset(result.get("ambiguous")),
                    rounds=result.rounds, effects_r=effects_r, ambiguous_r=frozenset(result.get("ambiguous_r")),
-                   strata=result.strata)
+                   strata=result.strata, steps=_group_steps(result.get("step")),
+                   steps_r=_group_steps(result.get("step_r")))
 
 
 def derive(g: Graph) -> Derived:
     """그래프의 연결에 규칙을 고정점까지 적용한 결론. 연결이 같으면 다시 계산하지 않는다."""
-    return _derive(edge_facts(g), frozenset(g.cond))
+    return _derive(edge_facts(g), frozenset(g.cond), frozenset(g.names))
 
 
 def effect(g: Graph, start: str, end: str, change: str = UP, regime: str = NORMAL) -> Effect:

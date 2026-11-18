@@ -34,3 +34,25 @@ edge_r(X, Y, S, R) :- cond_edge(X, Y, S, R).
 effect_r(X, Y, S, R) :- edge_r(X, Y, S, R).
 effect_r(X, Z, S1 * S2, R) :- effect_r(X, Y, S1, R), edge_r(Y, Z, S2, R).
 ambiguous_r(X, Y, R) :- effect_r(X, Y, 1, R), effect_r(X, Y, -1, R).
+
+% ---------------------------------------------------------------------------------------------
+% 퀴즈 정답 순서 (경로, #170). Datalog 사실은 목록을 담을 수 없어서, "이 연결이 X → Z 경로 위에 있다"를 결론으로 낸다.
+% 코드(graph.signed_paths)는 이 결론의 연결을 시작 개념부터 이어 붙이기만 한다. 어떤 개념이 정답에 들어가는지는 여기서 정한다.
+%
+% 사실 concept(개념) 은 db/seeds/concepts.csv 의 개념 id 다.
+% ---------------------------------------------------------------------------------------------
+
+% 7. B 에서 Z 로 갈 수 있다 (B 가 Z 자신이어도 된다)
+reach0(Y, Y) :- concept(Y).
+reach0(X, Y) :- effect(X, Y, _).
+
+% 8. 연결 A → B 가 X → Z 경로 위에 있다: X 에서 출발해 이미 경로 위에 있는 A 에서 B 로 가고, B 에서 Z 로 갈 수 있으면
+%    예: 인하 → 국채 금리 → 성장주 가치평가 이면 step(인하, 성장주, 인하, 국채 금리), step(인하, 성장주, 국채 금리, 성장주)
+step(X, Z, X, B) :- effect(X, Z, _), edge(X, B, _), reach0(B, Z).
+step(X, Z, A, B) :- step(X, Z, _, A), edge(A, B, _), reach0(B, Z).
+
+% 9. 국면별 경로는 7~8 과 같은 규칙을 국면 연결로 계산한다
+reach0_r(Y, Y, R) :- concept(Y), regime(R).
+reach0_r(X, Y, R) :- effect_r(X, Y, _, R).
+step_r(X, Z, X, B, R) :- effect_r(X, Z, _, R), edge_r(X, B, _, R), reach0_r(B, Z, R).
+step_r(X, Z, A, B, R) :- step_r(X, Z, _, A, R), edge_r(A, B, _, R), reach0_r(B, Z, R).
