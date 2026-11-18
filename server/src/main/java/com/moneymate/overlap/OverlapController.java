@@ -1,5 +1,7 @@
 package com.moneymate.overlap;
 
+import com.moneymate.auth.AuthController;
+import com.moneymate.auth.UserGuard;
 import com.moneymate.overlap.OverlapDtos.OverlapList;
 import com.moneymate.overlap.OverlapDtos.StockDetail;
 import java.util.Map;
@@ -11,15 +13,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.SessionAttribute;
 
 /** 탭2 겹침 메인 상단과 종목 상세 API. 읽기 전용이다. */
 @RestController
 public class OverlapController {
 
     private final OverlapService service;
+    private final UserGuard guard;
 
-    public OverlapController(OverlapService service) {
+    public OverlapController(OverlapService service, UserGuard guard) {
         this.service = service;
+        this.guard = guard;
     }
 
     /** 가장 최근 계산일의 겹침 종목 목록 (티커 순). */
@@ -33,8 +38,9 @@ public class OverlapController {
      * userId 는 선택이다. 없으면 배운 개념 표시만 빠지고, UUID 형식이 아니면 400. 겹침 결과에 없으면 404.
      */
     @GetMapping("/api/stocks/{ticker}")
-    public StockDetail stock(@PathVariable String ticker, @RequestParam(required = false) UUID userId) {
-        return service.stock(ticker, userId == null ? null : userId.toString());
+    public StockDetail stock(@PathVariable String ticker, @RequestParam(required = false) UUID userId,
+                             @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
+        return service.stock(ticker, guard.check(userId, sessionUserId));
     }
 
     @ExceptionHandler(OverlapService.StockNotFound.class)

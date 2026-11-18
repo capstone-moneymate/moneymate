@@ -1,0 +1,2 @@
+from_concept,to_concept,force_dir,regime,note
+bond_yield,growth_valuation,up,recession,경기 침체로 기준금리를 내리는 국면에서는 무위험 할인율이 내려도 위험 프리미엄(ERP)이 크게 확대되어 전체 할인율이 오를 수 있어 시장금리가 내려도 성장주가 눌린다 (자본시장연구원 KCMI 2018 하반기 Ⅲ-2 94쪽). 평상시(down)를 이 국면에서만 대신한다

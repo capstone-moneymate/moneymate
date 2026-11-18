@@ -27,6 +27,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+	// 회원가입·로그인 비밀번호 해시(BCrypt)만 쓴다. Spring Security 필터는 쓰지 않는다 (docs/modules/auth_api.md)
+	implementation 'org.springframework.security:spring-security-crypto'
 	runtimeOnly 'org.postgresql:postgresql'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
