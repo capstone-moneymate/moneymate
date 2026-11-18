@@ -20,9 +20,12 @@ final class StoredReasons {
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
 
-    /** 카드 ② 이유 하나. path 는 B 의 사전 경로(개념 id), direction 은 up/down. */
+    /**
+     * 카드 ② 이유 하나. path 는 B 의 사전 경로(개념 id), direction 은 up/down.
+     * side 는 양쪽 이유일 때 big / etf, 예전 저장분과 한쪽 이유는 없음(null).
+     */
     record Reason(String title, String body, String startConcept, String endConcept, List<String> path,
-                  String direction, List<Evidence> evidence) {
+                  String direction, List<Evidence> evidence, String side) {
     }
 
     /** 근거 자료. no 는 이유를 만들 때 근거 후보에 붙인 번호, sourceId 는 raw_sources.id. */

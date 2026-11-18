@@ -293,3 +293,127 @@ def test_truncated_response_raises(monkeypatch):
     fake_create(monkeypatch, [reason()], stop="max_tokens")
     with pytest.raises(RuntimeError, match="stop_reason=max_tokens"):
         rs.generate(STOCK, "same", "up", BASE, [], EVIDENCE, CONCEPTS, GRAPH)
+
+
+# ---- 양쪽 이유 (2026-11-19 B): 큰손과 ETF 가 반대로 움직인 diff 종목 ----
+
+UNTIL = date(2026, 11, 18)  # ETF 최신 스냅샷
+# ETF 쪽 근거 (기준일 9/30 다음 날 ~ 11/18). 번호는 split_evidence 가 다시 붙인다
+ETF_EVIDENCE = [rs.Evidence(1, 41, "2026-10-28", "AMD 3분기 실적", "AMD", "https://example.com/41", side="etf")]
+
+
+def side_reason(side, change, evidence, title=None):
+    r = reason(title or f"{side} 이유", "본문이에요.", "ai_investment", "semi_earnings", evidence, change)
+    return {**r, "side": side}
+
+
+def run_split(monkeypatch, *payloads, change="down", etf="up", etf_evidence=ETF_EVIDENCE):
+    calls = fake_create(monkeypatch, *payloads)
+    out = rs.generate(STOCK, "diff", change, BASE, [], EVIDENCE, CONCEPTS, GRAPH,
+                      etf=etf, etf_evidence=etf_evidence, etf_until=UNTIL)
+    return out, calls
+
+
+@pytest.mark.parametrize("rows, want", [
+    # KoAct +20% 늘림, TIME 새로 담음(NULL) → 2:0 늘림
+    ([("0015B0", 0.2), ("426030", None)], "up"),
+    # -30% 줄임, +2% 는 5% 미만이라 세지 않음 → 줄임
+    ([("0015B0", -0.3), ("426030", 0.02)], "down"),
+    # 1:1 이면 합의 부호: +10% − 30% = −20% → 줄임
+    ([("0015B0", 0.1), ("426030", -0.3)], "down"),
+    # 둘 다 5% 미만 → 판단 안 함
+    ([("0015B0", 0.01), ("426030", -0.04)], None),
+    # 같은 ETF 가 큰손 수만큼 여러 줄이어도 한 번만 센다 (-1.0 은 모두 정리)
+    ([("0015B0", -1.0), ("0015B0", -1.0), ("426030", 0.06)], "down"),
+])
+def test_etf_change_votes_once_per_etf(rows, want):
+    assert rs.etf_change([{"etf_code": c, "etf_trend_chg_pct": p} for c, p in rows]) == want
+
+
+@pytest.mark.parametrize("direction, change, etf, want", [
+    ("diff", "down", "up", True),    # 3분기 AMD: 드러켄밀러 줄임 vs 두 ETF 늘림
+    ("diff", "up", "up", False),     # 3분기 MSFT: 큰손끼리 엇갈리고(애크먼 줄임·틸 신규) ETF 는 다수와 같음
+    ("same", "up", "down", False),   # same·none 은 예전처럼
+    ("diff", "up", None, False),     # ETF 쪽을 판단 못 하면 예전처럼
+])
+def test_is_split(direction, change, etf, want):
+    assert rs.is_split(direction, change, etf) is want
+
+
+def test_split_evidence_renumbers_and_marks_sides():
+    ev = rs.split_evidence(EVIDENCE, ETF_EVIDENCE)
+    assert [(e.no, e.side, e.source_id) for e in ev] == [(1, "big", 11), (2, "big", 12), (3, "etf", 41)]
+
+
+def test_split_check_keeps_each_side_in_its_period():
+    ev = rs.split_evidence(EVIDENCE, ETF_EVIDENCE)
+    # ETF 쪽 근거(10/28)는 ETF 쪽 이유에만. 큰손 쪽 이유가 쓰면 날짜(9/30 뒤)와 쪽 둘 다 걸린다
+    errors = rs.check_reasons([side_reason("big", "down", (3,))], ev, BASE, GRAPH, UNTIL)
+    assert any("공시 기준일(2026-09-30) 뒤" in e for e in errors)
+    assert any("큰손 쪽 이유는 side 가 big 인 근거만" in e for e in errors)
+    # ETF 쪽 이유가 큰손 쪽 근거(9/25)를 쓰면 쪽이 걸린다
+    errors = rs.check_reasons([side_reason("etf", "up", (1,))], ev, BASE, GRAPH, UNTIL)
+    assert any("ETF 쪽 이유는 side 가 etf 인 근거만" in e for e in errors)
+    # 제 쪽 근거만 쓰면 통과 (ETF 쪽은 11/18 까지 쓸 수 있다)
+    ok = [side_reason("big", "down", (1, 2)), side_reason("etf", "up", (3,))]
+    assert rs.check_reasons(ok, ev, BASE, GRAPH, UNTIL) == []
+    # side 가 없으면 걸린다
+    assert any("side 를 big 이나 etf" in e for e in rs.check_reasons([reason()], ev, BASE, GRAPH, UNTIL))
+
+
+def test_split_both_sides_pass_with_their_own_direction(monkeypatch):
+    # 손계산: ai_investment → gpu_demand → semi_earnings 는 (+1)(+1).
+    # 큰손 쪽 change down → ▼ (큰손 줄임과 같음), ETF 쪽 change up → ▲ (ETF 늘림과 같음)
+    out, calls = run_split(monkeypatch, [side_reason("big", "down", (1,), "투자 둔화 우려"),
+                                         side_reason("etf", "up", (3,), "3분기 실적 확인")])
+    assert out.errors == [] and out.warnings == [] and out.missing_sides == [] and out.calls == 1
+    assert [(r.side, r.direction) for r in out.reasons] == [("big", "down"), ("etf", "up")]
+    assert out.reasons[1].evidence[0].source_id == 41 and out.reasons[1].evidence[0].side == "etf"
+    # 프롬프트: 쪽마다 변화와 근거 side, 스키마에 side 칸, 규칙에 두 기간
+    user = calls[0]["messages"][0]["content"]
+    assert '"big_change": "down"' in user and '"etf_change": "up"' in user and '"side": "etf"' in user
+    item = calls[0]["output_config"]["format"]["schema"]["properties"]["reasons"]["items"]
+    assert item["properties"]["side"]["enum"] == ["big", "etf"] and "side" in item["required"]
+    assert "2026-09-30 분기 말 기록이고, ETF 추세는 그 뒤 2026-11-18 까지" in calls[0]["system"]
+
+
+def test_split_wrong_etf_direction_retries_then_drops_that_side(monkeypatch):
+    # ETF 는 늘렸는데 ETF 쪽 이유가 ▼ → 한 번 다시 쓰게 하고, 그래도 반대면 그 이유만 뺀다
+    big = side_reason("big", "down", (1,), "투자 둔화 우려")
+    wrong = side_reason("etf", "down", (3,), "실적 부진")
+    out, calls = run_split(monkeypatch, [big, wrong], [big, wrong])
+    assert out.calls == 2 and out.errors == []
+    feedback = calls[1]["messages"][-1]["content"]
+    assert "큰손은 이 종목을 줄임했고, ETF 는 늘림이에요" in feedback
+    assert "힘이 down 인데 ETF 는 늘림" in feedback
+    assert [r.side for r in out.reasons] == ["big"] and len(out.warnings) == 1
+    assert out.missing_sides == ["etf"]  # 화면은 ETF 쪽에 "이 기간 자료로는 찾지 못했어요"
+
+
+def test_split_missing_side_is_asked_once(monkeypatch):
+    # ETF 쪽 근거가 있는데 큰손 쪽만 쓰면 ETF 쪽도 쓰게 한 번 더 묻는다
+    big = side_reason("big", "down", (1,), "투자 둔화 우려")
+    etf = side_reason("etf", "up", (3,), "3분기 실적 확인")
+    out, calls = run_split(monkeypatch, [big], [big, etf])
+    assert out.calls == 2 and [r.side for r in out.reasons] == ["big", "etf"] and out.missing_sides == []
+    assert "ETF 쪽 이유가 없어요" in calls[1]["messages"][-1]["content"]
+
+
+def test_split_without_etf_evidence_does_not_retry(monkeypatch):
+    # 3분기 TSM 처럼 9/30 뒤 그 종목 자료가 없으면 다시 물어도 못 쓰므로 묻지 않는다
+    out, calls = run_split(monkeypatch, [side_reason("big", "down", (1,))], etf_evidence=[])
+    assert len(calls) == 1 and out.missing_sides == ["etf"] and out.errors == []
+
+
+def test_save_records_missing_sides():
+    r = rs.Reason("t", "b", "ai_investment", "semi_earnings", [], "down", [], "down", "big")
+    conn = _Conn()
+    rs.save(conn, BASE, "AMD", "diff", "down", rs.ReasonsResult("왜 방향이 다를까요?", [r], missing_sides=["etf"]), None)
+    info = conn.params[-1].obj
+    assert info["missing_sides"] == ["etf"]
+    saved = conn.params[5].obj[0]
+    assert saved["side"] == "big"  # 화면이 쪽을 나눠 보여 줄 수 있게 이유마다 저장
+    assert rs.reasons_from_json([saved])[0].side == "big"
+    # 예전 저장분(side 칸 없음)도 읽힌다
+    old = {k: v for k, v in saved.items() if k != "side"}
+    assert rs.reasons_from_json([old])[0].side is None
