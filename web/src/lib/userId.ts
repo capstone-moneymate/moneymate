@@ -35,3 +35,44 @@ export const getUserId = (): string => {
     return sessionUserId
   }
 }
+
+/**
+ * 로그인·회원가입 뒤 계정의 UUID 로 바꾼다. 기존 API 는 그대로 getUserId() 를 보내고,
+ * 서버는 계정에 붙은 UUID 면 로그인 세션인지 확인한다 (docs/modules/auth_api.md).
+ */
+export const setUserId = (id: string): void => {
+  sessionUserId = id
+  try {
+    localStorage.setItem(STORAGE_KEY, id)
+  } catch {
+    // 저장소를 못 쓰면 이번 페이지 동안만
+  }
+}
+
+/** 로그아웃하거나 로그인이 풀렸을 때: 새 익명 ID 로 시작한다 (계정 UUID 를 익명으로 계속 쓰지 않게). */
+export const resetUserId = (): string => {
+  const created = createUuid()
+  setUserId(created)
+  setLoginId(null)
+  return created
+}
+
+const LOGIN_KEY = 'moneymate.loginId'
+
+/** 로그인한 아이디. 화면 표시와 "로그인이 살아 있는지 확인할지" 판단에만 쓴다. 진짜 확인은 서버 세션 */
+export const getLoginId = (): string | null => {
+  try {
+    return localStorage.getItem(LOGIN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export const setLoginId = (loginId: string | null): void => {
+  try {
+    if (loginId) localStorage.setItem(LOGIN_KEY, loginId)
+    else localStorage.removeItem(LOGIN_KEY)
+  } catch {
+    // 저장소를 못 쓰면 표시만 안 된다
+  }
+}
