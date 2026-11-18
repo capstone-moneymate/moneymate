@@ -14,9 +14,9 @@ export const ETF_NOTE = '주가만 올라도 커지는 비중 대신, 실제로 
 export const DETAIL_NOTE =
   '매니저는 매매 이유를 공개하지 않아요. 뉴스를 바탕으로 한 추정이고, 따라 사기 위한 정보가 아니에요'
 
-/** 큰손 2명 이상이 함께 늘린 종목이 없을 때 */
+/** 큰손 2명 이상이 함께 담은 종목이 없을 때 (#164 부터 방향과 상관없이 보유 기준) */
 export const NO_OVERLAP_NOTE = (min: number) =>
-  `이번 분기에는 큰손 ${min}명 이상이 함께 늘린 종목이 없어요.`
+  `이번 분기에는 큰손 ${min}명 이상이 함께 담은 종목이 없어요.`
 
 /** 카드 ① 어제 움직임이 분기 말 이후 추세와 반대일 때 (시안 19 "추세와 반대로 움직였어요 · 왜?") */
 export const AGAINST_TREND_TITLE = '추세와 반대로 움직였어요 · 왜?'
@@ -30,6 +30,12 @@ export const reasonsFootNote = (periodEnd: string) =>
 /** 카드 ② 이유가 아직 없을 때 */
 export const NO_REASONS_TEXT =
   '이 종목의 이유 카드는 아직 준비되지 않았어요. 앞 카드에서 무엇이 바뀌었는지 먼저 살펴보세요.'
+
+/**
+ * 카드 ② 이유를 만들었지만 검사에서 전부 버려졌을 때 (서버 reasonsRejected, #164).
+ * 방향이 큰손 변화와 맞는 이유가 없어서 억지로 지어내지 않고 고정 문구로 둔다 (C #161).
+ */
+export const REJECTED_REASONS_TEXT = '공개된 자료로는 설명할 이유를 찾지 못했어요.'
 
 /** 카드 ③ 이 아직 없을 때 */
 export const NO_NOW_TEXT = '지금은 카드가 아직 준비되지 않았어요.'

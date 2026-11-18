@@ -3,14 +3,27 @@ import { Link } from 'react-router'
 import type { ReasonEvidence, StockReason, StockReasons } from '@/types/overlap'
 import { CardLabel, CardTitle } from './CardParts'
 import { shortDate } from './labels'
-import { MY_MAP_BADGE, NEW_SKELETON_BADGE, NO_REASONS_TEXT, reasonsFootNote } from './notices'
+import {
+  MY_MAP_BADGE,
+  NEW_SKELETON_BADGE,
+  NO_REASONS_TEXT,
+  reasonsFootNote,
+  REJECTED_REASONS_TEXT,
+} from './notices'
 
 /**
  * 카드 ② 이유 (AI 추정, 시안 20·24). 이유마다 인과 뼈대를 칸으로 잇고 끝에 보유 변화를 둔다.
  * 파란 칸은 사용자가 배운 개념(learned)이다. 근거는 "근거 · 날짜 제목 외 N건"을 눌러 펼친다.
  * 근거는 제목·날짜·출처·원문 링크만 보여 주고 기사 본문은 보여 주지 않는다 (CLAUDE.md 9).
  */
-export const ReasonsCard = ({ data }: { data: StockReasons | null }) => {
+export const ReasonsCard = ({
+  data,
+  rejected = false,
+}: {
+  data: StockReasons | null
+  /** 이유를 만들었지만 전부 버려졌으면 "준비 중" 대신 "찾지 못했어요" 고정 문구 (#164) */
+  rejected?: boolean
+}) => {
   const label = (
     <CardLabel no={2}>
       이유 <span className="font-normal text-slate-500">AI 추정</span>
@@ -23,7 +36,7 @@ export const ReasonsCard = ({ data }: { data: StockReasons | null }) => {
         {label}
         <CardTitle>왜 움직였을까요?</CardTitle>
         <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-5 text-[15px] leading-relaxed text-slate-500">
-          {NO_REASONS_TEXT}
+          {rejected ? REJECTED_REASONS_TEXT : NO_REASONS_TEXT}
         </p>
       </>
     )

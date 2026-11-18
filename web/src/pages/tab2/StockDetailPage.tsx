@@ -80,7 +80,7 @@ export const StockDetailPage = () => {
         ) : index === 0 ? (
           <ChangedCard stock={data} />
         ) : index === 1 ? (
-          <ReasonsCard data={data.reasons} />
+          <ReasonsCard data={data.reasons} rejected={data.reasonsRejected} />
         ) : (
           <NowCard reasons={data.reasons} />
         )}

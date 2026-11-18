@@ -54,6 +54,20 @@ export const INCREASE_THRESHOLD = 0.05
 export const isBigUp = (f: FilerChange) =>
   f.changeType === 'new' || (f.chgPct !== null && f.chgPct >= INCREASE_THRESHOLD)
 
+/** worker big_direction 의 "줄임": 모두 정리(exit)했거나 직전 분기 대비 −5% 이하 */
+export const isBigDown = (f: FilerChange) =>
+  f.changeType === 'exit' || (f.chgPct !== null && f.chgPct <= -INCREASE_THRESHOLD)
+
+/**
+ * 이번 분기 말에 들고 있는가 (탭2 메인 "겹치는 종목" 기준, #164). 방향과 상관없이 보유면 센다.
+ * 모두 정리(exit)했으면 보유가 아니다.
+ */
+export const isBigHeld = (f: FilerChange) => f.changeType !== null && f.changeType !== 'exit'
+
+/** 메인 목록 라벨: 신규 / 늘림 / 줄임 / 유지 (늘림·줄임은 ±5% 기준, 판정은 worker 와 같다) */
+export const bigChangeLabel = (f: FilerChange) =>
+  f.changeType === 'new' ? '신규' : isBigUp(f) ? '늘림' : isBigDown(f) ? '줄임' : '유지'
+
 /** 두 날짜(YYYY-MM-DD) 사이 일수 */
 export const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000)

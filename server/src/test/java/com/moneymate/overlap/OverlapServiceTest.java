@@ -218,4 +218,42 @@ class OverlapServiceTest {
 
         assertThat(service.stock("NVDA", null).reasons()).isNull();
     }
+
+    // ---- 이유가 전부 버려진 종목 (#164) ----
+
+    @Test
+    void latestRejectedMeansReasonsRejected() {
+        // C 의 #161: 다시 써도 방향이 맞는 이유가 없으면 rejected. 화면은 "이유를 찾지 못했어요" 고정 문구
+        stockExists();
+        when(repo.findLatestReasonsStatus("NVDA")).thenReturn(Optional.of("rejected"));
+
+        StockDetail d = service.stock("NVDA", null);
+
+        assertThat(d.reasons()).isNull();
+        assertThat(d.reasonsRejected()).isTrue();
+    }
+
+    @Test
+    void notGeneratedOrPendingIsNotRejected() {
+        // 아직 만들지 않았거나(줄 없음) pending 이면 "준비 중" 문구라 false
+        stockExists();
+        assertThat(service.stock("NVDA", null).reasonsRejected()).isFalse();
+        when(repo.findLatestReasonsStatus("NVDA")).thenReturn(Optional.of("pending"));
+        assertThat(service.stock("NVDA", null).reasonsRejected()).isFalse();
+    }
+
+    @Test
+    void publishedReasonsAreNeverRejected() {
+        // 예전 분기 published 를 보여 주는 중이면 최근 분기가 rejected 여도 이유 카드가 있으니 false
+        stockExists();
+        when(repo.findPublishedReasons("NVDA")).thenReturn(Optional.of(new StockReasonsRow(
+                PERIOD, "same", "up", "h", REASONS_JSON, null)));
+        when(repo.findLatestReasonsStatus("NVDA")).thenReturn(Optional.of("rejected"));
+
+        StockDetail d = service.stock("NVDA", null);
+
+        assertThat(d.reasons()).isNotNull();
+        assertThat(d.reasonsRejected()).isFalse();
+        verify(repo, never()).findLatestReasonsStatus(any());   // 이유가 있으면 상태를 묻지 않는다
+    }
 }

@@ -142,10 +142,12 @@ const nvdaDetail: StockDetail = {
       text: '기준일 뒤 주가는 12.5% 올랐어요. 그 사이 3분기 실적 발표가 있었어요.',
     },
   },
+  reasonsRejected: false,
   myConcepts: [{ id: 'gpu_demand', name: 'AI 반도체 수요', theme: 'AI·반도체' }],
 }
 
-const googlDetail: StockDetail = { ...googl, reasons: null, myConcepts: [] }
+/** GOOGL 은 서버 fixture 처럼 이유가 전부 버려진(rejected) 종목 */
+const googlDetail: StockDetail = { ...googl, reasons: null, reasonsRejected: true, myConcepts: [] }
 
 export const stockDetailMock = (ticker: string): StockDetail | undefined =>
   [nvdaDetail, googlDetail].find((s) => s.ticker === ticker.trim().toUpperCase())

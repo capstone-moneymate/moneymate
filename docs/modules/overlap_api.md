@@ -108,6 +108,7 @@ ALTER TABLE overlap_results
   - 이유마다 `inMyMap`(경로에 배운 개념이 하나라도 있음)을 붙인다.
   - 화면용이 아닌 값은 내보내지 않는다: `start_concept`·`end_concept`(경로에 있음), 근거의 `source_id`, 카드 ③의 `errors`, `model_info`.
 - `reasons.now`: 카드 ③이다. `now_view`가 NULL이면 `null`이다. `price.returnPct`는 C가 저장한 퍼센트 값 그대로다(12.5 = 12.5%). conventions P2(변화율은 소수)와 다르니 C에게 확인할 안건이다.
+- `reasonsRejected` (#164): `reasons`가 null이고, 그 티커의 가장 최근 분기 `stock_reasons` 줄이 `rejected`면 true다(`findLatestReasonsStatus`). C의 #161에서 방향이 맞는 이유가 하나도 없으면 rejected로 저장하므로, 화면은 "준비 중" 대신 "공개된 자료로는 설명할 이유를 찾지 못했어요." 고정 문구를 보여 준다. 줄이 없거나 pending이면 false다. 예전 분기만 rejected이고 최근 분기를 아직 안 만들었을 때도 false다. published 이유를 보여 주는 중이면 상태를 묻지 않고 false다.
 - `myConcepts`: #100 매핑(`concept_tickers`)으로 이 종목과 연결된 개념 중 사용자가 배운 것이다. userId가 없으면 빈 목록이다.
 
 ```json
@@ -128,6 +129,6 @@ ALTER TABLE overlap_results
 
 - 테스트: `OverlapApiIntegrationTest` 6개.
   - NVDA는 더 최근 분기의 pending과 오래된 published를 건너뛰고 2026-06-30 published를 내준다. userId가 없으면 learned가 false이고 `myConcepts`가 빈 목록이다. userId가 있으면 learned·inMyMap이 true이고 `myConcepts`가 채워진다. 카드 ③의 errors는 나오지 않는다.
-  - GOOGL은 rejected만 있어서 `reasons`가 null이다.
+  - GOOGL은 rejected만 있어서 `reasons`가 null이고 `reasonsRejected`가 true다. NVDA는 false다.
   - userId가 `abc`이면 400이다.
-- 테스트: `OverlapServiceTest` 11개. 이름·learned 붙이기, 사전에 없는 id, 개념 id를 한 번씩만 조회하는지, userId가 없으면 조회하지 않는지, 이유는 없지만 `myConcepts`는 있는 경우, 깨진 JSON이면 null.
+- 테스트: `OverlapServiceTest` 14개. #164에서 3개를 추가했다: 최근 분기 rejected면 true, 줄 없음·pending이면 false, published가 있으면 상태를 묻지 않고 false. 나머지 11개는 이름·learned 붙이기, 사전에 없는 id, 개념 id를 한 번씩만 조회하는지, userId가 없으면 조회하지 않는지, 이유는 없지만 `myConcepts`는 있는 경우, 깨진 JSON이면 null.

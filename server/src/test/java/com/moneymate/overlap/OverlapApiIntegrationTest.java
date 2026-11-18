@@ -110,7 +110,7 @@ class OverlapApiIntegrationTest {
         // userId 가 없으면 배운 개념 표시가 없다. 카드 ③ 의 errors 는 내보내지 않는다
         mvc.perform(get("/api/stocks/NVDA"))
                 .andExpect(status().isOk())
-                .andExpect(content().json(NVDA + "," + nvdaReasons(false) + ",\"myConcepts\":[]}",
+                .andExpect(content().json(NVDA + "," + nvdaReasons(false) + ",\"reasonsRejected\":false,\"myConcepts\":[]}",
                         JsonCompareMode.STRICT));
     }
 
@@ -121,7 +121,7 @@ class OverlapApiIntegrationTest {
         mvc.perform(get("/api/stocks/NVDA").param("userId", USER))
                 .andExpect(status().isOk())
                 .andExpect(content().json(NVDA + "," + nvdaReasons(true)
-                        + ",\"myConcepts\":[{\"id\":\"gpu_demand\",\"name\":\"AI 반도체 수요\",\"theme\":\"AI·반도체\"}]}",
+                        + ",\"reasonsRejected\":false,\"myConcepts\":[{\"id\":\"gpu_demand\",\"name\":\"AI 반도체 수요\",\"theme\":\"AI·반도체\"}]}",
                         JsonCompareMode.STRICT));
     }
 
@@ -133,10 +133,11 @@ class OverlapApiIntegrationTest {
 
     @Test
     void stockDetailNormalizesLowercaseTicker() throws Exception {
-        // GOOGL 은 rejected 만 있어 reasons 가 null (화면은 대체 문구)
+        // GOOGL 은 rejected 만 있어 reasons 가 null 이고 reasonsRejected 가 true (화면은 "이유를 찾지 못했어요" 고정 문구, #164)
         mvc.perform(get("/api/stocks/googl").param("userId", USER))
                 .andExpect(status().isOk())
-                .andExpect(content().json(GOOGL + ",\"reasons\":null,\"myConcepts\":[]}", JsonCompareMode.STRICT));
+                .andExpect(content().json(GOOGL + ",\"reasons\":null,\"reasonsRejected\":true,\"myConcepts\":[]}",
+                        JsonCompareMode.STRICT));
     }
 
     @Test
