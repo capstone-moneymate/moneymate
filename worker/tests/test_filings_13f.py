@@ -1,8 +1,11 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pandas as pd
 
-from collectors.filings_13f import Report, clean_ticker, merge_reports, pick_ticker, shares_by_cusip
+from collectors.filings_13f import (
+    Report, clean_ticker, merge_reports, pick_ticker, select_filings, shares_by_cusip,
+)
 
 COLS = ["Issuer", "Cusip", "SharesPrnAmount", "Type", "PutCall", "Ticker"]
 
@@ -48,6 +51,33 @@ def test_merge_reports_restatement_replaces_original():
     out, base = merge_reports([orig, add, rest])
     assert base.accession_no == "a3"
     assert out.set_index("cusip")["shares"].to_dict() == {"AAA000001": 120}
+
+
+def filing(acc, form, period="2026-09-30"):
+    return SimpleNamespace(accession_no=acc, form=form, period_of_report=period)
+
+
+def test_select_filings_keeps_period_and_drops_duplicate_accession():
+    # get_filings 가 정정 신고(a2)를 13F-HR 목록과 13F-HR/A 목록에 두 번 돌려줘도 한 번만 남는다
+    fs = [filing("a1", "13F-HR"), filing("a2", "13F-HR/A"), filing("a0", "13F-HR", "2026-06-30"),
+          filing("a2", "13F-HR/A")]
+    out = select_filings(fs, date(2026, 9, 30))
+    assert [(f.accession_no, f.form) for f in out] == [("a1", "13F-HR"), ("a2", "13F-HR/A")]
+
+
+def test_late_new_holdings_amendment_does_not_replace_original():
+    # 13F 버그 재현: 원본(11/14, 2종목) 뒤에 NEW HOLDINGS 정정(11/20, 1종목)이 나온 분기.
+    # 예전처럼 정정을 원본(is_amendment=False)으로 넣으면 늦은 쪽이 대표가 되어 원본 2종목이 사라졌다
+    orig = table([["A", "AAA000001", 100, "Shares", "", "AAA"], ["B", "BBB000001", 40, "Shares", "", "BBB"]])
+    add = table([["C", "CCC000001", 50, "Shares", "", "CCC"]])
+    wrong, base = merge_reports([Report("a1", date(2026, 11, 14), False, None, orig),
+                                 Report("a2", date(2026, 11, 20), False, None, add)])
+    assert base.accession_no == "a2" and set(wrong["cusip"]) == {"CCC000001"}   # 예전 결과 (틀림)
+    # f.form 으로 가르면 정정은 원본에 더해진다: 100 + 40 + 50 세 종목, 대표는 원본
+    out, base = merge_reports([Report("a1", date(2026, 11, 14), False, None, orig),
+                               Report("a2", date(2026, 11, 20), True, "NEW HOLDINGS", add)])
+    assert base.accession_no == "a1"
+    assert out.set_index("cusip")["shares"].to_dict() == {"AAA000001": 100, "BBB000001": 40, "CCC000001": 50}
 
 
 def test_clean_ticker():

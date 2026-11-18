@@ -10,6 +10,8 @@
 - P13: 13F new 는 늘림, exit 는 줄임. increase·decrease 는 INCREASE_THRESHOLD 이상 변했을 때만
 - ETF 도 같은 방식: 기준일에 없다가 생기면 늘림, 기준일에 있다가 없어지면 줄임
 - 13F 와 ETF 는 CUSIP 2~7번째 글자 = holdings_etf.raw_code 로 맞춘다 (findings.md B칸)
+- ETF 최신 수량은 전 종목 공통 이동(1CU 현금 비중·설정 단위 변경) 배수로 나눠 운용사가 고른 매매만 남긴다
+  (compute/etf_shift.py, #141). KoAct 11/10 +6.40% 처럼 다 같이 밀린 날이 "늘림"으로 잡히지 않게 한다
 """
 import argparse
 import sys
@@ -18,6 +20,7 @@ from decimal import Decimal
 
 import config
 from common.quarters import parse_quarter_end
+from compute.etf_shift import adjust, common_shift
 
 KST = timezone(timedelta(hours=9))
 UP, DOWN = "up", "down"
@@ -102,29 +105,31 @@ def load_big(conn, period: date) -> list[dict]:
              "chg_pct": float(p) if p is not None else None} for f, c, t, ct, p in rows]
 
 
+def etf_entry(snapshots: dict[date, dict[str, Decimal]]) -> dict:
+    """한 ETF 의 기준일~최신일 스냅샷 전부 → build_results 가 쓰는 한 칸.
+    공통 이동 보정 배수(etf_shift.common_shift)는 사이 날짜를 모두 봐야 구할 수 있어 여기서 계산한다."""
+    dates = sorted(snapshots)
+    shift = common_shift(snapshots)
+    return {"base_date": dates[0], "latest_date": dates[-1],
+            "base": snapshots[dates[0]], "latest": snapshots[dates[-1]],
+            "factor": shift.factor, "shift_days": shift.days}
+
+
 def load_etf(conn, period: date) -> dict[str, dict]:
-    """ETF 별 기준·최신 스냅샷. etf_code -> {base_date, latest_date, base: {raw_code: shares}, latest: {...}}"""
-    out = {}
-    codes = [c for (c,) in conn.execute(
-        "SELECT DISTINCT etf_code FROM holdings_etf WHERE snapshot_date >= %s", (period,)).fetchall()]
-    for code in codes:
-        base_date, latest_date = conn.execute(
-            "SELECT min(snapshot_date), max(snapshot_date) FROM holdings_etf WHERE etf_code = %s AND snapshot_date >= %s",
-            (code, period),
-        ).fetchone()
-        snap = {}
-        for d in (base_date, latest_date):
-            snap[d] = dict(conn.execute(
-                "SELECT raw_code, shares FROM holdings_etf WHERE etf_code = %s AND snapshot_date = %s",
-                (code, d),
-            ).fetchall())
-        out[code] = {"base_date": base_date, "latest_date": latest_date,
-                     "base": snap[base_date], "latest": snap[latest_date]}
-    return out
+    """ETF 별 기준·최신 스냅샷과 공통 이동 보정 배수.
+    etf_code -> {base_date, latest_date, base: {raw_code: shares}, latest: {...}, factor, shift_days}"""
+    snaps: dict[str, dict[date, dict[str, Decimal]]] = {}
+    for code, d, raw_code, shares in conn.execute(
+        "SELECT etf_code, snapshot_date, raw_code, shares FROM holdings_etf WHERE snapshot_date >= %s",
+        (period,),
+    ).fetchall():
+        snaps.setdefault(code, {}).setdefault(d, {})[raw_code] = shares
+    return {code: etf_entry(s) for code, s in snaps.items()}
 
 
 def build_results(big_rows: list[dict], etfs: dict[str, dict], period: date, calc_date: date) -> list[dict]:
-    """겹침 행 목록. ETF 가 기준일이나 최신에 그 종목을 가진 (큰손, ETF) 쌍만 만든다. 티커 없는 13F 행은 뺀다."""
+    """겹침 행 목록. ETF 가 기준일이나 최신에 그 종목을 가진 (큰손, ETF) 쌍만 만든다. 티커 없는 13F 행은 뺀다.
+    최신 수량은 공통 이동 보정 배수(e["factor"], 없으면 1)로 나눈 뒤 비교한다 (etf_trend 의 추세와 같은 값)."""
     results = []
     for b in big_rows:
         if not b["ticker"]:
@@ -132,7 +137,8 @@ def build_results(big_rows: list[dict], etfs: dict[str, dict], period: date, cal
         raw_code = b["cusip"][1:7]
         bdir = big_direction(b["change_type"], b["chg_pct"])
         for code, e in etfs.items():
-            status, etf_pct = etf_change(e["base"].get(raw_code), e["latest"].get(raw_code))
+            latest = adjust(e["latest"].get(raw_code), e.get("factor", 1.0))
+            status, etf_pct = etf_change(e["base"].get(raw_code), latest)
             if status == "none":
                 continue
             results.append({
@@ -179,7 +185,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         for code, e in etfs.items():
             print(f"ETF {code}: 기준 {e['base_date']} → 최신 {e['latest_date']}"
-                  + ("  (기준일이 분기 말과 다름)" if e["base_date"] != period else ""))
+                  + ("  (기준일이 분기 말과 다름)" if e["base_date"] != period else "")
+                  + (f"  공통 이동 보정 ×{e['factor']:.5f} ({len(e['shift_days'])}일)" if e["shift_days"] else ""))
         results = build_results(big_rows, etfs, period, calc_date)
         counts = {}
         for r in results:

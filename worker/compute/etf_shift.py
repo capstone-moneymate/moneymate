@@ -12,7 +12,7 @@
 
 쓰는 곳
 - compute/etf_trend.py: 추세(trend_chg_pct)는 기준일 이후 m 을 곱한 배수로, 전일 대비(day_chg_pct)는 그날 m 으로 나눈다
-- compute/overlap.py (A, 후속 작업): 최신 수량을 common_shift 배수로 나눠 etf_change 에 넣는다
+- compute/overlap.py: 최신 수량을 common_shift 배수로 나눠 etf_change 에 넣는다 (etf_entry)
 - collectors/etf_holdings.py: 수집할 때 공통 이동일이면 경고한다
 
 손계산 (A 와 맞춘 예시): 기준 100주, 공통 이동일 m = 1.064

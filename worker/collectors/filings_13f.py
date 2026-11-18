@@ -17,7 +17,9 @@
   이미 캐시된 티커를 다시 정하려면 --refresh-tickers
 
 edgartools 5.61.1 기준 API:
-- Company(cik).get_filings(form=..., trigger_full_load=False): Filing 목록. Filing.period_of_report 로 분기를 거른다
+- Company(cik).get_filings(form=..., amendments=True, trigger_full_load=False): Filing 목록.
+  amendments 기본값이 True 라 form="13F-HR" 에도 13F-HR/A 가 섞인다. 원본/정정은 Filing.form 으로 가른다.
+  Filing.period_of_report 로 분기를 거른다
 - Filing.obj() -> ThirteenF: infotable(DataFrame: Issuer, Cusip, SharesPrnAmount, Type, PutCall, Ticker ...),
   amendment_type('NEW HOLDINGS' / 'RESTATEMENT' / None), filing_date, accession_number
 """
@@ -111,36 +113,50 @@ def clean_ticker(raw) -> str | None:
 # 외부 호출 (SEC, OpenFIGI)
 # ------------------------------------------------------------------
 
+def select_filings(filings, period: date) -> list:
+    """그 분기 신고만, 같은 접수번호는 한 번만 남긴다.
+
+    edgartools 의 get_filings 는 amendments=True 가 기본이라 form="13F-HR" 로 불러도 13F-HR/A 가 섞여 온다.
+    예전에는 그 정정 신고를 원본(is_amendment=False)으로 한 번, 13F-HR/A 로 또 한 번 넣어서
+    늦게 낸 NEW HOLDINGS 정정이 대표 신고가 되어 원본 보유를 덮었다. 원본/정정은 f.form 으로만 가른다.
+    """
+    seen, out = set(), []
+    for f in filings:
+        if str(f.period_of_report) != period.isoformat() or f.accession_no in seen:
+            continue
+        seen.add(f.accession_no)
+        out.append(f)
+    return out
+
+
 def fetch_reports(cik: str, period: date) -> list[Report]:
     """한 법인의 그 분기 13F-HR·13F-HR/A 를 모두 받는다. 없으면 빈 목록."""
     from edgar import Company
 
-    company = Company(cik)
+    filings = Company(cik).get_filings(form=["13F-HR", "13F-HR/A"], trigger_full_load=False)
     reports = []
-    for form in ("13F-HR", "13F-HR/A"):
-        for f in company.get_filings(form=form, trigger_full_load=False):
-            if str(f.period_of_report) != period.isoformat():
-                continue
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")  # Value(평가액) 단위 경고. 수량만 쓰므로 무시
-                tf = f.obj()
-            if not tf.has_infotable:
-                continue
-            reports.append(Report(
-                accession_no=f.accession_no,
-                filed_at=date.fromisoformat(str(f.filing_date)),
-                is_amendment=form == "13F-HR/A",
-                amendment_type=tf.amendment_type if form == "13F-HR/A" else None,
-                infotable=tf.infotable,
-            ))
+    for f in select_filings(filings, period):
+        is_amendment = f.form == "13F-HR/A"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # Value(평가액) 단위 경고. 수량만 쓰므로 무시
+            tf = f.obj()
+        if not tf.has_infotable:
+            continue
+        reports.append(Report(
+            accession_no=f.accession_no,
+            filed_at=date.fromisoformat(str(f.filing_date)),
+            is_amendment=is_amendment,
+            amendment_type=tf.amendment_type if is_amendment else None,
+            infotable=tf.infotable,
+        ))
     return reports
 
 
 def latest_period(cik: str) -> date:
-    """그 법인이 낸 가장 최근 13F-HR 분기."""
+    """그 법인이 낸 가장 최근 13F-HR(원본) 분기. 정정 신고는 지난 분기 것일 수 있어 뺀다."""
     from edgar import Company
 
-    f = Company(cik).get_filings(form="13F-HR", trigger_full_load=False).latest(1)
+    f = Company(cik).get_filings(form="13F-HR", amendments=False, trigger_full_load=False).latest(1)
     return date.fromisoformat(str(f.period_of_report))
 
 
