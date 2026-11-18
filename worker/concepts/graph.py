@@ -270,6 +270,10 @@ def main(argv: list[str] | None = None) -> int:
             print("--from 과 --to 를 함께 주세요.")
             return 1
         try:
+            # 그 국면에 순환이 있으면 엔진과 경로 계산이 어긋나 effect() 가 RuntimeError 를 낸다. 미리 알리고 멈춘다
+            if cyc := find_cycle(g, args.regime):
+                print(f"[{args.regime}] 순환이 있어 방향을 계산할 수 없어요: {format_path(g, cyc)}")
+                return 1
             e = effect(g, args.start, args.end, args.change, args.regime)
         except ValueError as err:
             parser.error(str(err))

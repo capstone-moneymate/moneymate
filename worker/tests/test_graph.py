@@ -120,3 +120,14 @@ def test_cli_reports_regime_cycle_instead_of_crashing(monkeypatch, capsys):
     monkeypatch.setattr(graph, "load_graph", lambda: g)
     assert graph.main([]) == 1
     assert "순환: 있음 [recession]" in capsys.readouterr().out
+
+
+def test_cli_pair_query_checks_cycle_in_requested_regime(monkeypatch, capsys):
+    # 침체 때만 b → a 순환: 침체로 물으면 RuntimeError 대신 순환을 알리고 1, 평상시로 물으면 그대로 답한다 (#159 리뷰)
+    import concepts.graph as graph
+    g = build_graph({"a": "a", "b": "b"}, [("a", "b", "up")], [("b", "a", "down", "recession")])
+    monkeypatch.setattr(graph, "load_graph", lambda: g)
+    assert graph.main(["--from", "a", "--to", "b", "--regime", "recession"]) == 1
+    assert "[recession] 순환이 있어" in capsys.readouterr().out
+    assert graph.main(["--from", "a", "--to", "b"]) == 0
+    assert "상승 압력" in capsys.readouterr().out
