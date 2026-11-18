@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router'
 import { useCausalMap, useReview, useSummary } from '@/api/mypage'
 import { PageHeader } from '@/components/PageHeader'
+import { AccountBar } from '@/pages/tab3/AccountBar'
 import { isBaseEdge, learnedOf } from '@/pages/tab3/causalMapLayout'
 import { ReviewList } from '@/pages/tab3/ReviewList'
 import type { CausalMap, Summary } from '@/types/causalMap'
@@ -19,6 +20,7 @@ export const MyPage = () => {
     <div className="h-full overflow-y-auto pb-6">
       <PageHeader />
       <div className="px-5">
+        <AccountBar />
         <h2 className="text-2xl leading-snug font-bold text-slate-900">
           {summary.data?.studiedToday ? (
             <>
