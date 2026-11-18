@@ -234,10 +234,11 @@ def _check_rule(rule: Rule) -> Rule:
         raise DatalogError(f"머리의 변수 {', '.join(unsafe)} 가 몸통에 없어요: {rule}")
     if any(v.startswith(ANON) for v in _vars(rule.head)):
         raise DatalogError(f"머리에는 이름 없는 변수(_)를 쓸 수 없어요: {rule}")
+    # 순서는 보지 않는다: 평가는 긍정 원자를 모두 맞춘 뒤 부정을 보므로 "!q(X), r(X)" 도 "r(X), !q(X)" 와 같다
     for a in rule.negative:
         free = sorted(v for v in _vars(a) if v not in body_vars and not v.startswith(ANON))
         if free:
-            raise DatalogError(f"! 원자의 변수 {', '.join(free)} 가 앞의 긍정 원자에 없어요: {rule}")
+            raise DatalogError(f"! 원자의 변수 {', '.join(free)} 가 몸통의 긍정 원자에 없어요: {rule}")
     return rule
 
 

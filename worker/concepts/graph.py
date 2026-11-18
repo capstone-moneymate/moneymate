@@ -16,7 +16,7 @@
 - 연결은 "from 이 커지면 to 를 올린다(up = +1) / 누른다(down = -1)"로 읽는다
 - 경로의 부호 = 연결 부호의 곱. 시작 개념이 줄어드는 사건이면 한 번 더 뒤집는다
 - 같은 두 개념 사이에 부호가 다른 경로가 함께 있으면 모호(ambiguous). 순서 맞추기 정답으로 쓰지 않는다
-- 경로는 같은 개념을 두 번 지나지 않는 경로만 센다. 개념 사전에는 순환이 없어야 한다
+- 경로는 같은 개념을 두 번 지나지 않는 경로만 센다. 개념 사전에는 순환이 없어야 한다 (평상시와 국면마다, find_any_cycle)
 """
 import argparse
 import csv
@@ -111,16 +111,17 @@ def regime_out(g: Graph, regime: str = NORMAL) -> dict[str, list[tuple[str, int]
     return out
 
 
-def find_cycle(g: Graph) -> list[str] | None:
-    """순환이 있으면 그 순환(시작 개념이 끝에 한 번 더 나옴), 없으면 None."""
+def find_cycle(g: Graph, regime: str = NORMAL) -> list[str] | None:
+    """그 국면의 연결에 순환이 있으면 그 순환(시작 개념이 끝에 한 번 더 나옴), 없으면 None."""
+    out = regime_out(g, regime)
     WHITE, GRAY, BLACK = 0, 1, 2
-    color = {cid: WHITE for cid in g.out}
+    color = {cid: WHITE for cid in out}
     stack: list[str] = []
 
     def visit(node: str) -> list[str] | None:
         color[node] = GRAY
         stack.append(node)
-        for nxt, _ in g.out[node]:
+        for nxt, _ in out[node]:
             if color[nxt] == GRAY:
                 return stack[stack.index(nxt):] + [nxt]
             if color[nxt] == WHITE and (cyc := visit(nxt)):
@@ -129,9 +130,17 @@ def find_cycle(g: Graph) -> list[str] | None:
         color[node] = BLACK
         return None
 
-    for cid in sorted(g.out):
+    for cid in sorted(out):
         if color[cid] == WHITE and (cyc := visit(cid)):
             return cyc
+    return None
+
+
+def find_any_cycle(g: Graph) -> tuple[str, list[str]] | None:
+    """평상시와 모든 국면을 본다. 조건부 연결만으로 생기는 순환(예: 침체 때만 b → a)도 잡는다. (국면, 순환) 또는 None."""
+    for r in regimes(g):
+        if cyc := find_cycle(g, r):
+            return r, cyc
     return None
 
 
@@ -272,9 +281,9 @@ def main(argv: list[str] | None = None) -> int:
 
     n_edges = sum(len(v) for v in g.out.values())
     print(f"개념 {len(g.names)}개, 연결 {n_edges}개, 조건부 연결 {len(g.cond)}개 (국면: {', '.join(regimes(g))})")
-    cyc = find_cycle(g)
-    print("순환: 없음" if cyc is None else f"순환: 있음 ({format_path(g, cyc)})")
-    if cyc:
+    found = find_any_cycle(g)
+    print("순환: 없음" if found is None else f"순환: 있음 [{found[0]}] ({format_path(g, found[1])})")
+    if found:
         return 1
     d = derive(g)
     print(f"규칙 엔진(rules.dl): {d.strata}개 층, {d.rounds}회차에 고정점, "

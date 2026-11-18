@@ -1,6 +1,6 @@
 import pytest
 
-from concepts.graph import (AMBIGUOUS, DOWN, UP, ambiguous_pairs, build_graph, effect, find_cycle, load_graph,
+from concepts.graph import (AMBIGUOUS, DOWN, UP, ambiguous_pairs, build_graph, effect, find_any_cycle, find_cycle, load_graph,
                             signed_paths)
 
 # 손계산용 작은 사전. 멘토 자료의 파월 예시 + 모호성 예시(X → Y·W → Z)
@@ -73,6 +73,7 @@ def test_seed_dictionary():
     g = load_graph()
     assert len(g.names) == 29
     assert find_cycle(g) is None
+    assert find_any_cycle(g) is None   # 국면별 조건부 연결까지 넣어도 순환 없음
     # 인하 → 국채 금리 ▼ → 성장주 ▲ : (-1) × (-1) = +1
     assert effect(g, "rate_cut", "growth_valuation").direction == UP
     # 인상 → 국채 금리 ▲ → 성장주 ▼ : (+1) × (-1) = -1. 직접 연결은 지워서 경로는 하나다
@@ -101,3 +102,21 @@ def test_seed_dictionary():
     assert e.direction == UP and len(e.paths) == 1
     # 반도체 설비투자는 일반 시설투자와 나눴다: 다른 업종 시설투자에 AI 반도체 수요 경로가 붙지 않는다
     assert effect(g, "gpu_demand", "capex").direction is None
+
+
+@pytest.mark.parametrize("force", ["down", "up"])
+def test_cycle_only_in_a_regime(force):
+    # 평상시 a → b 뿐이라 순환이 없지만, 침체 때만 b → a 가 생기면 그 국면에 순환이 있다 (#159 리뷰).
+    # ▼ 순환이면 모호 쌍 계산이 RuntimeError 로 죽고, ▲ 순환이면 모호 쌍 없이 그냥 지나가던 것을 미리 막는다
+    g = build_graph({"a": "a", "b": "b"}, [("a", "b", "up")], [("b", "a", force, "recession")])
+    assert find_cycle(g) is None
+    assert find_cycle(g, "recession") == ["a", "b", "a"]
+    assert find_any_cycle(g) == ("recession", ["a", "b", "a"])
+
+
+def test_cli_reports_regime_cycle_instead_of_crashing(monkeypatch, capsys):
+    import concepts.graph as graph
+    g = build_graph({"a": "a", "b": "b"}, [("a", "b", "up")], [("b", "a", "down", "recession")])
+    monkeypatch.setattr(graph, "load_graph", lambda: g)
+    assert graph.main([]) == 1
+    assert "순환: 있음 [recession]" in capsys.readouterr().out

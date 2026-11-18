@@ -159,6 +159,14 @@ def test_negation_means_no_such_fact():
     assert r.get("only_p") == {("a",)} and r.strata == 2
 
 
+def test_negation_order_in_body_does_not_matter():
+    # 긍정 원자를 모두 맞춘 뒤 부정을 보므로 ! 가 앞에 와도 같은 결과 (#159 리뷰)
+    facts = 'p(a). p(b). q(b). '
+    front = evaluate(parse(facts + 'only_p(X) :- !q(X), p(X).'))
+    back = evaluate(parse(facts + 'only_p(X) :- p(X), !q(X).'))
+    assert front.get("only_p") == back.get("only_p") == {("a",)}
+
+
 def test_negation_with_anonymous_means_none_at_all():
     # !has(X, _) 는 "X 로 시작하는 has 가 하나도 없음"
     r = evaluate(parse('n(a). n(b). has(a, 1). lonely(X) :- n(X), !has(X, _).'))
@@ -236,7 +244,7 @@ def test_unknown_regime():
 @pytest.mark.parametrize("text, message", [
     ("p(X) :- q(X), !p(X).", "순환"),                 # "p 가 없으면 p": 층을 나눌 수 없음
     ("p(X) :- !q(X).", "! 없는 원자"),                # 긍정 원자가 하나도 없음
-    ("p(X) :- q(X), !r(Y).", "앞의 긍정 원자에 없어요"),  # 부정 원자의 이름 있는 변수가 안 묶임
+    ("p(X) :- q(X), !r(Y).", "몸통의 긍정 원자에 없어요"),  # 부정 원자의 이름 있는 변수가 안 묶임
 ])
 def test_negation_errors(text, message):
     with pytest.raises(DatalogError, match=message):
