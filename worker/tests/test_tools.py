@@ -213,15 +213,23 @@ def test_tool_schemas_strict_and_match_handlers():
 
 def test_validate_causal_order_pass_and_fail(tmp_path, monkeypatch):
     monkeypatch.setattr(tools, "LOG_PATH", tmp_path / "t.jsonl")
-    ctx = tools.ToolContext(source_text="한국은행이 기준금리를 3.00%로 동결했다.", ref="macro:bok_2026_10")
-    quiz = {"start_concept": "rate_hold", "change": "up", "end_concept": "growth_valuation",
-            "answer_order": ["rate_hold", "growth_valuation"], "direction": "down",
-            "evidence_quote": "기준금리를 3.00%로 동결했다."}
+    ctx = tools.ToolContext(source_text="한국은행이 기준금리를 2.75%로 인하했다.", ref="macro:bok_2026_10")
+    # 순서 문제는 개념 3개 이상 (#178): 인하 → 국채 금리(−1) → 성장주(−1) = ▲
+    quiz = {"start_concept": "rate_cut", "change": "up", "end_concept": "growth_valuation",
+            "answer_order": ["rate_cut", "bond_yield", "growth_valuation"], "direction": "up",
+            "evidence_quote": "기준금리를 2.75%로 인하했다."}
     content, is_error = tools.run_tool("validate_causal_order", {"quiz": quiz}, ctx)
     assert not is_error and json.loads(content)["passed"] is True
 
     # 방향을 반대로 쓰면 검증기가 실패 이유를 돌려준다 (도구 실패가 아니라 결과)
-    content, is_error = tools.run_tool("validate_causal_order", {"quiz": {**quiz, "direction": "up"}}, ctx)
+    content, is_error = tools.run_tool("validate_causal_order", {"quiz": {**quiz, "direction": "down"}}, ctx)
     out = json.loads(content)
     assert not is_error and out["passed"] is False
     assert any("방향" in e for e in out["errors"])
+
+    # 개념 2개짜리(동결 → 성장주)는 사전 경로와 같아도 실패
+    hold = {"start_concept": "rate_hold", "change": "up", "end_concept": "growth_valuation",
+            "answer_order": ["rate_hold", "growth_valuation"], "direction": "down",
+            "evidence_quote": "기준금리를 2.75%로 인하했다."}
+    out = json.loads(tools.run_tool("validate_causal_order", {"quiz": hold}, ctx)[0])
+    assert out["passed"] is False and any("개념 3개 이상" in e for e in out["errors"])

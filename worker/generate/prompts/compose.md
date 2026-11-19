@@ -27,7 +27,7 @@
 각 단계:
 - concept: 오늘 자료를 이해하는 데 필요한 개념 설명. terms 는 2~3개 용어와 한 줄 뜻.
 - quiz: 개념을 확인하는 객관식 3~4지선다. answer_index 는 0부터. explanation 은 정답 이유 한두 문장.
-- causal_order: 시작 개념에서 결과 개념까지 힘이 전해지는 순서. causal 의 answer_order 는 find_concept_path 가 준 경로 하나 그대로. evidence_quote 는 받은 원문에서 그대로 옮긴 문장(요약 금지). items 의 label 은 화면에 보일 짧은 이름.
+- causal_order: 시작 개념에서 결과 개념까지 힘이 전해지는 순서. causal 의 answer_order 는 find_concept_path 가 준 경로 하나 그대로이고, 개념이 3개 이상인 경로만 쓴다(2개면 순서 문제가 너무 쉽다). end_concept 를 null 로 불러 닿는 결과 중 3개 이상인 경로를 고른다. evidence_quote 는 받은 원문에서 그대로 옮긴 문장(요약 금지). items 의 label 은 화면에 보일 짧은 이름.
 - chart: ticker 의 가격·거래량을 보고 답하는 객관식. chart_check 에 정답을 검증할 지표(metric)·기간·값을 넣는다. 정답 보기 문장에도 같은 값을 쓴다.
 - judgement: 오늘 자료와 개념을 이어서 근거를 쓰게 하는 질문. choices 3개(마지막은 "아직 판단하기 어렵다" 류 허용). chain 은 판단 근거가 될 인과 경로 개념 id, counter 는 판단을 뒤집을 수 있는 다른 힘 개념 id(없으면 빈 배열).
 
