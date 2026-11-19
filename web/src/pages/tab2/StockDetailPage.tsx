@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router'
 import { StockNotFoundError, useStockOverlap } from '@/api/overlap'
 import type { EtfChange, FilerChange, StockOverlap } from '@/types/overlap'
 import { CardLabel, CardTitle, Rate } from './CardParts'
-import { etfShortName, FILERS, filerPersonName, isBigUp, quarterMonths, shortDate } from './labels'
+import { etfShortName, FILERS, filerPersonName, isBigHeld, quarterMonths, shortDate } from './labels'
 import { NowCard } from './NowCard'
 import { AGAINST_TREND_TEXT, AGAINST_TREND_TITLE, DETAIL_NOTE } from './notices'
 import { ReasonsCard } from './ReasonsCard'
@@ -111,13 +111,16 @@ const latestSnapshot = (etfs: EtfChange[]) =>
 /** ETF 가 분기 말 이후 늘렸는지 (새로 담았으면 trendChgPct 가 null) */
 const etfUp = (e: EtfChange) => e.trendChgPct === null || e.trendChgPct > 0
 
-/** 큰 제목: 늘린 큰손 수와 계속 늘린 ETF 수를 코드가 센다 */
+/**
+ * 큰 제목: 보유한 큰손 수를 코드가 센다 (메인 목록 "N명 보유"와 같은 기준 isBigHeld, #182).
+ * TODO(B): 임시 문구 "큰손 N명 보유 종목". 예전에는 늘린 큰손 수("큰손 N명이 늘리고, ETF M곳도 계속 사는 중")라
+ * 메인 목록과 숫자가 달랐다 (AMZN 3명 보유·1명 늘림). 문장은 B가 나중에 다듬는다
+ */
 const headline = (stock: StockOverlap) => {
-  const n = stock.filers.filter(isBigUp).length
+  const n = stock.filers.filter(isBigHeld).length
   const m = stock.etfs.filter(etfUp).length
   const dayUp = stock.etfs.filter((e) => e.dayChgPct !== null && e.dayChgPct > 0).length
-  if (n > 0 && m > 0) return `큰손 ${n}명이 늘리고,\nETF ${m}곳도 계속 사는 중`
-  if (n > 0) return `큰손 ${n}명이 늘렸어요`
+  if (n > 0) return `큰손 ${n}명 보유 종목`
   if (dayUp >= 2 && dayUp === stock.etfs.length) return '두 ETF가 어제\n함께 늘렸어요'
   if (m > 0) return `ETF ${m}곳이\n계속 늘리는 중`
   return '큰손과 ETF의\n최근 기록이에요'
