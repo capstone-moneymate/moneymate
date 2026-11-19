@@ -87,7 +87,7 @@ ALTER TABLE overlap_results
 ```
 
 - `big_dir`가 있으면 "N명 늘림"을 서버가 `count(*) FILTER (WHERE big_dir = 'up')`로 **세기만** 하면 된다(판정은 worker 한 곳).
-- ETF가 없는 13F 종목까지 메인 상단에 보이려면 overlap.py `co_increased()` 결과를 저장할 테이블(예: `co_increased(calc_date, big_period_end, ticker, filer_keys TEXT[])`)이 필요하다.
+- ETF가 없는 13F 종목까지 메인 상단에 보이려면 overlap.py `co_held()` 결과를 저장할 테이블(예: `co_held(calc_date, big_period_end, ticker, filer_keys TEXT[])`)이 필요하다. (#172에서 `co_increased()` → `co_held()`, 기준은 2명 이상 보유)
 - 종목 헤더의 섹터·성격·소개는 `stock_profiles(ticker PK, name_ko, sector, style, intro)` 같은 정적 테이블을 제안한다(손으로 채움).
 
 ## "내 지도에 있어요" 조회 (#100, #101에서 상세 응답 `myConcepts`로 연결)
