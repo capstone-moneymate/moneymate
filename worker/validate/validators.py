@@ -37,7 +37,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from concepts.graph import AMBIGUOUS, DOWN, UP, Graph, effect, load_graph
+from concepts.graph import AMBIGUOUS, DOWN, NORMAL, UP, Graph, effect, load_graph
 
 BANNED_PATH = Path(__file__).with_name("banned_terms.txt")
 
@@ -68,8 +68,10 @@ def _squash(text: str) -> str:
     return " ".join(text.split())
 
 
-def verify(quiz: dict, source_text: str, g: Graph | None = None) -> Report:
-    """퀴즈 하나를 검사한다. g 를 주지 않으면 db/seeds 개념 사전을 쓴다."""
+def verify(quiz: dict, source_text: str, g: Graph | None = None, regime: str = NORMAL) -> Report:
+    """퀴즈 하나를 검사한다. g 를 주지 않으면 db/seeds 개념 사전을 쓴다.
+    regime 은 그날 경기 국면(concepts/regime.py, #174). 경로·방향을 그 국면의 연결(조건부 연결 반영)로 본다.
+    주지 않으면 평상시라 예전과 같다."""
     g = g or _default_graph()
     r = Report()
 
@@ -91,7 +93,7 @@ def verify(quiz: dict, source_text: str, g: Graph | None = None) -> Report:
     if not start or not end or unknown or quiz.get("change") not in (UP, DOWN):
         return r
 
-    e = effect(g, start, end, quiz["change"])
+    e = effect(g, start, end, quiz["change"], regime)
     if e.direction is None:
         r.errors.append(f"개념 사전에 {start} → {end} 경로가 없음")
         return r

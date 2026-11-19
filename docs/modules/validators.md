@@ -3,7 +3,7 @@
 # worker/validate/validators.py
 
 - **한 줄 설명**: LLM이 만든 인과 순서 문제를 개념 사전 계산 결과(`concepts/graph.py`)와 원문에 대조해, 통과 여부와 실패 이유를 돌려주는 검증기 최소 버전.
-- **입력**: 퀴즈 dict(`start_concept`, `change`, `end_concept`, `answer_order`, `direction`, `evidence_quote`)와 원문 텍스트. 형식은 임시이고 C의 출제 결과 형식과 맞춘다. `g`를 주지 않으면 `db/seeds` 개념 사전을 쓴다.
+- **입력**: 퀴즈 dict(`start_concept`, `change`, `end_concept`, `answer_order`, `direction`, `evidence_quote`)와 원문 텍스트. 형식은 임시이고 C의 출제 결과 형식과 맞춘다. `g`를 주지 않으면 `db/seeds` 개념 사전을 쓴다. `regime`(그날 경기 국면, #174 regime.md)을 주면 경로·방향을 그 국면의 연결로 본다. 주지 않으면 평상시라 예전과 같다(예: 기준금리 인하 → 국채 금리 → 성장주는 평상시 ▲, 경기 침체 ▼).
 - **하는 일**: ① 필드가 다 있고 `change`·`direction`이 up / down인지 ② 개념 id가 사전에 있는지 ③ 시작 → 결과 경로가 있는지 ④ 방향이 다른 경로가 함께 있으면 순서 문제로 부적합 ⑤ 정답 순서가 사전 경로 중 하나와 같은지 ⑥ 방향이 사전으로 계산한 방향과 같은지 ⑦ 인용한 근거가 원문에 그대로 있는지(띄어쓰기·줄바꿈 차이는 무시)를 검사한다.
 - **출력**: `Report(errors, warnings)`. `errors`가 비어 있으면 `passed`. `errors`는 그대로 출제 단계에 돌려줘 다시 쓰게 하는 문장이다. `warnings`는 통과는 시키지만 사람이 확인할 것이다.
 - **주의할 점**: 경로가 여러 개일 때는 그중 하나와 같으면 통과시키고 "원문 설명과 같은 경로인지 확인 필요" 경고를 붙인다(엄격하게 원문에 중간 개념이 나오는 경로만 통과시키면, 중간 과정을 적지 않는 공시가 많아 맞는 문제도 버릴 수 있어서). 같은 결론으로 가는 지름길 연결은 사전에서 빼서 경로를 줄인다(`rate_hike → growth_valuation` 직접 연결은 #66에서 지움). 근거 날짜(탭 2)는 아래 `check_evidence`(#121). 형식 검사는 C의 compose가 JSON 스키마로 하고(schemas.py는 만들지 않음, C와 합의), 숫자 재계산은 C의 tools.py가 한다.

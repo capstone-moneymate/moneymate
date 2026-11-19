@@ -26,6 +26,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from compute import indicators
+from concepts.regime import Regime, prompt_note, regime_for_month
 from db import get_conn
 from generate import tools
 from generate.classify import ClassifyResult, Concept, load_concepts
@@ -62,6 +63,8 @@ class ComposeResult:
     repairs: int = 0
     cost_usd: float = 0.0
     request_ids: list[str] = field(default_factory=list)
+    # 이 카드를 만들 때 쓴 경기 국면과 근거 (concepts/regime.py, #174). model_info.regime 에 저장한다
+    regime: Regime | None = None
 
 
 # --- 카드 스키마 (submit_card 입력) ---
@@ -437,7 +440,7 @@ def validate_card(card: dict, card_type: int, concept_ids: set[str], ctx: tools.
                 errors.append(f"{where}: answer_index {s['answer_index']} 가 보기 범위 밖이에요")
         if s["kind"] == "causal_order":
             c = s["causal"]
-            report = verify(c, ctx.source_text)
+            report = verify(c, ctx.source_text, regime=ctx.regime)
             errors += [f"{where}: {e}" for e in report.errors]
             if sorted(i["concept_id"] for i in s["items"]) != sorted(c["answer_order"]):
                 errors.append(f"{where}: items 개념과 정답 순서 개념이 달라요")
@@ -559,6 +562,8 @@ def save_pending(card: dict, cls: ClassifyResult, source: dict, card_date: date,
               "published_date": str(source.get("published_date"))}]
     model_info = {"model": SONNET, "calls": result.calls, "repairs": result.repairs,
                   "cost_usd": round(result.cost_usd, 6)}
+    if result.regime is not None:
+        model_info["regime"] = result.regime.to_json()
     with get_conn() as conn:
         card_id = conn.execute(
             """INSERT INTO cards (card_date, card_type, status, title, slides, start_concept, ticker,
@@ -582,17 +587,22 @@ def save_pending(card: dict, cls: ClassifyResult, source: dict, card_date: date,
 # --- 실행 ---
 
 def compose(source: dict, cls: ClassifyResult, card_date: date, concepts: list[Concept] | None = None,
-            save: bool = True, review=None) -> ComposeResult:
+            save: bool = True, review=None, regime: Regime | None = None) -> ComposeResult:
     """source: raw_sources 한 행 (id, source_type, source_key, title, url, category, issuer_name, ticker,
-    published_date, numbers). review: (card) -> 실패 이유 목록. 검토 에이전트가 생기면 넘긴다."""
+    published_date, numbers). review: (card) -> 실패 이유 목록. 검토 에이전트가 생기면 넘긴다.
+    regime: 경기 국면 (주지 않으면 card_date 의 달로 concepts/regime.py 가 정한다, #174)."""
     concepts = concepts or load_concepts()
     ids = [c.id for c in concepts]
     ref = f"{source.get('source_type')}:{source.get('source_key')}"
+    regime = regime or regime_for_month(card_date.year, card_date.month)
+    user = build_user(source, cls, load_etf_rows(source.get("ticker")))
+    if note := prompt_note(regime):
+        user += "\n" + note
     run = _Run(
-        messages=[{"role": "user", "content": build_user(source, cls, load_etf_rows(source.get("ticker")))}],
+        messages=[{"role": "user", "content": user}],
         system=build_system(concepts),
-        ctx=tools.ToolContext(source_text=source_text(source), ref=ref),
-        result=ComposeResult(card_id=None, card=None, errors=[]),
+        ctx=tools.ToolContext(source_text=source_text(source), ref=ref, regime=regime.name),
+        result=ComposeResult(card_id=None, card=None, errors=[], regime=regime),
     )
     res = run.result
     try:

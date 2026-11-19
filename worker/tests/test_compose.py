@@ -270,6 +270,53 @@ def test_loop_tool_then_answer(offline, monkeypatch):
     assert r.cost_usd == pytest.approx(0.006)
 
 
+def test_regime_goes_to_tools_prompt_and_model_info(offline, monkeypatch):
+    # #174: 경기 침체 국면을 넘기면 도구가 그 국면으로 계산하고, 프롬프트에 알리고, 저장할 근거에 남긴다
+    from concepts.regime import Regime
+
+    rec = Regime("recession", 0.57, "2024-08-01")
+    card = good_card(offline)
+    calls = fake(monkeypatch, [
+        resp("tool_use", tool_use("find_concept_path", start_concept="rate_cut",
+                                  end_concept="growth_valuation", change="up")),
+        resp("tool_use", submit(card)),
+    ])
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=False, regime=rec)
+    assert r.errors == [] and r.regime == rec
+    assert "경기 침체 국면" in calls[0][0]["content"]
+    out = json.loads(calls[1][-1]["content"][0]["content"])
+    assert out["regime"] == "recession" and out["results"][0]["direction"] == "down"  # 평상시면 up
+
+    # 저장할 model_info 에 국면 근거가 들어간다 (DB 대신 가짜 연결)
+    saved = {}
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute(self, sql, params=None):
+            if "INSERT INTO cards" in sql:
+                saved["model_info"] = params[-1].obj
+            return SimpleNamespace(fetchone=lambda: (1,))
+
+    monkeypatch.setattr(cp, "get_conn", Conn)
+    monkeypatch.setattr(cp, "step_rows", lambda card, seed: [])
+    cp.save_pending(card, CLS2, SOURCE, date(2026, 11, 2), r)
+    assert saved["model_info"]["regime"] == {"name": "recession", "sahm": 0.57, "observed": "2024-08-01",
+                                             "source": "FRED SAHMREALTIME"}
+
+
+def test_default_regime_is_normal_without_note(offline, monkeypatch):
+    # 국면을 안 주면 card_date 의 달로 정한다 (테스트는 conftest 가 지표 0.00 → 평상시). 프롬프트는 예전 그대로
+    card = good_card(offline)
+    calls = fake(monkeypatch, [resp("tool_use", submit(card))])
+    r = cp.compose(SOURCE, CLS2, date(2026, 11, 2), save=False)
+    assert r.regime.name == "normal" and "경기 침체" not in calls[0][0]["content"]
+
+
 def test_repair_then_pass(offline, monkeypatch):
     bad, good = good_card(offline), good_card(offline)
     bad["steps"][3]["chart_check"]["value"] = "2.5"
