@@ -9,7 +9,7 @@
 - calc_rsi: 그날 RSI (Wilder, 기본 14일)
 - calc_return: 두 날짜 사이 종가 수익률(%)
 - volume_stats: 그날 거래량 ÷ 직전 252거래일 평균, 그날까지 최근 N거래일 거래량 상위일
-- find_concept_path: 시작 개념 → 결과 개념 경로와 방향 (B의 concepts/graph.py)
+- find_concept_path: 시작 개념 → 결과 개념 경로와 방향 (B의 concepts/graph.py). ToolContext.regime 국면 기준 (#174)
 - search_event_dates: 비슷했던 과거의 날 (db/seeds/event_dates.csv)
 - validate_causal_order: 인과 순서 문제 검증 (B의 validate/validators.py)
 - validate_chart_answer: 차트 문제에 쓴 숫자·날짜를 코드가 다시 계산해 비교
@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 from compute import indicators
-from concepts.graph import effect, load_graph
+from concepts.graph import NORMAL, effect, load_graph, regime_out
 from db import get_conn
 from validate.validators import verify
 
@@ -50,6 +50,8 @@ class ToolError(Exception):
 class ToolContext:
     source_text: str = ""  # 카드의 1차 자료 원문(제목·숫자). 검증기가 근거 인용을 대조한다. 에이전트가 바꿀 수 없다
     ref: str | None = None  # 로그에 남길 자료 키 (source_type:source_key)
+    # 그날 경기 국면 (concepts/regime.py, #174). 경로 찾기·인과 순서 검증이 그 국면의 연결로 계산한다. 에이전트가 바꿀 수 없다
+    regime: str = NORMAL
 
 
 # --- 데이터 읽기 ---
@@ -169,28 +171,30 @@ def validate_chart_answer(metric: str, ticker: str, start_date: str | None, end_
     return out
 
 
-def find_concept_path(start_concept: str, end_concept: str | None, change: str) -> dict:
+def find_concept_path(start_concept: str, end_concept: str | None, change: str, regime: str = NORMAL) -> dict:
+    """regime 은 ToolContext 에서 온다 (에이전트 입력이 아님). 결과에 국면을 적어 해설이 그 국면 기준임을 알게 한다."""
     g = load_graph()
     if start_concept not in g.out:
         raise ToolError(f"개념 사전에 없는 개념: {start_concept}")
-    ends = [end_concept] if end_concept else _reachable(g, start_concept)
+    ends = [end_concept] if end_concept else _reachable(g, start_concept, regime)
     results = []
     for end in ends:
         if end not in g.out:
             raise ToolError(f"개념 사전에 없는 개념: {end}")
-        e = effect(g, start_concept, end, change)
+        e = effect(g, start_concept, end, change, regime)
         results.append({
             "end_concept": end,
             "direction": e.direction,  # up / down / ambiguous / None(경로 없음)
             "paths": [{"concept_ids": p, "names": [g.names[c] for c in p]} for p, _ in e.paths],
         })
-    return {"start_concept": start_concept, "change": change, "results": results}
+    return {"start_concept": start_concept, "change": change, "regime": regime, "results": results}
 
 
-def _reachable(g, start: str) -> list[str]:
+def _reachable(g, start: str, regime: str = NORMAL) -> list[str]:
+    out = regime_out(g, regime)
     seen, stack = [], [start]
     while stack:
-        for nxt, _ in g.out[stack.pop()]:
+        for nxt, _ in out[stack.pop()]:
             if nxt not in seen and nxt != start:
                 seen.append(nxt)
                 stack.append(nxt)
@@ -206,7 +210,7 @@ def search_event_dates(concept_id: str, limit: int) -> dict:
 
 
 def validate_causal_order(quiz: dict, ctx: ToolContext) -> dict:
-    report = verify(quiz, ctx.source_text)
+    report = verify(quiz, ctx.source_text, regime=ctx.regime)
     return {"passed": report.passed, "errors": report.errors, "warnings": report.warnings}
 
 
@@ -276,6 +280,8 @@ def run_tool(name: str, args: dict, ctx: ToolContext | None = None) -> tuple[str
     try:
         if name == "validate_causal_order":
             out = validate_causal_order(args["quiz"], ctx)
+        elif name == "find_concept_path":
+            out = find_concept_path(**args, regime=ctx.regime)
         elif name in HANDLERS:
             out = HANDLERS[name](**args)
         else:
