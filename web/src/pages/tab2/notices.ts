@@ -27,6 +27,22 @@ export const AGAINST_TREND_TEXT =
 export const reasonsFootNote = (periodEnd: string) =>
   `파란 칸은 내 인과 지도에 있는 노드예요 · 13F 이유는 ${periodEnd} 이전 뉴스만 근거로 써요`
 
+/**
+ * 카드 ② 양쪽 이유 (큰손과 ETF 가 반대로 움직인 종목, 2026-11-19 B). 13F 는 분기 말 기록, ETF 추세는 그 뒤라
+ * 기간마다 따로 설명한다. 날짜는 '9/30' 형식
+ */
+export const sideTitle = (side: 'big' | 'etf', periodEnd: string, etfUntil: string | null) =>
+  side === 'big'
+    ? `큰손 쪽 · ${periodEnd}까지 기록`
+    : `ETF 쪽 · ${periodEnd} 이후${etfUntil ? ` ~ ${etfUntil}` : ''} 추세`
+
+/** 양쪽 이유인데 한쪽 이유가 없을 때 (그 기간 근거가 없거나 검사에서 버려짐) */
+export const SIDE_MISSING_TEXT = '이 기간 자료로는 설명할 이유를 찾지 못했어요.'
+
+/** 양쪽 이유 카드 아래 */
+export const splitFootNote = (periodEnd: string) =>
+  `파란 칸은 내 인과 지도에 있는 노드예요 · 큰손 이유는 ${periodEnd} 이전, ETF 이유는 그 뒤 자료만 근거로 써요`
+
 /** 카드 ② 이유가 아직 없을 때 */
 export const NO_REASONS_TEXT =
   '이 종목의 이유 카드는 아직 준비되지 않았어요. 앞 카드에서 무엇이 바뀌었는지 먼저 살펴보세요.'

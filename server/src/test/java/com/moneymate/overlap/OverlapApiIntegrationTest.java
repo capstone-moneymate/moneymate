@@ -77,7 +77,8 @@ class OverlapApiIntegrationTest {
                        {"id":"semi_earnings","name":"반도체 기업 실적","learned":false}],
                "direction":"up","inMyMap":%s,
                "evidence":[{"no":4,"publishedDate":"2026-06-12","title":"데이터센터 투자 발표",
-                            "issuerName":"Microsoft","url":"https://example.com/a"}]}],
+                            "issuerName":"Microsoft","url":"https://example.com/a"}],
+               "side":null}],
              "now":{"baseDate":"2026-06-30",
                "price":{"fromDate":"2026-06-30","fromClose":100.0,"toDate":"2026-11-14","toClose":112.5,"returnPct":12.5},
                "laterSources":[],"linked":[],"text":null}}""".formatted(learned, learned);

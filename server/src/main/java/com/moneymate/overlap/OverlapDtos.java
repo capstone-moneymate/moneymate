@@ -57,6 +57,8 @@ public final class OverlapDtos {
     /**
      * 카드 ② 이유 하나. direction 은 경로 시작 개념이 커질 때 끝 개념이 받는 힘(up/down).
      * inMyMap 은 경로에 사용자가 배운 개념이 하나라도 있는지 ("내 지도에 있어요").
+     * side 는 양쪽 이유일 때 이 이유가 설명하는 쪽: big(큰손, 분기 말 이전 근거) / etf(ETF, 분기 말 이후 근거).
+     * 큰손과 ETF 가 반대로 움직인 종목만 있고, 그 밖은 null (C 의 reasons.py 저장값 그대로, 2026-11-19 B).
      */
     public record StockReason(
             String title,
@@ -64,7 +66,8 @@ public final class OverlapDtos {
             List<PathConcept> path,
             String direction,
             boolean inMyMap,
-            List<ReasonEvidence> evidence) {
+            List<ReasonEvidence> evidence,
+            String side) {
     }
 
     /** 카드 ③ 기준일 이후 주가. returnPct 는 퍼센트 값 (12.5 = 12.5%, C 가 저장한 그대로). */

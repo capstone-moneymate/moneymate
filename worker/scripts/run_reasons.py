@@ -6,7 +6,8 @@
     python -m scripts.run_reasons --period 2026-09-30               # 겹침 결과의 모든 종목
 
 종목마다: overlap_results(가장 최근 calc_date) → stock_direction(방향·change, P19) → 카드 ① 숫자 문장(코드)
-→ load_evidence(기준일 이전 자료) → reasons.generate(Sonnet, 근거가 없으면 호출 안 함)
+→ load_evidence(기준일 이전 자료). 큰손과 ETF 가 반대(reasons.is_split)면 etf_change 와 load_etf_evidence
+(기준일 다음 날 ~ ETF 최신 스냅샷)도 → reasons.generate(Sonnet, 근거가 없으면 호출 안 함)
 → stock_now.generate(카드 ③, Haiku. 이유가 있을 때만) → reasons.save (published / rejected).
 카드 ③은 날마다 바뀌어서 run_daily 의 "지금은 갱신" 단계가 now_view 만 다시 만든다.
 """
@@ -35,6 +36,10 @@ class StockRun:
     calls: int = 0
     error: str | None = None
     warnings: int = 0  # 다시 써도 방향이 큰손 변화와 반대라 뺀 이유 수 (reasons.direction_warnings)
+    # 양쪽 이유 (reasons.is_split): ETF 쪽 변화와 ETF 쪽 근거 수. 한쪽 이유면 etf 는 None
+    etf: str | None = None
+    etf_evidence: int = 0
+    missing: list[str] | None = None  # 양쪽 이유인데 이유가 없는 쪽
 
 
 def pct_text(v: float | None) -> str | None:
@@ -75,7 +80,7 @@ def load_overlap(conn, period: date, ticker: str | None = None) -> dict[str, lis
     rows = conn.execute(
         """WITH last AS (SELECT max(calc_date) AS d FROM overlap_results WHERE big_period_end = %s)
            SELECT o.ticker, o.filer_key, o.big_chg_pct, o.etf_code, o.etf_trend_chg_pct, o.direction,
-                  h.change_type, h.issuer_name
+                  h.change_type, h.issuer_name, o.etf_snapshot_date
              FROM overlap_results o JOIN last ON o.calc_date = last.d
              LEFT JOIN LATERAL (
                  SELECT change_type, issuer_name FROM holdings_13f
@@ -86,7 +91,7 @@ def load_overlap(conn, period: date, ticker: str | None = None) -> dict[str, lis
         (period, period, ticker, ticker),
     ).fetchall()
     cols = ["ticker", "filer_key", "big_chg_pct", "etf_code", "etf_trend_chg_pct", "direction",
-            "change_type", "issuer_name"]
+            "change_type", "issuer_name", "etf_snapshot_date"]
     out: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         d = dict(zip(cols, r))
@@ -118,12 +123,22 @@ def run_one(conn, ticker: str, rows: list[dict], period: date, llm: bool) -> Sto
         return run
     evidence = reasons.load_evidence(ticker, period)
     run.evidence = len(evidence)
+    # 양쪽 이유: 큰손과 ETF 가 반대로 움직였으면 ETF 쪽은 분기 말 다음 날 ~ ETF 최신 스냅샷 근거로 (2026-11-19 B)
+    etf = reasons.etf_change(rows)
+    snaps = [r["etf_snapshot_date"] for r in rows if r.get("etf_snapshot_date")]
+    etf_evidence, until = [], None
+    if reasons.is_split(run.direction, run.change, etf) and snaps:  # ETF 최신일을 모르면 예전처럼 한쪽 이유
+        run.etf, until = etf, max(snaps)
+        etf_evidence = reasons.load_etf_evidence(ticker, period, until)
+        run.etf_evidence = len(etf_evidence)
     if not llm:
         return run
     stock = {"ticker": ticker, "name": rows[0].get("issuer_name")}
-    result = reasons.generate(stock, run.direction, run.change, period, facts_for(rows, period), evidence)
+    split = {"etf": run.etf, "etf_evidence": etf_evidence, "etf_until": until} if run.etf else {}
+    result = reasons.generate(stock, run.direction, run.change, period, facts_for(rows, period), evidence, **split)
     run.calls = result.calls
     run.warnings = len(result.warnings)
+    run.missing = result.missing_sides
     now_view = None
     if result.reasons:
         try:
@@ -158,8 +173,11 @@ def main(argv: list[str] | None = None) -> int:
         for ticker, rows in by_ticker.items():
             run = run_one(conn, ticker, rows, period, llm=not args.no_llm)
             runs.append(run)
-            print(f"{ticker:8} {run.direction or '-':5} {run.change or '-':5} 근거 {run.evidence:2}건 "
-                  f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향 뺌 {run.warnings} {run.error or ''}")
+            split = f" | 양쪽 ETF {run.etf} 근거 {run.etf_evidence}건" if run.etf else ""
+            missing = f" 빠진 쪽 {','.join(run.missing)}" if run.missing else ""
+            print(f"{ticker:8} {run.direction or '-':5} {run.change or '-':5} 근거 {run.evidence:2}건{split} "
+                  f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향 뺌 {run.warnings}{missing} "
+                  f"{run.error or ''}")
     done = [r for r in runs if r.status == "published"]
     print(f"\n종목 {len(runs)}개, published {len(done)}, "
           f"rejected {sum(r.status == 'rejected' for r in runs)}, "
