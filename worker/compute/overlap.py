@@ -78,14 +78,21 @@ def compare(big: str | None, etf: str | None) -> str:
     return "same" if big == etf else "diff"
 
 
-def co_increased(big_dirs: dict[str, dict[str, str | None]], min_filers: int = 2) -> dict[str, list[str]]:
-    """티커 -> {filer_key: 방향} 에서 min_filers 명 이상이 늘린 종목만. 탭 2 '함께 늘린 종목' 용.
-    결과: 티커 -> 늘린 filer_key 목록(이름순)."""
+def is_held(change_type: str | None) -> bool:
+    """이번 분기 말에 그 종목을 들고 있는가. 방향과 상관없이 보유면 참, 모두 정리(exit)는 보유가 아니다.
+    화면 web/src/pages/tab2/labels.ts 의 isBigHeld 와 같은 기준이라 바꾸면 둘 다 고친다 (#164, #172)."""
+    return change_type is not None and change_type != "exit"
+
+
+def co_held(changes: dict[str, dict[str, str | None]], min_filers: int = 2) -> dict[str, list[str]]:
+    """티커 -> {filer_key: change_type} 에서 min_filers 명 이상이 보유한 종목만. 탭 2 메인 "큰손 여러 명이 담은 종목" 기준.
+    결과: 티커 -> 보유한 filer_key 목록(이름순). 예전 기준(2명 이상 함께 늘림, co_increased)은 13F 를 다시 받은
+    3분기에 0개라 #164 에서 보유로 바꿨다. 방향은 화면이 라벨(신규·늘림·줄임·유지)로만 보여 준다."""
     out = {}
-    for ticker, dirs in big_dirs.items():
-        ups = sorted(k for k, d in dirs.items() if d == UP)
-        if len(ups) >= min_filers:
-            out[ticker] = ups
+    for ticker, types in changes.items():
+        holders = sorted(k for k, t in types.items() if is_held(t))
+        if len(holders) >= min_filers:
+            out[ticker] = holders
     return out
 
 

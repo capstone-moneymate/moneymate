@@ -60,7 +60,8 @@ export const isBigDown = (f: FilerChange) =>
 
 /**
  * 이번 분기 말에 들고 있는가 (탭2 메인 "겹치는 종목" 기준, #164). 방향과 상관없이 보유면 센다.
- * 모두 정리(exit)했으면 보유가 아니다.
+ * 모두 정리(exit)했으면 보유가 아니다. worker compute/overlap.py 의 is_held·co_held 와 같은 기준이라
+ * 바꾸면 둘 다 고친다 (#172).
  */
 export const isBigHeld = (f: FilerChange) => f.changeType !== null && f.changeType !== 'exit'
 

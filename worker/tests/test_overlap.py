@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from compute.overlap import (
-    big_direction, build_results, co_increased, compare, etf_change, etf_direction, etf_entry,
+    big_direction, build_results, co_held, compare, etf_change, etf_direction, etf_entry, is_held,
 )
 
 
@@ -95,7 +95,19 @@ def test_no_shift_keeps_old_result():
     assert e["latest"] == {"A": Decimal("200")}
 
 
-def test_co_increased_two_or_more():
-    dirs = {"NVDA": {"buffett": "up", "thiel": "up", "ackman": "down"},
-            "AAPL": {"buffett": "up", "druckenmiller": None}}
-    assert co_increased(dirs) == {"NVDA": ["buffett", "thiel"]}
+def test_is_held_excludes_exit_only():
+    for t in ("new", "increase", "decrease", "unchanged"):
+        assert is_held(t)                       # 방향과 상관없이 들고 있으면 보유
+    assert not is_held("exit") and not is_held(None)
+
+
+def test_co_held_two_or_more_holders():
+    # 3분기 실제 (2026-11-19): AMZN 은 드러켄밀러 늘림 · 애크먼 유지(−0.7%) · 틸 그대로 → 3명 보유,
+    # MSFT 는 애크먼 줄임 · 틸 신규 → 2명 보유. 예전 "함께 늘림" 기준이면 둘 다 빠졌다
+    changes = {"AMZN": {"druckenmiller": "increase", "ackman": "decrease", "thiel": "unchanged"},
+               "MSFT": {"ackman": "decrease", "thiel": "new"},
+               # 한 명은 모두 정리(exit)라 보유는 1명뿐 → 빠진다
+               "GOOGL": {"druckenmiller": "exit", "buffett": "unchanged"},
+               "KO": {"buffett": "unchanged"}}
+    assert co_held(changes) == {"AMZN": ["ackman", "druckenmiller", "thiel"], "MSFT": ["ackman", "thiel"]}
+    assert co_held(changes, min_filers=3) == {"AMZN": ["ackman", "druckenmiller", "thiel"]}
