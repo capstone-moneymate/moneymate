@@ -12,8 +12,10 @@ CONCEPTS = [
     cl.Concept("hbm_supply", "HBM 공급 확대", "AI·반도체", ["HBM 증산"]),
     cl.Concept("consecutive_rise", "연속 상승", "차트 읽기", []),
 ]
-EDGES = [("rate_hold", "growth_valuation"), ("hbm_supply", "memory_price")]
+EDGES = [("rate_hold", "growth_valuation"), ("hbm_supply", "memory_price"), ("rate_cut", "bond_yield")]
 ETF = {"NVDA"}  # 두 ETF 모두 미국 주식 ETF라 국내 종목은 나올 수 없다
+# 순서 문제를 낼 수 있는 시작 개념 (validators.order_starts 결과 대신 테스트용으로 정함)
+STARTS = frozenset({"hbm_supply", "rate_cut"})
 
 
 # --- 유형은 코드가 정한다 ---
@@ -23,14 +25,22 @@ ETF = {"NVDA"}  # 두 ETF 모두 미국 주식 ETF라 국내 종목은 나올 �
     [
         ("hbm_supply", "NVDA", 3),         # ETF 보유 종목이면 연결이 있어도 3
         (None, "NVDA", 3),                 # 시작 개념이 없어도 ETF 종목이면 3
-        ("rate_hold", None, 2),            # 나가는 연결 있음 → 뼈대 있음
+        ("rate_cut", None, 2),             # 나가는 연결 있고 개념 3개 이상 경로 있음 → 순서 문제 가능
+        ("rate_hold", None, 1),            # 나가는 연결은 있지만 경로가 개념 2개뿐 → 순서 문제 못 냄 (#178)
         ("growth_valuation", "005930", 1),  # 들어오는 연결만 있음 → 뼈대 없음
         ("consecutive_rise", "KS11", 1),   # 차트 개념, 연결 없음
         (None, None, 1),
     ],
 )
 def test_decide_type(concept, ticker, expected):
-    assert cl.decide_type(concept, ticker, EDGES, ETF) == expected
+    assert cl.decide_type(concept, ticker, EDGES, ETF, STARTS) == expected
+
+
+def test_decide_type_uses_real_dictionary_by_default():
+    # starts 를 안 주면 실제 사전으로 계산: 동결은 동결 → 성장주 2개뿐이라 1, 인하는 인하 → 국채 금리 → 성장주라 2
+    edges = [("rate_hold", "growth_valuation"), ("rate_cut", "bond_yield")]
+    assert cl.decide_type("rate_hold", None, edges, set()) == 1
+    assert cl.decide_type("rate_cut", None, edges, set()) == 2
 
 
 # --- 스키마·프롬프트 ---
@@ -92,15 +102,24 @@ def fake_create(payload, stop="end_turn"):
 
 
 def test_classify_type2(monkeypatch):
-    create, calls = fake_create({"start_concept": "rate_hold", "reason": "'동결'이라는 표현"})
+    create, calls = fake_create({"start_concept": "rate_cut", "reason": "'인하'라는 표현"})
     monkeypatch.setattr(cl, "create", create)
-    result = cl.classify({"title": "한국은행 기준금리 동결", "ticker": "KS11"}, CONCEPTS, EDGES, ETF)
-    assert result == cl.ClassifyResult(2, "rate_hold", "'동결'이라는 표현")
+    concepts = CONCEPTS + [cl.Concept("rate_cut", "기준금리 인하", "금리", [])]
+    result = cl.classify({"title": "한국은행 기준금리 인하", "ticker": "KS11"}, concepts, EDGES, ETF)
+    assert result == cl.ClassifyResult(2, "rate_cut", "'인하'라는 표현")
 
     module, params = calls[0]
     assert module == "classify"
     assert params["model"] == cl.HAIKU
     assert params["output_config"]["format"]["type"] == "json_schema"
+
+
+def test_classify_rate_hold_goes_to_type1(monkeypatch):
+    # #178: 동결은 동결 → 성장주 가치평가 개념 2개뿐이라 순서 문제를 못 낸다 → 예전 유형 2 에서 유형 1 로
+    create, _ = fake_create({"start_concept": "rate_hold", "reason": "'동결'이라는 표현"})
+    monkeypatch.setattr(cl, "create", create)
+    result = cl.classify({"title": "한국은행 기준금리 동결", "ticker": "KS11"}, CONCEPTS, EDGES, ETF)
+    assert result == cl.ClassifyResult(1, "rate_hold", "'동결'이라는 표현")
 
 
 def test_classify_none_becomes_null(monkeypatch):

@@ -60,13 +60,15 @@ def good_card(prices) -> dict:
              "terms": [{"term": "동결", "desc": "그대로 둠"}]},
             {"kind": "quiz", "concept_ids": ["rate_hold"], "question": "동결은?", "options": ["올림", "내림", "그대로"],
              "answer_index": 2, "explanation": "그대로 둔다는 뜻이에요."},
-            {"kind": "causal_order", "concept_ids": ["rate_hold", "growth_valuation"], "question": "순서대로",
-             "items": [{"concept_id": "rate_hold", "label": "금리 동결"},
+            # 순서 문제는 개념 3개 이상 (#178). 동결 → 성장주는 2개뿐이라, 동결 대신 인하였다면을 묻는 3칸 경로로 둔다
+            {"kind": "causal_order", "concept_ids": ["rate_cut", "bond_yield", "growth_valuation"], "question": "순서대로",
+             "items": [{"concept_id": "rate_cut", "label": "금리 인하"},
+                       {"concept_id": "bond_yield", "label": "국채 금리"},
                        {"concept_id": "growth_valuation", "label": "성장주 가치평가"}],
-             "causal": {"start_concept": "rate_hold", "change": "up", "end_concept": "growth_valuation",
-                        "answer_order": ["rate_hold", "growth_valuation"], "direction": "down",
+             "causal": {"start_concept": "rate_cut", "change": "up", "end_concept": "growth_valuation",
+                        "answer_order": ["rate_cut", "bond_yield", "growth_valuation"], "direction": "up",
                         "evidence_quote": "한국은행 기준금리 3.00% 동결"},
-             "explanation": "할인율이 높게 유지돼요."},
+             "explanation": "할인율이 내려가요."},
             {"kind": "chart", "concept_ids": ["volume_spike"], "question": "평균의 몇 배?", "ticker": "KS11",
              "options": ["1배", "2배", "3배"], "answer_index": 2, "explanation": "3배였어요.",
              "chart_check": {"metric": "volume_ratio", "start_date": None, "end_date": last, "value": "3"}},
@@ -98,7 +100,7 @@ def test_good_card_passes(offline, ids):
     (lambda c: c["slides"][0].update(body="은행주를 사세요."), "사세요"),
     (lambda c: c["slides"][1].update(body="성장주가 상승할 전망이에요."), "상승할 전망"),
     (lambda c: c["steps"][1].update(answer_index=3), "보기 범위 밖"),
-    (lambda c: c["steps"][2]["causal"].update(direction="up"), "방향"),
+    (lambda c: c["steps"][2]["causal"].update(direction="down"), "방향"),
     (lambda c: c["steps"][2]["causal"].update(evidence_quote="금리를 내렸다"), "원문에 없음"),
     (lambda c: c["steps"][2].update(concept_ids=["growth_valuation", "rate_hold"]), "정답 순서 그대로"),
     (lambda c: c["steps"][3]["chart_check"].update(value="2.5"), "코드가 계산한 값은 3.0"),
@@ -164,8 +166,8 @@ def test_step_rows(offline):
     assert quiz["answer"] == {"correct": 2, "explanation": "그대로 둔다는 뜻이에요."}
     assert "answer_index" not in quiz["content"]  # 정답은 content 에 없다
     order = rows[2]
-    assert [i["concept_id"] for i in order["content"]["items"]] == ["growth_valuation", "rate_hold"]  # 정답과 다르게 섞임
-    assert order["answer"]["correct"] == ["rate_hold", "growth_valuation"]
+    assert [i["concept_id"] for i in order["content"]["items"]] == ["growth_valuation", "rate_cut", "bond_yield"]  # 정답과 다르게 섞임
+    assert order["answer"]["correct"] == ["rate_cut", "bond_yield", "growth_valuation"]
     assert rows[3]["content"]["ticker"] == "KS11" and rows[3]["answer"]["check"]["metric"] == "volume_ratio"
     # 차트 표시 기간 (B 요청 5): 하루 문제(volume_ratio)라 끝 = 확인한 날, 시작 = 90일 앞
     last = date.fromisoformat(str(offline.iloc[-1].market_date))
@@ -276,6 +278,8 @@ def test_regime_goes_to_tools_prompt_and_model_info(offline, monkeypatch):
 
     rec = Regime("recession", 0.57, "2024-08-01")
     card = good_card(offline)
+    # 경기 침체에서는 인하 → 국채 금리 → 성장주가 ▼ (평상시 ▲). 침체 국면 카드는 ▼ 여야 통과한다
+    card["steps"][2]["causal"]["direction"] = "down"
     calls = fake(monkeypatch, [
         resp("tool_use", tool_use("find_concept_path", start_concept="rate_cut",
                                   end_concept="growth_valuation", change="up")),

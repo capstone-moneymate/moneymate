@@ -10,9 +10,10 @@
    허용 id 를 JSON 스키마 enum 으로 넘겨서 사전에 없는 id 는 나올 수 없다. 맞는 개념이 없으면 "none".
 2. 유형은 LLM 이 아니라 코드가 정한다 (정답은 데이터와 코드가).
    - 유형 3: 자료의 종목이 액티브 ETF 최신 보유 종목에 있다
-   - 유형 2: 시작 개념에서 나가는 연결(causal_edges)이 있다 = 인과 뼈대가 있다
-   - 유형 1: 그 밖 (시작 개념이 없거나 연결이 없는 차트 개념)
-   경로 탐색 자체는 B의 graph.py 가 맡는다. 여기서는 "나가는 연결이 1개 이상인가"만 본다.
+   - 유형 2: 시작 개념에서 나가는 연결(causal_edges)이 있고, 개념 3개 이상·방향이 정해진 경로가 있다
+     = 인과 순서 문제를 낼 수 있다 (#178, B 의 validators.order_starts 와 같은 기준)
+   - 유형 1: 그 밖 (시작 개념이 없거나, 연결이 없는 차트 개념이거나, 경로가 개념 2개뿐인 개념. 예: 기준금리 동결)
+   경로 탐색 자체는 B의 graph.py 가 맡는다.
 """
 import csv
 import json
@@ -98,11 +99,21 @@ def load_etf_tickers() -> set[str]:
 # --- 코드가 정하는 부분 ---
 
 def decide_type(start_concept: str | None, ticker: str | None,
-                edges: list[tuple[str, str]], etf_tickers: set[str]) -> int:
+                edges: list[tuple[str, str]], etf_tickers: set[str],
+                starts: frozenset[str] | None = None) -> int:
+    """유형 2 는 나가는 연결이 있고, 인과 순서 문제를 낼 수 있는 시작 개념일 때만 (#178).
+    starts: 개념 3개 이상·방향이 정해진 경로가 있는 시작 개념 (B 의 validators.order_starts). 주지 않으면 사전으로 계산한다.
+    순서 문제를 못 내는 개념(기준금리 동결 → 성장주처럼 2개뿐)을 유형 2 로 보내면, 출제가 고쳐 쓰기를 반복하다
+    실패하고 호출 비용만 쓴다. 그런 자료는 유형 1 로 보낸다."""
     if ticker and ticker in etf_tickers:
         return 3
     if start_concept and any(f == start_concept for f, _ in edges):
-        return 2
+        if starts is None:
+            from validate.validators import order_starts  # 사전 그래프를 읽으므로 필요할 때만
+
+            starts = order_starts()
+        if start_concept in starts:
+            return 2
     return 1
 
 

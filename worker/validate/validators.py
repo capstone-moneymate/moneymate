@@ -21,7 +21,8 @@
 2. 개념 id: 사전에 있는가 (없으면 경로 검사는 하지 않음)
 3. 경로: 시작 → 결과 경로가 있는가 (없으면 순서·방향 검사는 하지 않음)
 4. 모호성: 방향이 다른 경로가 함께 있으면 순서 문제로 부적합 (방향 검사는 하지 않음)
-5. 정답 순서: 사전 경로 중 하나와 같은가. 경로가 여러 개면 통과시키되 경고를 붙인다 (원문 설명과 같은 경로인지는 사람이 확인)
+5. 정답 순서: 사전 경로 중 하나와 같은가. 경로가 여러 개면 통과시키되 경고를 붙인다 (원문 설명과 같은 경로인지는 사람이 확인).
+   개념이 MIN_ORDER_LEN(3)개보다 적으면 실패. 2개면 순서 맞추기가 아니라 고르기라 너무 쉽다 (#178)
 6. 방향: 사전으로 계산한 방향과 같은가
 7. 근거 인용: 원문에 그대로 있는가 (띄어쓰기·줄바꿈 차이는 무시)
 
@@ -43,6 +44,8 @@ BANNED_PATH = Path(__file__).with_name("banned_terms.txt")
 
 FIELDS = ["start_concept", "change", "end_concept", "answer_order", "direction", "evidence_quote"]
 LABEL = {UP: "상승 압력", DOWN: "하락 압력"}
+# 인과 순서 문제 정답에 들어갈 최소 개념 수 (2026-11-19 B 결정, #178). 분류(classify)도 order_starts 로 같은 기준을 쓴다
+MIN_ORDER_LEN = 3
 
 _graph: Graph | None = None
 
@@ -101,6 +104,9 @@ def verify(quiz: dict, source_text: str, g: Graph | None = None, regime: str = N
         r.errors.append(f"{start} → {end} 사이에 방향이 다른 경로가 함께 있어 순서 문제로 부적합")
 
     paths = [p for p, _ in e.paths]
+    if len(order) < MIN_ORDER_LEN:
+        r.errors.append(f"정답 순서는 개념 {MIN_ORDER_LEN}개 이상이어야 함 (지금 {len(order)}개). "
+                        f"find_concept_path 결과에서 개념 {MIN_ORDER_LEN}개 이상인 경로를 고르세요")
     if order not in paths:
         r.errors.append("정답 순서가 개념 사전의 경로와 다름 (가능한 경로: "
                         + " / ".join(" → ".join(p) for p in paths) + ")")
@@ -110,6 +116,23 @@ def verify(quiz: dict, source_text: str, g: Graph | None = None, regime: str = N
     if e.direction != AMBIGUOUS and quiz.get("direction") in (UP, DOWN) and quiz["direction"] != e.direction:
         r.errors.append(f"오르내림 방향이 개념 사전과 다름 (사전: {LABEL[e.direction]}, 퀴즈: {LABEL[quiz['direction']]})")
     return r
+
+
+def order_starts(g: Graph | None = None, regime: str = NORMAL) -> frozenset[str]:
+    """인과 순서 문제를 낼 수 있는 시작 개념: 방향이 정해진(모호하지 않은) 결과 개념까지
+    개념 MIN_ORDER_LEN 개 이상인 경로가 하나라도 있는 개념. 분류(classify.decide_type)가 유형 2 기준으로 쓴다 (#178).
+    verify 의 순서 검사와 같은 기준이라, 여기 있는 시작 개념이면 통과할 수 있는 순서 문제가 반드시 있다."""
+    g = g or _default_graph()
+    out = set()
+    for start in g.out:
+        for end in g.out:
+            if start == end:
+                continue
+            e = effect(g, start, end, UP, regime)
+            if e.direction in (UP, DOWN) and any(len(p) >= MIN_ORDER_LEN for p, _ in e.paths):
+                out.add(start)
+                break
+    return frozenset(out)
 
 
 # ------------------------------------------------------------------
