@@ -99,3 +99,30 @@ def test_seed_dictionary():
             "answer_order": ["rate_cut", "bond_yield", "growth_valuation"],
             "direction": "up", "evidence_quote": "기준금리를 0.25%p 인하했다"}
     assert verify(quiz, "한국은행은 기준금리를 0.25%p 인하했다.").passed
+
+
+# ---- 인과 순서 문제는 개념 3개 이상 (#178) ----
+
+def test_two_concept_order_fails_even_if_it_is_a_path(g):
+    # hike → val 은 사전의 직접 연결이라 경로지만 개념 2개뿐 → 순서 맞추기가 아니라 고르기
+    quiz = {"start_concept": "hike", "change": "up", "end_concept": "val", "answer_order": ["hike", "val"],
+            "direction": "down", "evidence_quote": "시장은 연내 인하 기대를 낮췄다."}
+    errors = verify(quiz, SOURCE, g).errors
+    assert errors == ["정답 순서는 개념 3개 이상이어야 함 (지금 2개). find_concept_path 결과에서 개념 3개 이상인 경로를 고르세요"]
+    # 같은 쌍의 3개짜리 경로(hike → yield → val)는 통과 (경로 2개라 경고만)
+    r = verify({**quiz, "answer_order": ["hike", "yield", "val"]}, SOURCE, g)
+    assert r.errors == [] and len(r.warnings) == 1
+
+
+def test_order_starts_small_dictionary(g):
+    from validate.validators import order_starts
+    # cut_expect(4개)·hike(3개)는 가능. x 는 x → z 가 모호하지만 x → y → z 가 아니라 x → y(2개)·x → w(2개)뿐이라 불가
+    # rate_long → pv → growth (3개) 도 가능
+    assert order_starts(g) == {"cut_expect", "rate_long", "hike"}
+
+
+def test_order_starts_real_dictionary():
+    # 2026-11-19 실제 사전: 3칸 이상 경로가 있는 시작 개념 9개. 동결·기업 실적 등은 2칸까지라 빠진다
+    from validate.validators import order_starts
+    assert order_starts() == {"ai_investment", "buyback", "gpu_demand", "hbm_demand", "hbm_supply", "inflation",
+                              "rate_cut", "rate_hike", "supply_contract_win"}
