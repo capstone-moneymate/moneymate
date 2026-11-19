@@ -20,7 +20,7 @@
 1. **공통 파일은 A만 수정**: db/migrations, CLAUDE.md, docker-compose.yml, worker/config.py, worker/db.py, server의 앱 시작·DB·MyBatis 설정. 필요하면 A에게 요청하거나 PR.
 2. 각자 브랜치에서 작업하고 PR로 develop에 올린다. main과 develop에는 직접 push하지 않는다. 브랜치 이름은 `타입/영어제목-이슈번호` (예: `feat/etf-collector-12`)
 3. 기능마다 커밋. 커밋·PR 제목은 `타입: 메시지` (예: `feat: ETF 수집기 추가`). 타입은 feat, fix, docs, style, design, test, refactor, ci, perf, chore, rename, remove 중 하나.
-   git commit · git push 는 항상 사람이 직접 한다. Claude는 실행하지 않고, 커밋 메시지 제안과 칠 명령만 알려준다. (.claude/settings.json 에서 차단)
+   git commit · git push · PR 생성은 사람이 직접 하거나, 사람이 요청하면 Claude가 한다 (2026-11-19 팀 합의, #180). Claude가 할 때는 커밋 메시지에 `Co-Authored-By`, PR 설명에 `Generated with Claude Code` 줄을 넣지 않는다. 올리기 전에 올릴 파일·커밋 메시지·PR 설명을 사람에게 보여 주고, main·develop 에는 직접 push 하지 않는다(2번). AI에게 시킨 일은 7번대로 docs/AI_USAGE.md 에 남긴다. (.claude/settings.json 에서 main·develop 직접 push 와 강제 push 는 차단)
 4. 비밀값(.env, API 키)은 절대 커밋하지 않는다. 새 키 이름은 .env.example 에만 추가.
 5. 스키마를 바꿔야 하면 기존 파일을 고치지 말고 `db/migrations/00N_설명.sql` 을 **새로** 만든다.
 6. 겹침 계산·검증기·채점은 pytest 필수. 손계산 예시가 정답이다.
