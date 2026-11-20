@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router'
 import { useCausalMap, useReview, useSummary } from '@/api/mypage'
+import { OpenSourceNotice } from '@/components/OpenSourceNotice'
 import { PageHeader } from '@/components/PageHeader'
 import { AccountBar } from '@/pages/tab3/AccountBar'
 import { isBaseEdge, learnedOf } from '@/pages/tab3/causalMapLayout'
@@ -60,6 +61,8 @@ export const MyPage = () => {
         {(summary.isPending || map.isPending || review.isPending) && (
           <p className="mt-4 text-sm text-slate-500">불러오는 중</p>
         )}
+
+        <OpenSourceNotice />
       </div>
     </div>
   )
