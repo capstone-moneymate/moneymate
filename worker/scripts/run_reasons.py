@@ -41,6 +41,7 @@ class StockRun:
     etf_evidence: int = 0
     missing: list[str] | None = None  # 양쪽 이유인데 이유가 없는 쪽
     regime: str = "normal"  # 검사에 쓴 국면 (큰손 쪽[/ETF 쪽]), #183
+    regime_note: str = ""  # 지표를 받지 못해 평상시로 둔 까닭 (있으면 출력)
 
 
 def pct_text(v: float | None) -> str | None:
@@ -132,14 +133,16 @@ def run_one(conn, ticker: str, rows: list[dict], period: date, llm: bool) -> Sto
         run.etf, until = etf, max(snaps)
         etf_evidence = reasons.load_etf_evidence(ticker, period, until)
         run.etf_evidence = len(etf_evidence)
+    if not llm:  # --no-llm 은 비용 0·DB 만 보는 확인이라 FRED 도 부르지 않는다 (#187 리뷰)
+        return run
     # 경기 국면 (#183): 큰손 쪽은 분기 말, ETF 쪽은 ETF 최신일이 속한 달 기준 (그 앞 달 삼의 법칙 지표, regime.py)
     from concepts.regime import regime_for_month
 
     regime = regime_for_month(period.year, period.month)
     etf_regime = regime_for_month(until.year, until.month) if until else None
     run.regime = regime.name + (f"/{etf_regime.name}" if etf_regime else "")
-    if not llm:
-        return run
+    # 지표를 못 받아 평상시로 둔 경우는 화면에 까닭을 남긴다 (진짜 평상시와 구분, #187 리뷰)
+    run.regime_note = "; ".join(r.source for r in (regime, etf_regime) if r is not None and r.sahm is None)
     stock = {"ticker": ticker, "name": rows[0].get("issuer_name")}
     split = {"etf": run.etf, "etf_evidence": etf_evidence, "etf_until": until} if run.etf else {}
     result = reasons.generate(stock, run.direction, run.change, period, facts_for(rows, period), evidence, **split,
@@ -184,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
             split = f" | 양쪽 ETF {run.etf} 근거 {run.etf_evidence}건" if run.etf else ""
             missing = f" 빠진 쪽 {','.join(run.missing)}" if run.missing else ""
             regime = f" 국면 {run.regime}" if "recession" in run.regime else ""
+            if run.regime_note:
+                regime += f" (국면 확인 못 함: {run.regime_note})"
             print(f"{ticker:8} {run.direction or '-':5} {run.change or '-':5} 근거 {run.evidence:2}건{split} "
                   f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향 뺌 {run.warnings}{missing}"
                   f"{regime} {run.error or ''}")

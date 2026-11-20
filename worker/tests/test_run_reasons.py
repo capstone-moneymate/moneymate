@@ -120,3 +120,49 @@ def test_run_one_passes_regime_of_quarter_end(monkeypatch):
     calls = _fake(monkeypatch)
     run = rr.run_one(Conn(), "NVDA", ROWS, BASE, llm=True)
     assert calls["generate_kw"]["regime"].name == "normal" and run.regime.startswith("normal")
+
+
+def test_run_one_split_uses_etf_latest_date_regime(monkeypatch):
+    # 양쪽 이유: 큰손 쪽은 분기 말(9/30 → 8월 값 0.00 평상시), ETF 쪽은 ETF 최신일(11/18 → 10월 값 0.60 침체)
+    from concepts import regime
+
+    monkeypatch.setattr(regime, "fetch_sahm", lambda d: [(date(2026, 8, 1), 0.0), (date(2026, 10, 1), 0.6)])
+    regime.regime_for_month.cache_clear()
+    calls = _fake(monkeypatch)
+    monkeypatch.setattr(reasons, "load_etf_evidence", lambda t, p, u: [])
+    rows = [{**_row("druckenmiller", code, 0.24, -0.3, "diff"), "etf_snapshot_date": date(2026, 11, 18)}
+            for code in ("426030", "0015B0")]
+    run = rr.run_one(Conn(), "NVDA", rows, BASE, llm=True)
+    kw = calls["generate_kw"]
+    assert kw["etf_until"] == date(2026, 11, 18)
+    assert kw["regime"].name == "normal" and kw["regime"].observed == "2026-08-01"
+    assert kw["etf_regime"].name == "recession" and kw["etf_regime"].observed == "2026-10-01"
+    assert run.regime == "normal/recession" and run.regime_note == ""
+
+
+def test_run_one_no_llm_does_not_fetch_regime(monkeypatch):
+    # --no-llm 은 비용 0·DB 만 보는 확인이라 FRED 를 부르지 않는다
+    from concepts import regime
+
+    def boom(d):
+        raise AssertionError("FRED 를 부르면 안 돼요")
+
+    monkeypatch.setattr(regime, "fetch_sahm", boom)
+    regime.regime_for_month.cache_clear()
+    _fake(monkeypatch)
+    run = rr.run_one(Conn(), "NVDA", ROWS, BASE, llm=False)
+    assert run.regime == "normal" and run.status is None
+
+
+def test_run_one_records_regime_fetch_failure(monkeypatch):
+    # 지표를 못 받으면 평상시로 두되, 까닭을 남겨 진짜 평상시와 구분한다
+    from concepts import regime
+
+    def down(d):
+        raise ConnectionError("no network")
+
+    monkeypatch.setattr(regime, "fetch_sahm", down)
+    regime.regime_for_month.cache_clear()
+    _fake(monkeypatch)
+    run = rr.run_one(Conn(), "NVDA", ROWS, BASE, llm=True)
+    assert run.regime == "normal" and "받지 못해 평상시로 둠: ConnectionError" in run.regime_note

@@ -109,16 +109,36 @@ class ReasonsResult:
     regimes: dict = field(default_factory=dict)
 
 
-def regime_note(regime: Regime | None, etf_regime: Regime | None) -> str | None:
-    """침체 국면이 있으면 프롬프트에 붙일 한 줄. 모두 평상시면 None (예전 프롬프트 그대로)."""
-    parts = []
+def flipped_edges(g: Graph, regime: str) -> list[str]:
+    """그 국면에서 기본 연결 대신 쓰는 조건부 연결을 사람이 읽는 문장으로. 예: '국채 금리 ▲ → 성장주 가치평가 ▲ (평상시 ▼)'."""
+    base = {(s, d): sign for s, outs in g.out.items() for d, sign in outs}
+    mark = {1: "▲", -1: "▼"}
+    out = []
+    for src, dst, sign, r in g.cond:
+        if r != regime:
+            continue
+        normal = f" (평상시 {mark[base[(src, dst)]]})" if (src, dst) in base else " (평상시에는 없는 연결)"
+        out.append(f"{g.names[src]}({src}) ▲ → {g.names[dst]}({dst}) {mark[sign]}{normal}")
+    return out
+
+
+def regime_note(regime: Regime | None, etf_regime: Regime | None, g: Graph | None = None) -> str | None:
+    """침체 국면이 있으면 프롬프트에 붙일 문장. 모두 평상시면 None (예전 프롬프트 그대로).
+    reasons 에는 경로 찾기 도구가 없어서(compose 는 find_concept_path 가 국면 반영 방향을 준다), 그 국면에서 뒤집히는
+    연결을 직접 알려 준다. 안 알려 주면 평상시 예시대로 쓰다가 방향 검사에 걸려 이유가 빠진다 (#187 리뷰)."""
+    parts, regimes = [], []
     for who, r in (("큰손 기준일 무렵", regime), ("ETF 기간", etf_regime)):
         if r is not None and r.name != NORMAL:
             parts.append(f"{who}은 경기 침체 국면이에요 ({r.source} {r.observed[:7]} = {r.sahm:.2f})")
+            regimes.append(r.name)
     if not parts:
         return None
-    return (" · ".join(parts) + ". 경기 침체 국면에서는 국면별 조건부 연결로 경로 방향을 계산하니, "
+    note = (" · ".join(parts) + ". 경기 침체 국면에서는 국면별 조건부 연결로 경로 방향을 계산하니, "
             "평상시와 방향이 다른 연결이면 경기 침체 국면이라서라고 밝혀 주세요.")
+    flips = [f for name in dict.fromkeys(regimes) for f in flipped_edges(g, name)] if g else []
+    if flips:
+        note += " 이 국면에서 방향이 바뀌는 연결: " + " / ".join(flips)
+    return note
 
 
 # --- 근거 후보 ---
@@ -232,7 +252,7 @@ def build_system(concepts: list[Concept], extra: list[str] | None = None) -> str
         "  쓰지 않는다. numbers 가 없는 근거(8-K 제목만 있는 것 등)는 공시가 있었다는 사실 이상으로 내용을 추측하지 않는다.",
         "- 이유마다 인과 뼈대의 시작 개념(원인)과 끝 개념(결과)을 아래 사전 id 에서 고른다. 경로는 코드가 사전으로 찾는다.",
         "- change 는 이 이유에서 시작 개념이 어떻게 됐는지다. 커졌거나 일어났으면 up, 줄어들었으면 down.",
-        "  예: '순이익이 줄 것을 걱정해 줄였다' → corp_earnings, down / '금리가 내려 성장주 매력이 커졌다' → bond_yield, down.",
+        "  예: '순이익이 줄 것을 걱정해 줄였다' → corp_earnings, down / '금리가 내려 성장주 매력이 커졌다' → bond_yield, down (평상시 기준. 경기 침체 국면이면 아래 사용자 메시지의 국면 안내를 따른다).",
         "  끝 개념이 받는 힘은 코드가 사전 경로와 change 로 계산한다.",
         "- title 은 20자 안팎 한 줄, body 는 1~2문장. '~했을 수 있어요', '~로 볼 수 있어요'처럼 추정 말투로 쓴다.",
         "- 매수·매도 권유, 앞으로의 주가 예측은 쓰지 않는다.",
@@ -456,7 +476,7 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
     result.regimes = {k: r.to_json() for k, r in (("big", regime), ("etf", etf_regime)) if r is not None}
 
     user = build_user(stock, direction, change, facts, evidence, side_etf)
-    if note := regime_note(regime, etf_regime):
+    if note := regime_note(regime, etf_regime, g):
         user += "\n" + note
     messages = [{"role": "user", "content": user}]
     repairs = retries = 0

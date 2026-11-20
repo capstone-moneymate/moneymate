@@ -484,3 +484,14 @@ def test_save_records_regime():
     rs.save(conn, BASE, "NVDA", "same", "up", rs.ReasonsResult("왜 다 늘렸을까요?", [r], regimes={"big": REC.to_json()}),
             None)
     assert conn.params[-1].obj["regime"] == {"big": REC.to_json()}
+
+
+def test_regime_note_lists_flipped_edges():
+    # reasons 에는 경로 찾기 도구가 없어서, 침체 국면이면 뒤집히는 연결을 프롬프트에 직접 알려 준다 (#187 리뷰)
+    assert rs.flipped_edges(REGIME_GRAPH, "recession") == [
+        "국채 금리(bond_yield) ▲ → 성장주 가치평가(growth_valuation) ▼ (평상시 ▲)"]
+    note = rs.regime_note(REC, None, REGIME_GRAPH)
+    assert "이 국면에서 방향이 바뀌는 연결: 국채 금리(bond_yield) ▲ → 성장주 가치평가(growth_valuation) ▼" in note
+    assert rs.regime_note(NOR, NOR, REGIME_GRAPH) is None
+    # 시스템 프롬프트의 금리 예시는 평상시 기준이라고 밝힌다
+    assert "bond_yield, down (평상시 기준" in rs.build_system(CONCEPTS)
