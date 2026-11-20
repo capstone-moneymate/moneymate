@@ -1,15 +1,21 @@
 import { NavLink, useLocation } from 'react-router'
 
+/**
+ * 탭2(13F·ETF)를 화면에 보일지. false면 하단 탭과 결과 화면의 탭2 이동 버튼을 숨긴다.
+ * 탭2 코드와 /etf 경로는 그대로 남아 있어 true로 바꾸면 바로 되살아난다.
+ */
+export const SHOW_TAB2 = false
+
 const TABS = [
   { to: '/', label: '뉴스', icon: NewsIcon },
-  { to: '/etf', label: '13F·ETF', icon: ChartIcon },
+  ...(SHOW_TAB2 ? [{ to: '/etf', label: '13F·ETF', icon: ChartIcon }] : []),
   { to: '/mypage', label: '마이페이지', icon: UserIcon },
 ]
 
 /** 카드뉴스(/news/:id)는 화면 전체가 파랗다 (UI 시안 02~04) */
 const BLUE_PAGE = /^\/news\/[^/]+$/
 
-/** 하단 탭 3개. 카드뉴스·학습·결과(/news/…)에서도 뉴스 탭이 켜진다 */
+/** 하단 탭 (탭2를 숨기면 2개). 카드뉴스·학습·결과(/news/…)에서도 뉴스 탭이 켜진다 */
 export const BottomNav = () => {
   const { pathname } = useLocation()
   const blue = BLUE_PAGE.test(pathname)
@@ -17,7 +23,7 @@ export const BottomNav = () => {
 
   return (
     <nav
-      className={`grid shrink-0 grid-cols-3 border-t pb-[env(safe-area-inset-bottom)] ${
+      className={`grid shrink-0 ${TABS.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} border-t pb-[env(safe-area-inset-bottom)] ${
         blue ? 'border-transparent bg-[#2f74e0]' : 'border-slate-200 bg-white'
       }`}
     >
