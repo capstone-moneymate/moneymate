@@ -44,15 +44,6 @@ export const ChartStep = ({ chart: data, ticker }: ChartStepProps) => {
             <span className="text-primary font-semibold">파란 막대: {data.highlight.label}</span>
           </>
         )}
-        {/* TradingView Lightweight Charts™ Copyright 2023 TradingView, Inc. (라이선스의 출처 표기와 링크) */}
-        <a
-          href="https://www.tradingview.com/"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-1 block text-[11px] text-slate-400 underline"
-        >
-          차트: TradingView Lightweight Charts™
-        </a>
       </figcaption>
     </figure>
   )
@@ -84,7 +75,7 @@ const PriceVolumeChart = ({ data, hasRsi, label }: PriceVolumeChartProps) => {
       handleScroll: false,
       handleScale: false,
       layout: {
-        attributionLogo: false, // 로고가 거래량 막대를 가려서 figcaption 의 링크로 출처를 표기한다
+        attributionLogo: false, // 출처 표기는 마이페이지 오픈소스 라이선스(components/OpenSourceNotice)에 모았다
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: COLOR.text,
         fontSize: 11,

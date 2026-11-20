@@ -1,13 +1,11 @@
+import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useNewsHome } from '@/api/news'
-import { ChangeRate } from '@/components/ChangeRate'
 import { PageHeader } from '@/components/PageHeader'
-import type { MarketIndex, NewsCardSummary } from '@/types/news'
+import { StockChartCard } from '@/pages/tab1/StockChartCard'
+import type { NewsCardSummary } from '@/types/news'
 
-/** 국내 지수 코드. 나머지(IXIC, US500)는 해외 */
-const KR_INDEX = new Set(['KS11', 'KQ11'])
-
-/** 탭1 뉴스 홈: 주요 지수 + 오늘의 카드뉴스 + 학습 수 (UI 시안 01) */
+/** 탭1 뉴스 홈: 위에 오늘 주요뉴스(가로로 넘기는 카드), 아래에 TOP 1 종목 차트 + O/X 퀴즈 */
 export const NewsHomePage = () => {
   const { data, isPending, isError } = useNewsHome()
 
@@ -23,71 +21,84 @@ export const NewsHomePage = () => {
   }
 
   const completed = new Set(data.completedCardIds)
-  const doneCount = data.cards.filter((card) => completed.has(card.id)).length
 
   return (
     <div className="pb-6">
       <PageHeader />
 
-      <section className="px-5">
-        <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-lg font-bold text-slate-900">주요 지수</h2>
-          <span className="text-right text-xs text-slate-500">{closeNote(data.indices)}</span>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2.5">
-          {data.indices.map((index) => (
-            <IndexTile key={index.code} index={index} />
-          ))}
-        </div>
-      </section>
+      {data.cards.length > 0 && <TopNews cards={data.cards} completed={completed} />}
 
-      <section className="mt-7 px-5">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-bold text-slate-900">오늘의 카드뉴스</h2>
-          <span className="text-sm text-slate-500 tabular-nums">
-            {doneCount} / {data.cards.length} 학습
-          </span>
+      {data.stockChart && (
+        <div className="mt-5 px-5">
+          <StockChartCard chart={data.stockChart} />
         </div>
-
-        <ol className="mt-3 flex flex-col gap-3">
-          {data.cards.map((card) => (
-            <li key={card.id}>
-              <NewsCard card={card} completed={completed.has(card.id)} />
-            </li>
-          ))}
-        </ol>
-      </section>
+      )}
     </div>
   )
 }
 
-const IndexTile = ({ index }: { index: MarketIndex }) => {
+interface TopNewsProps {
+  cards: NewsCardSummary[]
+  completed: Set<string>
+}
+
+/** 오늘 주요뉴스: 옆 카드가 살짝 보이게 가로로 넘긴다. 위에 "n / 전체", 아래 점 */
+const TopNews = ({ cards, completed }: TopNewsProps) => {
+  const trackRef = useRef<HTMLOListElement>(null)
+  const [current, setCurrent] = useState(0)
+
+  const onScroll = () => {
+    const track = trackRef.current
+    const first = track?.firstElementChild as HTMLElement | null
+    if (!track || !first) return
+    const step = first.offsetWidth + 12 // gap-3
+    setCurrent(Math.min(cards.length - 1, Math.max(0, Math.round(track.scrollLeft / step))))
+  }
+
   return (
-    <div className="rounded-2xl bg-slate-100 px-4 py-3.5">
-      <p className="text-sm text-slate-500">{index.name}</p>
-      <p className="mt-1 text-xl font-bold text-slate-900 tabular-nums">
-        {index.value.toLocaleString('ko-KR', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}
-      </p>
-      <div className="mt-1">
-        {index.chgPct === null ? (
-          <span className="text-sm text-slate-400">-</span>
-        ) : (
-          <ChangeRate value={index.chgPct} className="text-sm tabular-nums" />
-        )}
+    <section className="mt-2">
+      <div className="flex items-baseline justify-between px-5">
+        <h2 className="text-lg font-bold text-slate-900">오늘 주요뉴스</h2>
+        <span className="text-sm text-slate-500 tabular-nums">
+          <b className="text-slate-900">{current + 1}</b> / {cards.length}
+        </span>
       </div>
-    </div>
+
+      <ol
+        ref={trackRef}
+        onScroll={onScroll}
+        className="mt-3 flex snap-x snap-mandatory scroll-px-5 gap-3 overflow-x-auto px-5 pb-1"
+      >
+        {cards.map((card, i) => (
+          <li key={card.id} className="w-[85%] shrink-0 snap-start">
+            <NewsCard card={card} rank={i + 1} completed={completed.has(card.id)} />
+          </li>
+        ))}
+      </ol>
+
+      {cards.length > 1 && (
+        <div aria-hidden className="mt-3 flex justify-center gap-1.5">
+          {cards.map((card, i) => (
+            <span
+              key={card.id}
+              className={`h-1.5 rounded-full transition-all ${
+                i === current ? 'w-5 bg-slate-800' : 'w-1.5 bg-slate-300'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 
 interface NewsCardProps {
   card: NewsCardSummary
+  rank: number
   completed: boolean
 }
 
-const NewsCard = ({ card, completed }: NewsCardProps) => {
+const NewsCard = ({ card, rank, completed }: NewsCardProps) => {
   const meta = [card.theme, card.sourcePublishedAt && timeAgo(card.sourcePublishedAt)]
     .filter(Boolean)
     .join(' · ')
@@ -95,9 +106,12 @@ const NewsCard = ({ card, completed }: NewsCardProps) => {
   return (
     <Link
       to={`/news/${card.id}`}
-      className="block rounded-2xl bg-slate-100 px-4 py-4 transition active:scale-[0.99]"
+      className="block h-full rounded-3xl border border-slate-100 bg-white px-4 py-4 shadow-[0_4px_20px_rgba(30,41,90,0.08)] transition active:scale-[0.99]"
     >
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+        <span className="text-primary rounded-md bg-blue-50 px-1.5 py-0.5 font-bold">
+          TOP {rank}
+        </span>
         {meta && <span>{meta}</span>}
         {card.type === 3 && (
           <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">
@@ -111,33 +125,12 @@ const NewsCard = ({ card, completed }: NewsCardProps) => {
         )}
       </div>
       <h3
-        className={`mt-2 leading-snug font-bold ${completed ? 'text-slate-500' : 'text-slate-900'}`}
+        className={`mt-2 leading-snug font-bold break-keep ${completed ? 'text-slate-500' : 'text-slate-900'}`}
       >
         {card.title}
       </h3>
     </Link>
   )
-}
-
-/** '2026-11-18' → '11/18' */
-const shortDate = (date: string) => {
-  const [, month, day] = date.split('-').map(Number)
-  return `${month}/${day}`
-}
-
-/** "국내 11/18 마감 · 해외 11/17(현지시간) 마감". 지수마다 거래일이 다를 수 있어 시장별 가장 늦은 날 */
-const closeNote = (indices: MarketIndex[]) => {
-  const latest = (kr: boolean) =>
-    indices
-      .filter((i) => KR_INDEX.has(i.code) === kr)
-      .map((i) => i.date)
-      .sort()
-      .at(-1)
-  const kr = latest(true)
-  const us = latest(false)
-  return [kr && `국내 ${shortDate(kr)} 마감`, us && `해외 ${shortDate(us)}(현지시간) 마감`]
-    .filter(Boolean)
-    .join(' · ')
 }
 
 /** 1차 자료 발표 시각 → "방금 전" / "N시간 전" / "N일 전" */
