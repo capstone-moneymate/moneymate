@@ -1,5 +1,6 @@
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
+import { SHOW_TAB2 } from '@/components/BottomNav'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, CardDetail } from '@/types/card'
 import { BackButton, CloseLink } from '@/pages/tab1/CloseLink'
@@ -80,7 +81,15 @@ export const ResultPage = () => {
       )}
 
       <div className="mt-auto flex flex-col items-center gap-2 pt-7">
-        {card.type === 3 && card.ticker ? (
+        {!SHOW_TAB2 ? (
+          // 탭2를 숨긴 동안에는 홈으로 돌아가는 버튼 하나만 둔다
+          <Link
+            to="/"
+            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
+          >
+            홈으로
+          </Link>
+        ) : card.type === 3 && card.ticker ? (
           <Link
             to={`/etf?ticker=${card.ticker}`}
             className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
@@ -95,9 +104,11 @@ export const ResultPage = () => {
             13F·ETF로 실제 행동 복습하기 ›
           </Link>
         )}
-        <Link to="/" className="min-h-11 px-4 py-3 text-slate-500">
-          홈으로
-        </Link>
+        {SHOW_TAB2 && (
+          <Link to="/" className="min-h-11 px-4 py-3 text-slate-500">
+            홈으로
+          </Link>
+        )}
       </div>
     </div>
   )

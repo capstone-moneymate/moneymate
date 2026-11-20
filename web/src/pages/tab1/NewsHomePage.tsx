@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useNewsHome } from '@/api/news'
+import { SHOW_TAB2 } from '@/components/BottomNav'
 import { PageHeader } from '@/components/PageHeader'
 import { StockChartCard } from '@/pages/tab1/StockChartCard'
 import type { NewsCardSummary } from '@/types/news'
@@ -113,7 +114,7 @@ const NewsCard = ({ card, rank, completed }: NewsCardProps) => {
           TOP {rank}
         </span>
         {meta && <span>{meta}</span>}
-        {card.type === 3 && (
+        {SHOW_TAB2 && card.type === 3 && (
           <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">
             13F·ETF 연결
           </span>
