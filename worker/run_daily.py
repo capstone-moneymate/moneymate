@@ -226,6 +226,7 @@ def load_day_sources(conn, target: date) -> list[dict]:
                   published_date, published_at, numbers
            FROM raw_sources r
            WHERE published_date > %s AND published_date <= %s
+             AND source_type <> 'price'  -- 차트 종목 카드 자료(stock_move)는 stock_move_card 단계가 따로 쓴다
              AND NOT EXISTS (SELECT 1 FROM card_sources cs WHERE cs.source_id = r.id)
            ORDER BY id""",
         (prev, target),
@@ -275,7 +276,9 @@ def classify_candidates(cands: list[Candidate]) -> list[Candidate]:
 
 
 def compose_selected(picked: list[Candidate], card_date: date) -> list[int]:
+    """고른 자료마다 출제. 만든 카드 id 는 c.extra['card_id'] 에도 남긴다 (차트 카드 표시용)."""
     from generate.compose import compose
+    from generate.stock_move_card import link_same_day
 
     ids = []
     for c in picked:
@@ -284,9 +287,48 @@ def compose_selected(picked: list[Candidate], card_date: date) -> list[int]:
               f"${res.cost_usd:.3f} {('; '.join(res.errors))[:120]}")
         if res.card_id:
             ids.append(res.card_id)
+            c.extra["card_id"] = res.card_id
+            if c.extra.get("same_day"):  # 차트 종목 카드: 같은 날 그 종목 자료를 출처로 묶는다
+                link_same_day(res.card_id, c.extra["same_day"])
     if picked and not ids:
         raise RuntimeError("고른 자료로 카드를 하나도 만들지 못했어요")
     return ids
+
+
+def stock_move_candidate(target: date, picked: list[Candidate]) -> Candidate | None:
+    """그날 시장 반응 1위 국내 종목의 움직임 카드 후보 (generate/stock_move_card.py). 이미 고른 종목은 뺀다."""
+    from db import get_conn
+    from generate.stock_move_card import prepare
+
+    exclude = {c.extra["source"].get("ticker") for c in picked if c.extra.get("source", {}).get("ticker")}
+    with get_conn() as conn:
+        cand = prepare(conn, target, Scorer(conn).kr_scores(target), exclude)
+        conn.commit()
+    if cand:
+        print(f"  차트 종목 카드 후보: {cand.extra['source']['title']} (점수 {cand.score})")
+    return cand
+
+
+def ensure_chart_card(picked: list[Candidate], target: date, card_date: date) -> list[int]:
+    """출제 뒤: 종목 카드 중 점수 1위를 차트 카드로 표시한다 (cards.model_info.select.chart).
+    종목 카드를 하나도 만들지 못했으면(출제 실패 등) 시장 반응 1위 종목 카드를 한 번 더 만들어 본다.
+    새로 만든 카드 id 를 돌려준다."""
+    from generate.stock_move_card import (chart_candidate, is_stock_candidate, save_select_info,
+                                          select_info)
+
+    made = [c for c in picked if c.extra.get("card_id")]
+    new_ids: list[int] = []
+    if not any(is_stock_candidate(c) for c in made):
+        filler = stock_move_candidate(target, picked)  # 출제에 실패한 종목은 빼고 다음 종목
+        if filler is not None:
+            new_ids = compose_selected([filler], card_date)
+            made.append(filler)
+    chart = chart_candidate([c for c in made if c.extra.get("card_id")])
+    save_select_info(select_info(made, chart))
+    if chart is None:
+        raise RuntimeError("차트를 그릴 종목 카드를 만들지 못했어요")
+    print(f"  차트 카드: card_id={chart.extra['card_id']} {chart.extra['source'].get('ticker')}")
+    return new_ids
 
 
 def debate_cards(card_ids: list[int]) -> str:
@@ -361,11 +403,18 @@ def run(target: date, card_date: date, collect: bool = True, llm: bool = True) -
         run_step(report, "ETF 구성종목", collect_etf, target)
         run_step(report, "ETF 추세", compute_etf_trend, target)
     cands = run_step(report, "선별 점수", score_sources, target) or []
-    if llm and cands:
-        top = run_step(report, "분류", classify_candidates, cands) or []
+    if llm:
+        top = (run_step(report, "분류", classify_candidates, cands) or []) if cands else []
         picked = select(top, MAX_CARDS)
+        # 탭 1 차트 규칙: 하루 카드 중 최소 1장은 종목 카드. 없으면 점수 최하위를 빼고 시장 반응 1위 종목 카드
+        from generate.stock_move_card import is_stock_candidate, with_stock_card
+
+        if not any(is_stock_candidate(c) for c in picked):
+            filler = run_step(report, "차트 종목 카드", stock_move_candidate, target, picked)
+            picked = with_stock_card(picked, filler, MAX_CARDS)
         print(f"  고른 자료 {len(picked)}건: " + ", ".join(c.extra["source"]["title"][:20] for c in picked))
-        report.card_ids = run_step(report, "출제", compose_selected, picked, card_date) or []
+        report.card_ids = (run_step(report, "출제", compose_selected, picked, card_date) or []) if picked else []
+        report.card_ids += run_step(report, "차트 카드 표시", ensure_chart_card, picked, target, card_date) or []
         if report.card_ids:
             run_step(report, "토론", debate_cards, report.card_ids)
     if llm:  # --no-llm 이면 문장 없는 카드 ③으로 덮어쓰지 않게 건너뛴다

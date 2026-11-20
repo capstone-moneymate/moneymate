@@ -46,6 +46,9 @@ def fake_pipeline(monkeypatch, tmp_path, *, etf_code=0, picked_titles=("A", "B")
     monkeypatch.setattr(rd, "compose_selected", lambda p, d: calls.append(("compose", len(p), d)) or [7, 8])
     monkeypatch.setattr(rd, "refresh_now_views", lambda d: calls.append(("now", d)) or "갱신 0/0종목")
     monkeypatch.setattr(rd, "debate_cards", lambda ids: calls.append(("debate", list(ids))) or "published 2/2")
+    # 차트 종목 카드 단계가 실제 DB 를 부르지 않게 (이 가짜 자료에는 종목이 없다)
+    monkeypatch.setattr(rd, "stock_move_candidate", lambda t, p: calls.append("stock_move") or None)
+    monkeypatch.setattr(rd, "ensure_chart_card", lambda p, t, d: [])
     return calls
 
 
