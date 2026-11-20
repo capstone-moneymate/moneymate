@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { useNewsHome } from '@/api/news'
+import { SHOW_TAB2 } from '@/components/BottomNav'
 import { ChangeRate } from '@/components/ChangeRate'
 import { PageHeader } from '@/components/PageHeader'
 import type { MarketIndex, NewsCardSummary } from '@/types/news'
@@ -99,7 +100,7 @@ const NewsCard = ({ card, completed }: NewsCardProps) => {
     >
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
         {meta && <span>{meta}</span>}
-        {card.type === 3 && (
+        {SHOW_TAB2 && card.type === 3 && (
           <span className="rounded-md bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-700">
             13F·ETF 연결
           </span>

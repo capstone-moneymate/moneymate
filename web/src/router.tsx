@@ -1,5 +1,6 @@
 import { createBrowserRouter, redirect } from 'react-router'
 import { AppLayout } from '@/components/AppLayout'
+import { SHOW_TAB2 } from '@/components/BottomNav'
 import { ENTRY_FREE_PATHS, hasEntered } from '@/lib/entry'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { WelcomePage } from '@/pages/auth/WelcomePage'
@@ -27,8 +28,13 @@ export const router = createBrowserRouter([
       { path: '/news/:cardId', element: <CardNewsPage /> },
       { path: '/news/:cardId/learn', element: <LearnPage /> },
       { path: '/news/:cardId/result', element: <ResultPage /> },
-      { path: '/etf', element: <EtfPage /> },
-      { path: '/etf/:ticker', element: <StockDetailPage /> },
+      // 탭2를 숨긴 동안에는 /etf 주소로 직접 들어와도 뉴스 홈으로 보낸다
+      ...(SHOW_TAB2
+        ? [
+            { path: '/etf', element: <EtfPage /> },
+            { path: '/etf/:ticker', element: <StockDetailPage /> },
+          ]
+        : [{ path: '/etf/*', loader: () => redirect('/') }]),
       { path: '/mypage', element: <MyPage /> },
       { path: '/mypage/map', element: <CausalMapPage /> },
       { path: '/login', element: <LoginPage /> },
