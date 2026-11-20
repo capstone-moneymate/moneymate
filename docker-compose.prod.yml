@@ -1,0 +1,65 @@
+# 배포(EC2)용 덧붙임 파일. docker-compose.yml 위에 겹쳐서 쓴다.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# 밖에는 web(80)만 연다. server·judge·db 는 compose 안에서만 서비스 이름으로 부른다.
+services:
+  db:
+    # 배포에서는 DB 포트를 밖에 열지 않는다
+    ports: !reset []
+
+  judge:
+    ports: !reset []
+    volumes:
+      # worker/concepts 가 /db/seeds 의 개념 사전 CSV 를 읽는다 (graph.py SEEDS)
+      - ./db/seeds:/db/seeds:ro
+
+  server:
+    build: ./server
+    container_name: moneymate-server
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-moneymate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-moneymate}
+      POSTGRES_DB: ${POSTGRES_DB:-moneymate}
+      POSTGRES_PORT: "5432"
+      JUDGE_API_URL: http://judge:8000
+      JUDGEMENT_DAILY_LIMIT: ${JUDGEMENT_DAILY_LIMIT:-30}
+      JUDGEMENT_GLOBAL_DAILY_LIMIT: ${JUDGEMENT_GLOBAL_DAILY_LIMIT:-50}
+      # HTTP(IP 주소)로 시연하면 false. HTTPS 를 붙이면 true
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      # 검수 전 pending 카드도 화면에 보인다 (데모용). 검수를 끝내면 false 로 바꾼다
+      NEWS_INCLUDE_PENDING: ${NEWS_INCLUDE_PENDING:-true}
+      TZ: Asia/Seoul
+    depends_on:
+      db:
+        condition: service_healthy
+      judge:
+        condition: service_started
+
+  web:
+    build: ./web
+    container_name: moneymate-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+  # 하루 파이프라인. 매일 08:00 KST 에 run_daily 를 실행한다 (worker/run_daily.py --schedule)
+  scheduler:
+    build: ./worker
+    container_name: moneymate-scheduler
+    restart: unless-stopped
+    command: ["python", "run_daily.py", "--schedule"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-moneymate}:${POSTGRES_PASSWORD:-moneymate}@db:5432/${POSTGRES_DB:-moneymate}
+      TZ: Asia/Seoul
+    volumes:
+      - ./db/seeds:/db/seeds:ro
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
