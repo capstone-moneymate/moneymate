@@ -57,8 +57,9 @@ def _fake(monkeypatch, *, evidence=1, reasons_out=None, prices_fail=False):
     reason = Reason("AI 투자", "본문", "gpu_demand", "semi_earnings", ["gpu_demand", "semi_earnings"], "up", ev[:1])
     out = reasons_out if reasons_out is not None else ReasonsResult("왜 방향이 다를까요?", [reason], calls=1)
 
-    def gen(stock, direction, change, period, facts, evid):
+    def gen(stock, direction, change, period, facts, evid, **kw):
         calls["generate"] = (stock, direction, change, period, facts, len(evid))
+        calls["generate_kw"] = kw  # 양쪽 이유·국면 (#168, #183)
         return out
 
     monkeypatch.setattr(reasons, "generate", gen)
@@ -112,3 +113,10 @@ def test_run_one_without_change_values_is_skipped(monkeypatch):
     rows = [_row("thiel", "426030", None, None, "none")]
     run = rr.run_one(Conn(), "NVDA", rows, BASE, llm=True)
     assert run.error and run.status is None and calls == {}
+
+
+def test_run_one_passes_regime_of_quarter_end(monkeypatch):
+    # #183: 분기 말(9/30)이 속한 달의 국면을 넘긴다. 테스트는 conftest 가 지표 0.00 → 평상시
+    calls = _fake(monkeypatch)
+    run = rr.run_one(Conn(), "NVDA", ROWS, BASE, llm=True)
+    assert calls["generate_kw"]["regime"].name == "normal" and run.regime.startswith("normal")

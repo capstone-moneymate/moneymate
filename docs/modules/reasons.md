@@ -26,6 +26,14 @@
 
 **지키는 원칙**: 두 쪽 모두 개념 사전 경로와 방향 검사를 그대로 받는다. ETF 쪽 근거는 기준일 뒤 자료지만, ETF가 실제로 움직인 기간(ETF 최신 스냅샷까지)이라 "나중 일을 보고 이유를 지어낸다"는 걱정은 큰손 쪽에만 해당한다. 기술확정안 "근거 날짜 (탭 2)"에 같은 규칙을 적었다.
 
+## 경기 국면 (2026-11-19 B, #183)
+
+- `generate(..., regime=, etf_regime=)`: 큰손 쪽 이유와 한쪽 이유는 `regime`(분기 말 국면), 양쪽 이유의 ETF 쪽 이유는 `etf_regime`(ETF 최신일 국면)으로 사전 경로 방향을 계산한다(`path_and_direction(..., regime)`, `side_regime`). 국면은 `concepts/regime.py`(삼의 법칙 지표 앞 달 값 ≥ 0.5면 recession)가 정하고 `scripts/run_reasons.py`가 넘긴다.
+- 방향 검사(`direction_warnings`)는 그 쪽 국면으로 계산한 방향을 큰손·ETF 변화와 비교한다. 예: 경기 침체에서는 국채 금리 ▲ → 성장주 가치평가 ▼(조건부 연결)라, 평상시라면 늘린 이유였던 경로가 침체 국면에서는 방향이 반대라 빠진다.
+- 침체 국면이 있으면 사용자 메시지 끝에 "큰손 기준일 무렵은 경기 침체 국면이에요 (FRED SAHMREALTIME 2024-08 = 0.57) …" 한 줄을 붙인다(`regime_note`). 모두 평상시면 프롬프트가 예전과 같다.
+- 저장: `model_info.regime = {"big": {name, sahm, observed, source}, "etf": {...}?}`. 국면을 넘기지 않으면 남기지 않는다.
+- 2026-11-19 3분기: 분기 말 9/30 → 2026-08 지표 −0.07, ETF 최신일 11/18 → 2026-10 지표 0.00이라 둘 다 평상시, 결과는 예전과 같다.
+
 ## 종목 단위 방향 (`stock_direction`, conventions P19에서 C가 정하기로 한 규칙)
 
 `overlap_results`는 (큰손, ETF) 쌍마다 `direction`이 있어서, `stock_reasons`에 넣을 종목 하나의 값으로 줄인다. 같은 분기의 그 종목 줄을 모두 본다.
@@ -39,7 +47,7 @@
 
 `save(conn, base_date, ticker, direction, change, result, now_view, model_info)` → 저장한 `status`.
 - `status`: 이유가 없거나 `errors`가 남으면 `rejected`, 이유는 통과했지만 방향 경고가 있으면 (2026-11-18부터 `pending`은 쓰지 않는다. 방향이 반대인 이유는 generate 가 다시 쓰게 한 뒤 빼고 `model_info.warnings`에 남긴다), 그 밖은 `published`(P19 + 2026-11-16 B·C 합의, 서버는 published만). rejected도 저장하고 `model_info.errors`에 까닭을 남긴다.
-- `model_info`: `{"calls": 호출 수, "errors": [...]?, "warnings": [방향 경고]?, "dropped": [뺀 이유의 까닭]?, "missing_sides": [양쪽 이유에서 빈 쪽]?, ...부르는 쪽이 더한 값}`. warnings 는 뺀 이유 기록일 뿐 status 에 영향이 없다.
+- `model_info`: `{"calls": 호출 수, "errors": [...]?, "warnings": [방향 경고]?, "dropped": [뺀 이유의 까닭]?, "missing_sides": [양쪽 이유에서 빈 쪽]?, "regime": {"big": …, "etf": …}?, ...부르는 쪽이 더한 값}`. warnings 는 뺀 이유 기록일 뿐 status 에 영향이 없다.
 - 같은 (분기, 종목)을 다시 만들면 덮어쓰고 `updated_at = now()`.
 
 `reasons` (카드 ②, JSON 배열, 1~3개):

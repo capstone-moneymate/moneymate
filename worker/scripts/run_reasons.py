@@ -40,6 +40,7 @@ class StockRun:
     etf: str | None = None
     etf_evidence: int = 0
     missing: list[str] | None = None  # 양쪽 이유인데 이유가 없는 쪽
+    regime: str = "normal"  # 검사에 쓴 국면 (큰손 쪽[/ETF 쪽]), #183
 
 
 def pct_text(v: float | None) -> str | None:
@@ -131,11 +132,18 @@ def run_one(conn, ticker: str, rows: list[dict], period: date, llm: bool) -> Sto
         run.etf, until = etf, max(snaps)
         etf_evidence = reasons.load_etf_evidence(ticker, period, until)
         run.etf_evidence = len(etf_evidence)
+    # 경기 국면 (#183): 큰손 쪽은 분기 말, ETF 쪽은 ETF 최신일이 속한 달 기준 (그 앞 달 삼의 법칙 지표, regime.py)
+    from concepts.regime import regime_for_month
+
+    regime = regime_for_month(period.year, period.month)
+    etf_regime = regime_for_month(until.year, until.month) if until else None
+    run.regime = regime.name + (f"/{etf_regime.name}" if etf_regime else "")
     if not llm:
         return run
     stock = {"ticker": ticker, "name": rows[0].get("issuer_name")}
     split = {"etf": run.etf, "etf_evidence": etf_evidence, "etf_until": until} if run.etf else {}
-    result = reasons.generate(stock, run.direction, run.change, period, facts_for(rows, period), evidence, **split)
+    result = reasons.generate(stock, run.direction, run.change, period, facts_for(rows, period), evidence, **split,
+                              regime=regime, etf_regime=etf_regime)
     run.calls = result.calls
     run.warnings = len(result.warnings)
     run.missing = result.missing_sides
@@ -175,9 +183,10 @@ def main(argv: list[str] | None = None) -> int:
             runs.append(run)
             split = f" | 양쪽 ETF {run.etf} 근거 {run.etf_evidence}건" if run.etf else ""
             missing = f" 빠진 쪽 {','.join(run.missing)}" if run.missing else ""
+            regime = f" 국면 {run.regime}" if "recession" in run.regime else ""
             print(f"{ticker:8} {run.direction or '-':5} {run.change or '-':5} 근거 {run.evidence:2}건{split} "
-                  f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향 뺌 {run.warnings}{missing} "
-                  f"{run.error or ''}")
+                  f"{run.status or ('건너뜀' if run.error else '-')} 호출 {run.calls} 방향 뺌 {run.warnings}{missing}"
+                  f"{regime} {run.error or ''}")
     done = [r for r in runs if r.status == "published"]
     print(f"\n종목 {len(runs)}개, published {len(done)}, "
           f"rejected {sum(r.status == 'rejected' for r in runs)}, "
