@@ -28,7 +28,8 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 import config
-from concepts.graph import AMBIGUOUS, Graph, effect, load_graph
+from concepts.graph import AMBIGUOUS, NORMAL, Graph, effect, load_graph
+from concepts.regime import Regime
 from db import get_conn
 from generate.classify import Concept, load_concepts
 from generate.llm_client import SONNET, create, text_of
@@ -104,6 +105,40 @@ class ReasonsResult:
     dropped: list[str] = field(default_factory=list)
     # 양쪽 이유인데 끝내 이유가 없는 쪽 (big / etf). 화면은 그 쪽에 "이 기간 자료로는 찾지 못했어요" 고정 문구
     missing_sides: list[str] = field(default_factory=list)
+    # 검사에 쓴 경기 국면과 근거 {"big": Regime.to_json(), "etf": ...} (#183). model_info.regime 에 저장한다
+    regimes: dict = field(default_factory=dict)
+
+
+def flipped_edges(g: Graph, regime: str) -> list[str]:
+    """그 국면에서 기본 연결 대신 쓰는 조건부 연결을 사람이 읽는 문장으로. 예: '국채 금리 ▲ → 성장주 가치평가 ▲ (평상시 ▼)'."""
+    base = {(s, d): sign for s, outs in g.out.items() for d, sign in outs}
+    mark = {1: "▲", -1: "▼"}
+    out = []
+    for src, dst, sign, r in g.cond:
+        if r != regime:
+            continue
+        normal = f" (평상시 {mark[base[(src, dst)]]})" if (src, dst) in base else " (평상시에는 없는 연결)"
+        out.append(f"{g.names[src]}({src}) ▲ → {g.names[dst]}({dst}) {mark[sign]}{normal}")
+    return out
+
+
+def regime_note(regime: Regime | None, etf_regime: Regime | None, g: Graph | None = None) -> str | None:
+    """침체 국면이 있으면 프롬프트에 붙일 문장. 모두 평상시면 None (예전 프롬프트 그대로).
+    reasons 에는 경로 찾기 도구가 없어서(compose 는 find_concept_path 가 국면 반영 방향을 준다), 그 국면에서 뒤집히는
+    연결을 직접 알려 준다. 안 알려 주면 평상시 예시대로 쓰다가 방향 검사에 걸려 이유가 빠진다 (#187 리뷰)."""
+    parts, regimes = [], []
+    for who, r in (("큰손 기준일 무렵", regime), ("ETF 기간", etf_regime)):
+        if r is not None and r.name != NORMAL:
+            parts.append(f"{who}은 경기 침체 국면이에요 ({r.source} {r.observed[:7]} = {r.sahm:.2f})")
+            regimes.append(r.name)
+    if not parts:
+        return None
+    note = (" · ".join(parts) + ". 경기 침체 국면에서는 국면별 조건부 연결로 경로 방향을 계산하니, "
+            "평상시와 방향이 다른 연결이면 경기 침체 국면이라서라고 밝혀 주세요.")
+    flips = [f for name in dict.fromkeys(regimes) for f in flipped_edges(g, name)] if g else []
+    if flips:
+        note += " 이 국면에서 방향이 바뀌는 연결: " + " / ".join(flips)
+    return note
 
 
 # --- 근거 후보 ---
@@ -217,7 +252,7 @@ def build_system(concepts: list[Concept], extra: list[str] | None = None) -> str
         "  쓰지 않는다. numbers 가 없는 근거(8-K 제목만 있는 것 등)는 공시가 있었다는 사실 이상으로 내용을 추측하지 않는다.",
         "- 이유마다 인과 뼈대의 시작 개념(원인)과 끝 개념(결과)을 아래 사전 id 에서 고른다. 경로는 코드가 사전으로 찾는다.",
         "- change 는 이 이유에서 시작 개념이 어떻게 됐는지다. 커졌거나 일어났으면 up, 줄어들었으면 down.",
-        "  예: '순이익이 줄 것을 걱정해 줄였다' → corp_earnings, down / '금리가 내려 성장주 매력이 커졌다' → bond_yield, down.",
+        "  예: '순이익이 줄 것을 걱정해 줄였다' → corp_earnings, down / '금리가 내려 성장주 매력이 커졌다' → bond_yield, down (평상시 기준. 경기 침체 국면이면 아래 사용자 메시지의 국면 안내를 따른다).",
         "  끝 개념이 받는 힘은 코드가 사전 경로와 change 로 계산한다.",
         "- title 은 20자 안팎 한 줄, body 는 1~2문장. '~했을 수 있어요', '~로 볼 수 있어요'처럼 추정 말투로 쓴다.",
         "- 매수·매도 권유, 앞으로의 주가 예측은 쓰지 않는다.",
@@ -289,22 +324,31 @@ def output_schema(concept_ids: list[str], n_evidence: int, split: bool = False) 
 
 # --- 코드 검사 ---
 
-def path_and_direction(g: Graph, start: str, end: str, change: str = "up") -> tuple[list[str] | None, str | None]:
+def path_and_direction(g: Graph, start: str, end: str, change: str = "up",
+                       regime: str = NORMAL) -> tuple[list[str] | None, str | None]:
     """사전에서 start → end 경로 중 가장 짧은 것과, start 가 change 했을 때 end 가 받는 힘(up / down / ambiguous).
     경로가 없으면 (None, None).
 
     방향은 모든 경로를 본다 (graph.effect). 경로마다 부호가 다르면 ambiguous 이고, 그런 쌍은 정답으로 쓰지 않는다.
     change 는 5주차 노션 제안 (1): 시작 개념이 줄어든 이유("순이익이 줄어 줄였다")를 커진 것으로 계산하던 문제를 고친다.
+    regime 은 그 이유가 설명하는 기간의 경기 국면 (#183). 침체면 국면별 조건부 연결로 본다.
     """
-    eff = effect(g, start, end, change)
+    eff = effect(g, start, end, change, regime)
     paths = [p for p, _ in eff.paths]
     return (min(paths, key=len) if paths else None), eff.direction
 
 
+def side_regime(regimes: dict[str, str] | None, side: str | None) -> str:
+    """이유가 쓰는 국면: ETF 쪽 이유는 regimes["etf"], 큰손 쪽·한쪽 이유는 regimes["big"]. 없으면 평상시."""
+    regimes = regimes or {}
+    return regimes.get("etf" if side == "etf" else "big", NORMAL)
+
+
 def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g: Graph,
-                  etf_until: date | None = None) -> list[str]:
+                  etf_until: date | None = None, regimes: dict[str, str] | None = None) -> list[str]:
     """후보 이유를 쓸 수 없는 까닭. 비어 있으면 통과. LLM 에게 그대로 돌려줄 문장이다.
-    etf_until 을 주면 양쪽 이유: 이유마다 side 가 있어야 하고, 그 쪽 기간의 근거만 쓸 수 있다."""
+    etf_until 을 주면 양쪽 이유: 이유마다 side 가 있어야 하고, 그 쪽 기간의 근거만 쓸 수 있다.
+    regimes: {"big": 분기 말 국면, "etf": ETF 최신일 국면} (#183). 경로·모호 검사를 그 쪽 국면으로 한다."""
     errors = []
     if not 1 <= len(raw) <= MAX_REASONS:
         errors.append(f"이유는 1~{MAX_REASONS}개여야 해요 (지금 {len(raw)}개)")
@@ -332,7 +376,8 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
         if r["start_concept"] == r["end_concept"]:
             errors.append(f"{where}: 시작 개념과 끝 개념이 같아요")
         else:
-            path, direction = path_and_direction(g, r["start_concept"], r["end_concept"], r.get("change", "up"))
+            path, direction = path_and_direction(g, r["start_concept"], r["end_concept"], r.get("change", "up"),
+                                                 side_regime(regimes, r.get("side")))
             if path is None:
                 errors.append(f"{where}: 사전에 {r['start_concept']} → {r['end_concept']} 경로가 없어요. 다른 개념을 고르세요")
             elif direction == AMBIGUOUS:  # graph.py 규칙: 모호한 쌍은 정답으로 쓰지 않는다 (#85 리뷰)
@@ -349,13 +394,15 @@ def check_reasons(raw: list[dict], evidence: list[Evidence], base_date: date, g:
     return errors
 
 
-def to_reasons(raw: list[dict], evidence: list[Evidence], g: Graph) -> list[Reason]:
-    """check_reasons 를 통과한 이유만 넣는다 (경로가 있고 방향이 up / down)."""
+def to_reasons(raw: list[dict], evidence: list[Evidence], g: Graph,
+               regimes: dict[str, str] | None = None) -> list[Reason]:
+    """check_reasons 를 통과한 이유만 넣는다 (경로가 있고 방향이 up / down). 방향은 그 쪽 국면으로 계산한다."""
     by_no = {e.no: e for e in evidence}
     out = []
     for r in raw:
         change = r.get("change", "up")
-        path, direction = path_and_direction(g, r["start_concept"], r["end_concept"], change)
+        path, direction = path_and_direction(g, r["start_concept"], r["end_concept"], change,
+                                             side_regime(regimes, r.get("side")))
         out.append(Reason(r["title"].strip(), r["body"].strip(), r["start_concept"], r["end_concept"],
                           path or [], direction, [by_no[n] for n in dict.fromkeys(r["evidence"])], change,
                           r.get("side")))
@@ -400,13 +447,17 @@ def missing_sides(reasons: list[Reason]) -> list[str]:
 def generate(stock: dict, direction: str, change: str, base_date: date, facts: list[str], evidence: list[Evidence],
              concepts: list[Concept] | None = None, g: Graph | None = None, *,
              etf: str | None = None, etf_evidence: list[Evidence] | None = None,
-             etf_until: date | None = None) -> ReasonsResult:
+             etf_until: date | None = None,
+             regime: Regime | None = None, etf_regime: Regime | None = None) -> ReasonsResult:
     """stock: {"ticker", "name"} / direction·change: A의 겹침 결과에서 코드가 정함 (headline 참고) /
     facts: 카드 ①에 쓴 숫자 문장 (코드가 만든 것). 근거가 없으면 API 를 부르지 않는다.
 
     etf·etf_evidence·etf_until: 양쪽 이유용 (run_reasons 가 etf_change·load_etf_evidence 로 넘긴다).
     is_split(direction, change, etf) 이고 etf_until 이 있으면 큰손 쪽(evidence)과 ETF 쪽(etf_evidence) 근거를 한 목록으로
-    합쳐 이유마다 side 를 고르게 한다. 아니면 예전과 같다 (etf_evidence 는 쓰지 않는다)."""
+    합쳐 이유마다 side 를 고르게 한다. 아니면 예전과 같다 (etf_evidence 는 쓰지 않는다).
+
+    regime·etf_regime: 큰손 기준일·ETF 최신일의 경기 국면 (concepts/regime.py, #183). 주지 않으면 평상시라 예전과 같다.
+    큰손 쪽·한쪽 이유는 regime, ETF 쪽 이유는 etf_regime 으로 사전 경로 방향을 계산한다."""
     result = ReasonsResult(headline(direction, change))
     split = is_split(direction, change, etf) and etf_until is not None
     if split:
@@ -418,8 +469,16 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
     g = g or load_graph()
     until = etf_until if split else None
     side_etf = etf if split else None
+    etf_regime = etf_regime if split else None
+    regimes = {"big": regime.name if regime else NORMAL}
+    if etf_regime is not None:
+        regimes["etf"] = etf_regime.name
+    result.regimes = {k: r.to_json() for k, r in (("big", regime), ("etf", etf_regime)) if r is not None}
 
-    messages = [{"role": "user", "content": build_user(stock, direction, change, facts, evidence, side_etf)}]
+    user = build_user(stock, direction, change, facts, evidence, side_etf)
+    if note := regime_note(regime, etf_regime, g):
+        user += "\n" + note
+    messages = [{"role": "user", "content": user}]
     repairs = retries = 0
     while True:
         resp = create(
@@ -438,7 +497,7 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
             raise RuntimeError(f"reasons 응답이 끝나지 않았어요: stop_reason={resp.stop_reason}")
         text = text_of(resp)
         raw = json.loads(text)["reasons"]
-        errors = check_reasons(raw, evidence, base_date, g, until)
+        errors = check_reasons(raw, evidence, base_date, g, until, regimes)
         if errors and repairs < MAX_REPAIRS:
             repairs += 1
             result.errors = errors
@@ -448,13 +507,13 @@ def generate(stock: dict, direction: str, change: str, base_date: date, facts: l
         if errors:
             # 고쳐 쓰기를 다 해도 걸리면, 혼자 검사해서 통과하는 이유만 살린다. 8-K 숫자를 넣었더니 사전에 없는 경로
             # (revenue → eps 등) 하나 때문에 20종목 중 11곳이 통째로 rejected 됐다 (2026-11-16)
-            good = [r for r in raw if not check_reasons([r], evidence, base_date, g, until)]
+            good = [r for r in raw if not check_reasons([r], evidence, base_date, g, until, regimes)]
             if not good:
                 result.reasons, result.errors = [], errors
                 return result
             result.dropped = [e for e in errors if not e.startswith("이유는 ")]
             raw = good
-        result.reasons, result.errors = to_reasons(raw, evidence, g), []
+        result.reasons, result.errors = to_reasons(raw, evidence, g, regimes), []
         warnings = direction_warnings(result.reasons, direction, change, side_etf)
         # 근거가 없는 쪽은 다시 시켜도 못 쓰므로 빠져도 다시 쓰게 하지 않는다 (예: 3분기 TSM 은 9/30 뒤 8-K 가 없음)
         missing = [s for s in missing_sides(result.reasons) if s in {e.side for e in evidence}] if split else []
@@ -557,6 +616,8 @@ def save(conn, base_date: date, ticker: str, direction: str, change: str, result
         info["dropped"] = result.dropped
     if result.missing_sides:
         info["missing_sides"] = result.missing_sides
+    if result.regimes:
+        info["regime"] = result.regimes
     conn.execute(
         """INSERT INTO stock_reasons (big_period_end, ticker, direction, change, headline, reasons, now_view,
                                       status, model_info)

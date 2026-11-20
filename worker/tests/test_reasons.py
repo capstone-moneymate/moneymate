@@ -417,3 +417,81 @@ def test_save_records_missing_sides():
     # 예전 저장분(side 칸 없음)도 읽힌다
     old = {k: v for k, v in saved.items() if k != "side"}
     assert rs.reasons_from_json([old])[0].side is None
+
+
+# ---- 경기 국면 (#183): 큰손 쪽은 분기 말 국면, ETF 쪽은 ETF 최신일 국면으로 사전 경로 방향을 계산한다 ----
+
+from concepts.regime import Regime  # noqa: E402
+
+# 테스트 사전 + 경기 침체에서는 국채 금리 → 성장주 가치평가가 반대(down). 평상시 GRAPH 는 up
+REGIME_GRAPH = build_graph({c.id: c.name for c in CONCEPTS},
+                           [("ai_investment", "gpu_demand", "up"), ("gpu_demand", "semi_earnings", "up"),
+                            ("bond_yield", "growth_valuation", "up")],
+                           [("bond_yield", "growth_valuation", "down", "recession")])
+REC = Regime("recession", 0.57, "2024-08-01")
+NOR = Regime("normal", 0.0, "2026-10-01")
+
+
+def yield_reason(side=None, change="up"):
+    r = reason("금리 부담", "국채 금리가 올라 성장주 평가가 달라졌을 수 있어요.", "bond_yield", "growth_valuation",
+               (1,), change)
+    return {**r, "side": side} if side else r
+
+
+def test_path_direction_by_regime():
+    assert rs.path_and_direction(REGIME_GRAPH, "bond_yield", "growth_valuation", "up")[1] == "up"
+    assert rs.path_and_direction(REGIME_GRAPH, "bond_yield", "growth_valuation", "up", "recession")[1] == "down"
+
+
+def test_recession_flips_reason_direction_and_rejects_mismatch(monkeypatch):
+    # 큰손이 늘린 종목(same, up): 평상시에는 금리 → 성장주 ▲ 라 통과, 경기 침체 국면이면 ▼ 라 다시 쓰게 하고 뺀다
+    fake_create(monkeypatch, [yield_reason()])
+    ok = rs.generate(STOCK, "same", "up", BASE, [], EVIDENCE, CONCEPTS, REGIME_GRAPH, regime=NOR)
+    assert ok.errors == [] and ok.reasons[0].direction == "up"
+    assert ok.regimes == {"big": NOR.to_json()}
+
+    calls = fake_create(monkeypatch, [yield_reason()], [yield_reason()])
+    bad = rs.generate(STOCK, "same", "up", BASE, [], EVIDENCE, CONCEPTS, REGIME_GRAPH, regime=REC)
+    assert bad.reasons == [] and bad.errors == ["큰손 변화와 방향이 맞는 이유가 없어요"]
+    assert "큰손 기준일 무렵은 경기 침체 국면이에요" in calls[0]["messages"][0]["content"]
+    assert "2024-08 = 0.57" in calls[0]["messages"][0]["content"]
+
+
+def test_split_uses_each_side_regime(monkeypatch):
+    # 큰손 쪽(분기 말)은 평상시, ETF 쪽(ETF 최신일)은 경기 침체. 같은 경로라도 쪽마다 방향이 다르다
+    # 손계산: bond_yield(up) → growth_valuation. 큰손 쪽 평상시 (+1) ▲ = 큰손 늘림(up), ETF 쪽 침체 (−1) ▼ = ETF 줄임(down)
+    big = yield_reason("big")
+    etf = {**yield_reason("etf"), "evidence": [3]}
+    fake_create(monkeypatch, [big, etf])
+    out = rs.generate(STOCK, "diff", "up", BASE, [], EVIDENCE, CONCEPTS, REGIME_GRAPH,
+                      etf="down", etf_evidence=ETF_EVIDENCE, etf_until=UNTIL, regime=NOR, etf_regime=REC)
+    assert out.errors == [] and out.warnings == [] and out.missing_sides == []
+    assert [(r.side, r.direction) for r in out.reasons] == [("big", "up"), ("etf", "down")]
+    assert out.regimes == {"big": NOR.to_json(), "etf": REC.to_json()}
+
+
+def test_no_regime_is_normal_and_prompt_unchanged(monkeypatch):
+    # 국면을 안 주면 평상시: 결과·프롬프트가 예전과 같고 model_info 에 regime 을 남기지 않는다
+    calls = fake_create(monkeypatch, [yield_reason()])
+    out = rs.generate(STOCK, "same", "up", BASE, [], EVIDENCE, CONCEPTS, REGIME_GRAPH)
+    assert out.reasons[0].direction == "up" and out.regimes == {}
+    assert "경기 침체" not in calls[0]["messages"][0]["content"]
+
+
+def test_save_records_regime():
+    r = rs.Reason("t", "b", "bond_yield", "growth_valuation", [], "up", [], "up")
+    conn = _Conn()
+    rs.save(conn, BASE, "NVDA", "same", "up", rs.ReasonsResult("왜 다 늘렸을까요?", [r], regimes={"big": REC.to_json()}),
+            None)
+    assert conn.params[-1].obj["regime"] == {"big": REC.to_json()}
+
+
+def test_regime_note_lists_flipped_edges():
+    # reasons 에는 경로 찾기 도구가 없어서, 침체 국면이면 뒤집히는 연결을 프롬프트에 직접 알려 준다 (#187 리뷰)
+    assert rs.flipped_edges(REGIME_GRAPH, "recession") == [
+        "국채 금리(bond_yield) ▲ → 성장주 가치평가(growth_valuation) ▼ (평상시 ▲)"]
+    note = rs.regime_note(REC, None, REGIME_GRAPH)
+    assert "이 국면에서 방향이 바뀌는 연결: 국채 금리(bond_yield) ▲ → 성장주 가치평가(growth_valuation) ▼" in note
+    assert rs.regime_note(NOR, NOR, REGIME_GRAPH) is None
+    # 시스템 프롬프트의 금리 예시는 평상시 기준이라고 밝힌다
+    assert "bond_yield, down (평상시 기준" in rs.build_system(CONCEPTS)
