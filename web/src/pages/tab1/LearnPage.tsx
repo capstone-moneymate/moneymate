@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { useCard } from '@/api/cards'
+import { useCard, usePastAnswers } from '@/api/cards'
+import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
-import type { AnswerResult, Step } from '@/types/card'
+import type { AnswerResult, PastAnswer, Step } from '@/types/card'
 import { BackButton } from '@/pages/tab1/CloseLink'
 import { CausalOrderView } from '@/pages/tab1/steps/CausalOrderView'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
@@ -13,19 +14,26 @@ import { ReasonView } from '@/pages/tab1/steps/ReasonView'
  * 단계형 학습. 카드 유형에 따라 단계 구성이 다르다 (서비스흐름 2.2)
  * 유형 1: 개념 → 퀴즈 → 차트 → 판단 / 유형 2: 개념 → 퀴즈 → 인과 순서 → 차트 → 판단 / 유형 3: 개념 → 판단
  * AI 분석은 단계가 아니라 판단해보기 제출 후 결과 화면에 나온다
+ * ?review=yyyy-MM-dd(탭3 풀었던 내용 보기)면 그날 낸 답과 채점 결과를 채운 채로 보여 주고 다시 채점하지 않는다
  */
 export const LearnPage = () => {
   const { cardId = '' } = useParams()
   const navigate = useNavigate()
   const { data: card, isPending, isError } = useCard(cardId)
+  const review = useReviewDate()
+  const past = usePastAnswers(cardId, review)
   const saveResult = useLearnStore((s) => s.saveResult)
   const resetCard = useLearnStore((s) => s.resetCard)
   const [index, setIndex] = useState(0)
 
-  // 처음부터 다시 풀면 이전 기록을 지운다
-  useEffect(() => resetCard(cardId), [cardId, resetCard])
+  // 처음부터 다시 풀면 이전 기록을 지운다. 풀었던 내용 보기면 그날 채점 결과로 채워 결과 화면이 읽게 한다
+  useEffect(() => {
+    resetCard(cardId)
+    past.data?.forEach((p) => saveResult(cardId, p.result))
+  }, [cardId, resetCard, saveResult, past.data])
 
-  if (isPending) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
+  if (isPending || (review && past.isPending))
+    return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
   if (isError) {
     return (
       <p className="p-5 text-sm text-slate-500">
@@ -40,7 +48,7 @@ export const LearnPage = () => {
   const step = card.steps[index]
   const next = (result?: AnswerResult) => {
     if (result) saveResult(card.id, result)
-    if (index === card.steps.length - 1) navigate(`/news/${card.id}/result`)
+    if (index === card.steps.length - 1) navigate(withReview(`/news/${card.id}/result`, review))
     else setIndex(index + 1)
   }
 
@@ -55,8 +63,14 @@ export const LearnPage = () => {
     <div className="flex min-h-full flex-col">
       {/* UI 시안 05~15: ‹ 뒤로 + "STEP n · 전체 · 단계 이름" + 단계 수만큼 막대 */}
       <div className="flex items-center gap-4 px-5 pt-4">
-        <BackButton label="카드뉴스로 돌아가기" onClick={() => navigate(`/news/${card.id}`)} />
+        <BackButton
+          label="카드뉴스로 돌아가기"
+          onClick={() => navigate(withReview(`/news/${card.id}`, review))}
+        />
         <div>
+          {review && (
+            <p className="text-primary text-xs font-bold">풀었던 내용 · {reviewLabel(review)}</p>
+          )}
           <p className="text-sm font-semibold text-slate-500">
             STEP {index + 1} · {total} · {KIND_LABEL[step.kind]}
           </p>
@@ -78,6 +92,7 @@ export const LearnPage = () => {
           onNext={next}
           nextLabel={nextStep ? KIND_LABEL[nextStep.kind] : null}
           quizNo={quizNo}
+          past={review ? (past.data?.find((p) => p.stepId === step.id) ?? null) : undefined}
         />
       </div>
     </div>
@@ -99,18 +114,20 @@ interface StepSwitchProps {
   /** 다음 단계 이름. 마지막이면 null */
   nextLabel: string | null
   quizNo: { no: number; total: number } | null
+  /** 풀었던 내용 보기의 그 단계 답 (null = 안 풀었음, undefined = 평소 풀기) */
+  past: PastAnswer | null | undefined
 }
 
-const StepSwitch = ({ step, onNext, nextLabel, quizNo }: StepSwitchProps) => {
+const StepSwitch = ({ step, onNext, nextLabel, quizNo, past }: StepSwitchProps) => {
   switch (step.kind) {
     case 'concept':
       return <ConceptView step={step} onNext={onNext} nextLabel={nextLabel} />
     case 'quiz':
     case 'chart':
-      return <QuizView step={step} onNext={onNext} quizNo={quizNo} />
+      return <QuizView step={step} onNext={onNext} quizNo={quizNo} past={past} />
     case 'causal_order':
-      return <CausalOrderView step={step} onNext={onNext} />
+      return <CausalOrderView step={step} onNext={onNext} past={past} />
     case 'judgement':
-      return <ReasonView step={step} onNext={onNext} />
+      return <ReasonView step={step} onNext={onNext} past={past} />
   }
 }

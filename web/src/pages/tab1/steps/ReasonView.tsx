@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
 import { DailyLimitError } from '@/api/client'
-import type { AnswerResult, JudgementStep } from '@/types/card'
+import type { AnswerResult, JudgementStep, PastAnswer } from '@/types/card'
+import { NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 /** 근거 최소 글자 수. 근거 작성은 필수 (기술확정안 루브릭) */
@@ -9,13 +10,23 @@ const MIN_REASON = 5
 
 interface ReasonViewProps {
   step: JudgementStep
-  onNext: (result: AnswerResult) => void
+  onNext: (result?: AnswerResult) => void
+  /**
+   * 풀었던 내용 보기(탭3). 있으면 그때 고른 판단·근거를 읽기 전용으로 보여 주고 다시 채점하지 않는다
+   * (채점 결과·AI 피드백은 결과 화면). null = 그날 안 풀었음, undefined = 평소처럼 푼다
+   */
+  past?: PastAnswer | null
 }
 
 /** 판단해보기(선택 + 근거). 선택은 채점하지 않고 근거만 루브릭으로 채점한다 */
-export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
-  const [choice, setChoice] = useState<number | null>(null)
-  const [reason, setReason] = useState('')
+export const ReasonView = ({ step, onNext, past }: ReasonViewProps) => {
+  const reviewing = past !== undefined
+  const pastInput = past?.input.kind === 'judgement' ? past.input : null
+  // 서버에는 고른 문장만 저장돼 있어 보기 목록에서 같은 문장을 찾는다
+  const pastChoice = pastInput?.choice ? step.choices.indexOf(pastInput.choice) : -1
+  const [choice, setChoice] = useState<number | null>(pastChoice >= 0 ? pastChoice : null)
+  const [reason, setReason] = useState(pastInput?.reason ?? '')
+  const score = past?.result.grade?.score
   const submit = useSubmitAnswer()
   const ready = choice !== null && reason.trim().length >= MIN_REASON
 
@@ -51,9 +62,17 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
 
   return (
     <StepFrame
-      buttonLabel={submit.isPending ? '채점 중…' : '제출하고 피드백 받기'}
-      buttonDisabled={!ready || submit.isPending}
-      onButton={send}
+      buttonLabel={
+        reviewing
+          ? past
+            ? '피드백 다시 보기 ›'
+            : '다음 ›'
+          : submit.isPending
+            ? '채점 중…'
+            : '제출하고 피드백 받기'
+      }
+      buttonDisabled={!reviewing && (!ready || submit.isPending)}
+      onButton={() => (reviewing ? onNext(past?.result) : send())}
     >
       {/* UI 시안 15: "지금 당신이라면?" 칸에 질문, 안내(context)는 그 아래 작게 */}
       <div className="rounded-3xl bg-slate-100 px-5 py-5">
@@ -70,6 +89,7 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
               <li key={c}>
                 <button
                   type="button"
+                  disabled={reviewing}
                   onClick={() => setChoice(i)}
                   className={`w-full rounded-2xl px-4 py-4 text-left font-semibold transition ${
                     choice === i ? 'bg-primary text-white' : 'bg-slate-100 text-slate-800'
@@ -89,13 +109,22 @@ export const ReasonView = ({ step, onNext }: ReasonViewProps) => {
         </span>
         <textarea
           value={reason}
+          readOnly={reviewing}
           onChange={(e) => setReason(e.target.value)}
           rows={5}
           placeholder="뉴스 속 사실과 오늘 배운 개념을 넣어서 이유를 써 보세요"
           className="focus:ring-primary mt-2 w-full resize-none rounded-3xl bg-slate-100 px-5 py-4 leading-relaxed outline-none focus:ring-2"
         />
       </label>
-      <div className="mt-1 flex justify-between text-xs text-slate-400">
+      {past === null && <NotAnswered />}
+      {reviewing && past && (
+        <p className="mt-2 text-sm font-semibold text-slate-600">
+          {score == null ? '이 답안은 채점하지 못했어요' : `그때 적용판단 점수 ${score}점`}
+        </p>
+      )}
+      <div
+        className={`mt-1 flex justify-between text-xs text-slate-400 ${reviewing ? 'hidden' : ''}`}
+      >
         <span className="tabular-nums">
           {reason.trim().length} / 최소 {MIN_REASON}자
         </span>

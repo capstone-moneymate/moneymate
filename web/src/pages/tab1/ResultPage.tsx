@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
 import { SHOW_TAB2 } from '@/components/BottomNav'
+import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, CardDetail } from '@/types/card'
 import { BackButton, CloseLink } from '@/pages/tab1/CloseLink'
@@ -15,6 +16,7 @@ export const ResultPage = () => {
   const navigate = useNavigate()
   const { data: card } = useCard(cardId)
   const results = useLearnStore((s) => s.results[cardId])
+  const review = useReviewDate()
 
   if (!card) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
   if (!results) {
@@ -42,13 +44,26 @@ export const ResultPage = () => {
   return (
     <div className="flex min-h-full flex-col px-5 pt-4 pb-5">
       <div className="flex items-center justify-between">
-        <BackButton label="카드뉴스 다시 보기" onClick={() => navigate(`/news/${card.id}`)} />
+        <BackButton
+          label="카드뉴스 다시 보기"
+          onClick={() => navigate(withReview(`/news/${card.id}`, review))}
+        />
         <CloseLink />
       </div>
       <h2 className="mt-5 text-2xl leading-snug font-bold text-slate-900">
-        오늘의 판단,
-        <br />
-        기록했어요
+        {review ? (
+          <>
+            {reviewLabel(review)}의 판단,
+            <br />
+            다시 봤어요
+          </>
+        ) : (
+          <>
+            오늘의 판단,
+            <br />
+            기록했어요
+          </>
+        )}
       </h2>
 
       <ScoreRing value={total} />
@@ -81,7 +96,14 @@ export const ResultPage = () => {
       )}
 
       <div className="mt-auto flex flex-col items-center gap-2 pt-7">
-        {!SHOW_TAB2 ? (
+        {review ? (
+          <Link
+            to="/mypage"
+            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
+          >
+            학습 달력으로
+          </Link>
+        ) : !SHOW_TAB2 ? (
           // 탭2를 숨긴 동안에는 홈으로 돌아가는 버튼 하나만 둔다
           <Link
             to="/"
@@ -172,7 +194,9 @@ const summaryLines = (card: CardDetail, results: Record<string, AnswerResult>) =
     }
     if (s.kind === 'chart')
       lines.push(`차트 읽기 · ${results[s.id]?.isCorrect ? '정답' : '해설 확인'}`)
-    if (s.kind === 'judgement') lines.push('판단 시뮬레이션 완료')
+    // 풀었던 내용 보기에서 그날 판단해보기를 안 냈으면 결과가 없다
+    if (s.kind === 'judgement')
+      lines.push(results[s.id] ? '판단 시뮬레이션 완료' : '판단 시뮬레이션 · 풀지 않음')
   }
   return lines
 }
