@@ -2,6 +2,7 @@ package com.moneymate.mypage;
 
 import com.moneymate.auth.AuthController;
 import com.moneymate.auth.UserGuard;
+import com.moneymate.mypage.MypageDtos.Calendar;
 import com.moneymate.mypage.MypageDtos.CausalMap;
 import com.moneymate.mypage.MypageDtos.Review;
 import com.moneymate.mypage.MypageDtos.Summary;
@@ -47,5 +48,12 @@ public class MypageController {
     public Summary summary(@RequestParam UUID userId,
                            @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
         return service.summary(guard.check(userId, sessionUserId));
+    }
+
+    /** 학습 달력: 문제를 푼 날(KST)과 그날 푼 카드. 최근 400일, 기록이 없으면 빈 배열. */
+    @GetMapping("/calendar")
+    public Calendar calendar(@RequestParam UUID userId,
+                             @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
+        return service.calendar(guard.check(userId, sessionUserId));
     }
 }

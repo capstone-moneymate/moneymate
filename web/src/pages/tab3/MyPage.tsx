@@ -1,125 +1,200 @@
-import { Link, useNavigate } from 'react-router'
-import { useCausalMap, useReview, useSummary } from '@/api/mypage'
+import { ReactFlowProvider } from '@xyflow/react'
+import { Link, useSearchParams } from 'react-router'
+import { useLogout, useMe } from '@/api/auth'
+import { useCalendar, useCausalMap, useSummary } from '@/api/mypage'
 import { OpenSourceNotice } from '@/components/OpenSourceNotice'
-import { PageHeader } from '@/components/PageHeader'
-import { AccountBar } from '@/pages/tab3/AccountBar'
-import { isBaseEdge, learnedOf } from '@/pages/tab3/causalMapLayout'
-import { ReviewList } from '@/pages/tab3/ReviewList'
-import type { CausalMap, Summary } from '@/types/causalMap'
+import { CausalMapView } from '@/pages/tab3/CausalMapView'
+import { StudyCalendar } from '@/pages/tab3/StudyCalendar'
+
+type View = 'calendar' | 'map'
 
 /**
- * 탭3 마이페이지 홈 (시안 26): 연속 학습 → 숫자 3개 → 나의 인과 지도 카드 → 다시 보는 개념.
- * 숫자는 마이페이지 API(summary·map·review)가 준 값만 쓴다. 인과 지도는 /mypage/map (시안 27).
+ * 탭3 마이페이지 (2026-11-21 시안 tab3_01·02). 위: 프로필(닉네임·연속 학습·푼 카드뉴스 수),
+ * 가운데 탭: 달력(문제를 푼 날 표시, 누르면 그날 카드뉴스·퀴즈 다시 보기) / 인과 지도.
+ * 고른 탭은 ?view=map 으로 주소에 남겨 뒤로 가기로 돌아와도 그대로다.
  */
 export const MyPage = () => {
-  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
+  const view: View = params.get('view') === 'map' ? 'map' : 'calendar'
   const summary = useSummary()
-  const map = useCausalMap()
-  const review = useReview()
+  const calendar = useCalendar()
+
+  const cardCount = calendar.data
+    ? new Set(calendar.data.days.flatMap((d) => d.cards.map((c) => c.cardId))).size
+    : null
 
   return (
-    <div className="h-full overflow-y-auto pb-6">
-      <PageHeader />
-      <div className="px-5">
-        <AccountBar />
-        <h2 className="text-2xl leading-snug font-bold text-slate-900">
-          {summary.data?.studiedToday ? (
-            <>
-              오늘도 한 걸음
-              <br />
-              성장했어요
-            </>
-          ) : (
-            <>
-              오늘도 한 걸음
-              <br />
-              나아가 볼까요?
-            </>
-          )}
-        </h2>
+    <div className="h-full overflow-y-auto bg-[#f0f3fc] pb-6">
+      <ProfileHeader streakDays={summary.data?.streakDays ?? null} cardCount={cardCount} />
 
-        {summary.isError && (
-          <p className="mt-4 text-sm text-slate-500">학습 기록을 불러오지 못했어요</p>
-        )}
-        {summary.data && <SummaryBlock summary={summary.data} />}
+      <div role="tablist" className="grid grid-cols-2 border-y border-[#dfe4f6] bg-white">
+        <TabButton
+          active={view === 'calendar'}
+          label="달력"
+          icon={<CalendarIcon />}
+          onClick={() => setParams({}, { replace: true })}
+        />
+        <TabButton
+          active={view === 'map'}
+          label="인과 지도"
+          icon={<ShareIcon />}
+          onClick={() => setParams({ view: 'map' }, { replace: true })}
+        />
+      </div>
 
-        {map.isError && (
-          <p className="mt-4 text-sm text-slate-500">인과 지도를 불러오지 못했어요</p>
+      <div className="pt-6">
+        {view === 'calendar' ? (
+          <>
+            {calendar.isPending && <p className="px-5 text-sm text-slate-500">불러오는 중</p>}
+            {calendar.isError && (
+              <p className="px-5 text-sm text-slate-500">학습 달력을 불러오지 못했어요</p>
+            )}
+            {calendar.data && (
+              <StudyCalendar days={calendar.data.days} streakDays={summary.data?.streakDays ?? 0} />
+            )}
+          </>
+        ) : (
+          <MapPanel />
         )}
-        {map.data && <MapCard map={map.data} />}
-
-        {review.isError && (
-          <p className="mt-4 text-sm text-slate-500">다시 보는 개념을 불러오지 못했어요</p>
-        )}
-        {review.data && (
-          <ReviewList
-            concepts={review.data.concepts}
-            onOpen={(id) => void navigate(`/mypage/map?focus=${encodeURIComponent(id)}`)}
-          />
-        )}
-
-        {(summary.isPending || map.isPending || review.isPending) && (
-          <p className="mt-4 text-sm text-slate-500">불러오는 중</p>
-        )}
-
-        <OpenSourceNotice />
+        <div className="px-5">
+          <OpenSourceNotice />
+        </div>
       </div>
     </div>
   )
 }
 
-const SummaryBlock = ({ summary }: { summary: Summary }) => {
-  const stats = [
-    { label: '개념 학습', value: `${summary.conceptCount}개` },
-    {
-      label: '종합 정답률',
-      value: summary.accuracy === null ? '-' : `${Math.round(summary.accuracy * 100)}%`,
-    },
-    { label: '판단 시뮬레이션', value: `${summary.judgementCount}회` },
-  ]
+/** 프로필 줄: 동그란 얼굴 · 닉네임 님 · 연속 학습 · 푼 카드뉴스 수. 로그인·로그아웃은 오른쪽 위 작은 글자 */
+const ProfileHeader = ({
+  streakDays,
+  cardCount,
+}: {
+  streakDays: number | null
+  cardCount: number | null
+}) => {
+  const me = useMe()
+  const logout = useLogout()
+  const name = me.data?.loginId ?? '게스트'
+
   return (
-    <>
-      <p className="mt-5 rounded-2xl bg-blue-50 px-4 py-4 text-sm font-bold text-blue-700">
-        {summary.streakDays > 0
-          ? `${summary.streakDays}일 연속 학습 중이에요`
-          : '오늘 첫 문제를 풀고 연속 학습을 시작해 보세요'}
-      </p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-2xl bg-blue-50 px-3 py-3.5">
-            <p className="text-[11px] text-slate-500">{s.label}</p>
-            <p className="mt-1.5 text-2xl font-bold text-blue-700">{s.value}</p>
-          </div>
-        ))}
+    <header className="flex items-center gap-4 px-5 pt-6 pb-5">
+      <div className="flex size-16 shrink-0 items-center justify-center rounded-full border-[3px] border-[#5468b8] bg-[#cfe9fb] text-2xl font-bold text-[#3a4a99]">
+        {name.slice(0, 1).toUpperCase()}
       </div>
-    </>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="truncate text-xl font-bold text-[#232c5c]">{name} 님</p>
+          {me.data ? (
+            <button
+              type="button"
+              onClick={() => logout.mutate()}
+              disabled={logout.isPending}
+              className="shrink-0 text-xs font-semibold text-[#5b6694]"
+            >
+              로그아웃
+            </button>
+          ) : (
+            !me.isPending && (
+              <Link
+                to="/login?next=/mypage"
+                className="shrink-0 text-xs font-semibold text-[#5468b8]"
+              >
+                로그인
+              </Link>
+            )
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2 text-sm font-bold">
+          <span className="rounded-full bg-[#ffd84d] px-3.5 py-1.5 text-[#232c5c]">
+            🔥 연속 학습 {streakDays ?? '-'}일
+          </span>
+          <span className="rounded-full border-2 border-[#dfe4f6] bg-white px-3.5 py-1 text-[#3a4473]">
+            카드뉴스 {cardCount ?? '-'}장
+          </span>
+        </div>
+      </div>
+    </header>
   )
 }
 
-/** 나의 인과 지도 요약 카드. 개수는 지도 첫 화면 기준(배운 개념, 같은 테마 안 연결) */
-const MapCard = ({ map }: { map: CausalMap }) => {
-  const learned = learnedOf(map)
-  const byId = new Map(map.nodes.map((n) => [n.id, n]))
-  const edgeCount = map.edges.filter((e) => isBaseEdge(e, byId)).length
+interface TabButtonProps {
+  active: boolean
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+}
+
+const TabButton = ({ active, label, icon, onClick }: TabButtonProps) => (
+  <button
+    type="button"
+    role="tab"
+    aria-selected={active}
+    onClick={onClick}
+    className={`flex flex-col items-center gap-1 border-b-4 pt-3 pb-2 text-sm font-bold ${
+      active ? 'border-[#5468b8] text-[#3a4a99]' : 'border-transparent text-[#5b6694]'
+    }`}
+  >
+    {icon}
+    {label}
+  </button>
+)
+
+/** 인과 지도 탭. 지도 자체(범례·접고 펴기·개념 고르기)는 /mypage/map 과 같은 CausalMapView */
+const MapPanel = () => {
+  const { data, isPending, isError } = useCausalMap()
+  const hasLearned = !!data?.nodes.some((n) => n.learned)
 
   return (
-    <section className="mt-5 rounded-3xl bg-slate-900 p-5 text-white">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold">나의 인과 지도</h2>
-        <p className="shrink-0 text-xs text-slate-400">
-          개념 {learned.length}개 · 연결 {edgeCount}개
-        </p>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-slate-300">
-        {learned.length > 0
-          ? '배운 뼈대가 마인드맵처럼 쌓여요. 개념을 누르면 다른 테마로 이어지는 연결도 보여요.'
-          : '탭 1에서 뉴스 문제를 풀면 배운 개념이 여기에 쌓여요.'}
-      </p>
-      {learned.length > 0 && (
-        <Link to="/mypage/map" className="mt-4 inline-block text-sm font-bold text-blue-300">
-          지도 열기 ›
-        </Link>
+    <section className="px-5">
+      {isPending && <p className="text-sm text-slate-500">불러오는 중</p>}
+      {isError && <p className="text-sm text-slate-500">인과 지도를 불러오지 못했어요</p>}
+      {data && !hasLearned && (
+        <div className="rounded-3xl bg-white px-5 py-10 text-center">
+          <p className="text-sm font-semibold text-[#232c5c]">아직 배운 개념이 없어요</p>
+          <p className="mt-1 text-xs text-[#5b6694]">
+            탭 1에서 뉴스 문제를 풀면 배운 개념이 지도에 쌓여요
+          </p>
+        </div>
+      )}
+      {data && hasLearned && (
+        <div className="flex h-[480px] flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_6px_0_#dfe4f6]">
+          <ReactFlowProvider>
+            <CausalMapView map={data} />
+          </ReactFlowProvider>
+        </div>
       )}
     </section>
   )
 }
+
+const CalendarIcon = () => (
+  <svg
+    width="26"
+    height="26"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden
+  >
+    <rect x="3" y="5" width="18" height="16" rx="3" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+  </svg>
+)
+
+const ShareIcon = () => (
+  <svg
+    width="26"
+    height="26"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden
+  >
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+  </svg>
+)

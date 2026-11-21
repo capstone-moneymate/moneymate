@@ -14,3 +14,8 @@
 - **하는 일**: ① 연속 학습: `user_answers.created_at`을 KST 날짜로 잘라(중복 없이 최근 400일) 오늘부터 거꾸로 하루씩 이어진 날을 센다. **오늘 아직 안 풀었으면 어제부터 센다**(오늘 하루 동안은 끊긴 것으로 치지 않음, 어제도 없으면 0. 2026-11-16 B 결정) ② `studiedToday`: 오늘(KST) 답안이 있는가 ③ `conceptCount`: 배운 개념 수(`total > 0`) ④ 종합 정답률 `accuracy` = `is_correct`가 참인 답안 / `is_correct`가 있는 답안. 코드 채점(정답 일치)과 판단 채점(60점 이상, P17)을 함께 센다. 채점된 답안이 없으면 `null` ⑤ `judgementCount`: `steps.kind = 'judgement'` 답안 수(다시 낸 것도 셈).
 - **주의할 점**: 오늘 날짜는 서버 시계(`Clock`, KST)로 정한다. 같은 답안을 다시 내도 한 번씩 센다(recordConceptResult와 같음). 읽기 전용, 스키마 변경 없음.
 - **테스트**: `MypageServiceTest` 6개 추가(연속 학습 손계산: 월~목 4일·14일 끊김, 오늘 안 풂 → 어제부터 3일, 어제도 없음 → 0, 순서 섞임·미래 날짜, KST 자정 직후(UTC 11/18 15:30 = KST 11/19) 오늘 판정과 숫자 6/8 = 0.75, 기록 없음 → 0·null). 2026-11-16 임시 PostgreSQL 16(001~005 마이그레이션)에서 두 SQL을 직접 실행: UTC 시각 5개(KST 자정 경계 포함)로 날짜 11/19·18·17, 채점 4·정답 2·판단 3이 손계산과 같음. 테스트는 이 PC에 JDK가 없어 `eclipse-temurin:21-jdk` 컨테이너에서 `./gradlew test`로 돌렸다(전체 통과). 2026-11-16 실제 서버(Spring, 로컬 PostgreSQL)·`VITE_USE_MOCK=false`로 확인: 기록 없음 → 0·null·빈 배열, 시험 기록(답안 10개 11/16·15·14·12 KST, 개념 11개)으로 연속 3일·정답률 0.6·판단 2회·다시 보는 개념 순서·지도(배운 11 + 이웃 9, 연결 18)가 손계산과 같음. 시험 데이터는 지웠다.
+
+## GET /api/mypage/calendar (2026-11-21, 학습 달력)
+- **출력**: `{days:[{date:"yyyy-MM-dd", cards:[{cardId,title,cardDate,stepCount,answered,graded,correct}]}]}`. 최근 날짜 먼저, 카드는 그날 처음 푼 순서. 기록이 없으면 빈 배열.
+- **하는 일**: `user_answers`를 KST 날짜로 자르고, 같은 날 같은 단계를 여러 번 냈으면 그날 마지막 답안만 남긴 뒤(`DISTINCT ON`) 날짜·카드별로 답한 수·채점된 수·맞은 수를 센다. `stepCount`는 그 카드의 concept 아닌 단계 수. 최근 400일만.
+- **주의할 점**: 읽기 전용, 스키마 변경 없음. 화면 명세는 docs/modules/study_calendar.md.

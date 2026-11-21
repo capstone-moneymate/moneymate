@@ -1,5 +1,8 @@
 package com.moneymate.mypage;
 
+import com.moneymate.mypage.MypageDtos.Calendar;
+import com.moneymate.mypage.MypageDtos.CalendarCard;
+import com.moneymate.mypage.MypageDtos.CalendarDay;
 import com.moneymate.mypage.MypageDtos.CausalMap;
 import com.moneymate.mypage.MypageDtos.MapEdge;
 import com.moneymate.mypage.MypageDtos.MapNode;
@@ -11,8 +14,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -28,6 +33,8 @@ import org.springframework.stereotype.Service;
  * 기록이 없으면 빈 배열 (users 에 행을 넣지 않는다).
  *
  * 홈 숫자(summary): 연속 학습(KST), 배운 개념 수, 종합 정답률(user_answers 의 is_correct), 판단해보기 횟수.
+ *
+ * 학습 달력(calendar): 문제를 푼 날(KST)과 그날 푼 카드. 날짜 묶기만 하고 숫자는 SQL 이 센 값 그대로.
  */
 @Service
 public class MypageService {
@@ -121,5 +128,18 @@ public class MypageService {
             d = d.minusDays(1);
         }
         return n;
+    }
+
+    /** 학습 달력. 줄은 이미 최근 날짜 먼저 → 그날 처음 푼 순서로 온다. 같은 날 줄을 하루로 묶는다. */
+    public Calendar calendar(String userId) {
+        Map<LocalDate, List<CalendarCard>> byDay = new LinkedHashMap<>();
+        for (CalendarRow r : repository.findCalendarRows(userId)) {
+            byDay.computeIfAbsent(r.day(), d -> new ArrayList<>()).add(new CalendarCard(
+                    r.cardId(), r.title(), r.cardDate().toString(), r.stepCount(),
+                    r.answered(), r.graded(), r.correct()));
+        }
+        List<CalendarDay> days = new ArrayList<>();
+        byDay.forEach((day, cards) -> days.add(new CalendarDay(day.toString(), List.copyOf(cards))));
+        return new Calendar(days);
     }
 }

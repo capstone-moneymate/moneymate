@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.moneymate.mypage.MypageDtos.Calendar;
+import com.moneymate.mypage.MypageDtos.CalendarCard;
 import com.moneymate.mypage.MypageDtos.CausalMap;
 import com.moneymate.mypage.MypageDtos.MapEdge;
 import com.moneymate.mypage.MypageDtos.MapNode;
@@ -210,5 +212,34 @@ class MypageServiceTest {
 
         // 채점된 답안이 없으면 정답률은 null (0% 로 보이지 않게)
         assertThat(fixed.summary(USER)).isEqualTo(new Summary(0, false, 0, null, 0, 0));
+    }
+
+    // --- 학습 달력 ---
+
+    @Test
+    void calendarGroupsRowsByDayKeepingOrder() {
+        // 줄은 SQL 이 정렬해 준 순서(최근 날짜 먼저 → 그날 처음 푼 순서) 그대로 묶인다
+        LocalDate d19 = LocalDate.of(2026, 11, 19);
+        LocalDate d18 = LocalDate.of(2026, 11, 18);
+        when(repo.findCalendarRows(USER)).thenReturn(List.of(
+                new CalendarRow(d19, "12", "카드 12", d19, 4, 4, 4, 3),
+                new CalendarRow(d19, "7", "카드 7", LocalDate.of(2026, 11, 10), 3, 2, 1, 1),
+                new CalendarRow(d18, "11", "카드 11", d18, 4, 1, 0, 0)));
+
+        Calendar cal = service.calendar(USER);
+
+        assertThat(cal.days()).hasSize(2);
+        assertThat(cal.days().get(0).date()).isEqualTo("2026-11-19");
+        assertThat(cal.days().get(0).cards()).containsExactly(
+                new CalendarCard("12", "카드 12", "2026-11-19", 4, 4, 4, 3),
+                new CalendarCard("7", "카드 7", "2026-11-10", 3, 2, 1, 1));
+        assertThat(cal.days().get(1).date()).isEqualTo("2026-11-18");
+        assertThat(cal.days().get(1).cards()).extracting(CalendarCard::cardId).containsExactly("11");
+    }
+
+    @Test
+    void calendarIsEmptyWithoutAnswers() {
+        when(repo.findCalendarRows(USER)).thenReturn(List.of());
+        assertThat(service.calendar(USER).days()).isEmpty();
     }
 }

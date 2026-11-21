@@ -80,4 +80,37 @@
           JOIN steps s ON s.id = ua.step_id
          WHERE ua.user_id = CAST(#{userId} AS uuid)
     </select>
+
+    <resultMap id="calendarMap" type="com.moneymate.mypage.CalendarRow">
+        <constructor>
+            <arg column="day" javaType="java.time.LocalDate"/>
+            <arg column="card_id" javaType="String"/>
+            <arg column="title" javaType="String"/>
+            <arg column="card_date" javaType="java.time.LocalDate"/>
+            <arg column="step_count" javaType="_int"/>
+            <arg column="answered" javaType="_int"/>
+            <arg column="graded" javaType="_int"/>
+            <arg column="correct" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 학습 달력. 날짜는 KST 로 자르고, 같은 날 같은 단계를 다시 냈으면 그날 마지막 답안만 센다.
+         문제 수는 concept(개념 설명) 단계를 뺀 단계 수. 최근 400일 -->
+    <select id="findCalendarRows" resultMap="calendarMap">
+        SELECT l.day, l.card_id::text AS card_id, c.title, c.card_date,
+               (SELECT COUNT(*) FROM steps s WHERE s.card_id = c.id AND s.kind &lt;&gt; 'concept') AS step_count,
+               COUNT(*)                                         AS answered,
+               COUNT(*) FILTER (WHERE l.is_correct IS NOT NULL) AS graded,
+               COUNT(*) FILTER (WHERE l.is_correct)             AS correct
+          FROM (SELECT DISTINCT ON (day, ua.step_id)
+                       (ua.created_at AT TIME ZONE 'Asia/Seoul')::date AS day,
+                       ua.card_id, ua.step_id, ua.is_correct, ua.created_at
+                  FROM user_answers ua
+                 WHERE ua.user_id = CAST(#{userId} AS uuid)
+                   AND ua.created_at &gt;= now() - INTERVAL '400 days'
+                 ORDER BY day, ua.step_id, ua.created_at DESC) l
+          JOIN cards c ON c.id = l.card_id
+         GROUP BY l.day, l.card_id, c.id, c.title, c.card_date
+         ORDER BY l.day DESC, MIN(l.created_at)
+    </select>
 </mapper>
