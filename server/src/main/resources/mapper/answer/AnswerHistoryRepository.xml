@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.answer.AnswerHistoryRepository">
+
+    <resultMap id="pastMap" type="com.moneymate.answer.PastAnswerRow">
+        <constructor>
+            <arg column="step_id" javaType="_long"/>
+            <arg column="kind" javaType="String"/>
+            <arg column="answer_json" javaType="String"/>
+            <arg column="is_correct" javaType="Boolean"/>
+            <arg column="score" javaType="Integer"/>
+            <arg column="rubric_json" javaType="String"/>
+            <arg column="feedback" javaType="String"/>
+            <arg column="graded_by" javaType="String"/>
+            <arg column="key_json" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 단계마다 마지막 답안. 날짜는 KST 로 자른다 (마이페이지 학습 달력과 같은 기준) -->
+    <select id="findPastAnswers" resultMap="pastMap">
+        SELECT p.step_id, p.kind, p.answer_json, p.is_correct, p.score, p.rubric_json, p.feedback,
+               p.graded_by, p.key_json
+          FROM (SELECT DISTINCT ON (ua.step_id)
+                       ua.step_id, s.step_no, s.kind, ua.answer::text AS answer_json, ua.is_correct,
+                       ua.score::int AS score, ua.rubric::text AS rubric_json, ua.feedback, ua.graded_by,
+                       s.answer::text AS key_json
+                  FROM user_answers ua
+                  JOIN steps s ON s.id = ua.step_id
+                 WHERE ua.user_id = CAST(#{userId} AS uuid)
+                   AND ua.card_id = #{cardId}
+                   <if test="date != null">
+                   AND (ua.created_at AT TIME ZONE 'Asia/Seoul')::date = #{date}
+                   </if>
+                 ORDER BY ua.step_id, ua.created_at DESC, ua.id DESC) p
+         ORDER BY p.step_no
+    </select>
+</mapper>

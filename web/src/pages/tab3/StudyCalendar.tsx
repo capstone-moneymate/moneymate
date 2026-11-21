@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
+import { withReview } from '@/lib/review'
 import type { CalendarCard, CalendarDay } from '@/types/causalMap'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -195,7 +196,7 @@ interface DayCardsProps {
   onClose: () => void
 }
 
-/** 고른 날에 푼 카드뉴스. 카드뉴스 다시 보기 / 퀴즈 다시 풀기 */
+/** 고른 날에 푼 카드뉴스. 풀었던 내용 보기(그날 답 그대로) / 퀴즈 다시 풀기(처음 상태) */
 const DayCards = ({ date, cards, onClose }: DayCardsProps) => {
   return (
     <div>
@@ -219,14 +220,15 @@ const DayCards = ({ date, cards, onClose }: DayCardsProps) => {
               {c.answered < c.stepCount && ` · ${c.stepCount - c.answered}개는 안 풀었어요`}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
+              {/* 둘 다 카드뉴스부터 시작해 퀴즈로 이어진다. 보기는 그날 낸 답·채점 결과를 채워서, 다시 풀기는 처음 상태로 */}
               <Link
-                to={`/news/${c.cardId}`}
+                to={withReview(`/news/${c.cardId}`, date)}
                 className="rounded-2xl bg-[#e6eafa] py-2.5 text-center text-[#3a4a99]"
               >
-                카드뉴스 보기
+                풀었던 내용 보기
               </Link>
               <Link
-                to={`/news/${c.cardId}/learn`}
+                to={`/news/${c.cardId}`}
                 className="rounded-2xl bg-[#5468b8] py-2.5 text-center text-white"
               >
                 퀴즈 다시 풀기

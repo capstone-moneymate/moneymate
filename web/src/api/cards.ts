@@ -3,9 +3,16 @@ import axios from 'axios'
 import { apiClient, DailyLimitError, USE_MOCK } from '@/api/client'
 import { answerMocks, cardDetailMocks } from '@/api/mocks/cardDetail'
 import { mockJudgement } from '@/api/mocks/judgement'
+import { pastAnswerMocks } from '@/api/mocks/pastAnswers'
 import { NEWS_HOME_KEY } from '@/api/news'
 import { getUserId } from '@/lib/userId'
-import type { AnswerInput, AnswerResult, CardDetail, JudgementGrade } from '@/types/card'
+import type {
+  AnswerInput,
+  AnswerResult,
+  CardDetail,
+  JudgementGrade,
+  PastAnswer,
+} from '@/types/card'
 
 /**
  * 카드 한 건(카드뉴스 + 단계): C의 GET /api/cards/{id} (docs/modules/news_api.md).
@@ -98,5 +105,27 @@ export const useSubmitAnswer = () => {
   return useMutation({
     mutationFn: submitAnswer,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: NEWS_HOME_KEY }),
+  })
+}
+
+/**
+ * 탭3 "풀었던 내용 보기": 이 카드에서 date(KST)에 낸 답과 채점 결과 (C의 GET /api/answers/history).
+ * 같은 단계를 그날 여러 번 냈으면 마지막 답. 그날 안 푼 단계는 목록에 없다.
+ */
+const fetchPastAnswers = async (cardId: string, date: string): Promise<PastAnswer[]> => {
+  if (USE_MOCK) return pastAnswerMocks[cardId] ?? []
+  const { data } = await apiClient.get<PastAnswer[]>('/api/answers/history', {
+    params: { userId: getUserId(), cardId, date },
+  })
+  return data
+}
+
+/** date 가 없으면(평소 풀기) 부르지 않는다. 다시 풀면 기록이 바뀌므로 들어올 때마다 다시 읽는다 */
+export const usePastAnswers = (cardId: string, date: string | null) => {
+  return useQuery({
+    queryKey: ['answers', 'history', cardId, date],
+    queryFn: () => fetchPastAnswers(cardId, date ?? ''),
+    enabled: date !== null,
+    staleTime: 0,
   })
 }

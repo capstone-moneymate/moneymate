@@ -23,3 +23,10 @@ export const AnswerFeedback = ({ result, correctText }: AnswerFeedbackProps) => 
     </div>
   )
 }
+
+/** 풀었던 내용 보기에서 그날 이 문제를 안 풀었을 때 */
+export const NotAnswered = () => (
+  <p role="status" className="mt-5 rounded-3xl bg-slate-50 px-5 py-4 text-sm text-slate-500">
+    이 날은 이 문제를 풀지 않았어요.
+  </p>
+)

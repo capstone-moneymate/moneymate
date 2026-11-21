@@ -139,3 +139,18 @@ export interface AnswerResult {
   correct?: number | string[]
   grade?: JudgementGrade
 }
+
+/**
+ * 지난번에 낸 답 (GET /api/answers/history). 판단해보기는 고른 선택지 문장만 저장돼 있어 번호 대신 문장이 온다.
+ */
+export type PastInput =
+  | { kind: 'quiz' | 'chart'; optionIndex: number }
+  | { kind: 'causal_order'; order: string[] }
+  | { kind: 'judgement'; choice: string | null; reason: string | null }
+
+/** "풀었던 내용 보기" 단계 하나: 내가 낸 답 + 그때 채점 결과 */
+export interface PastAnswer {
+  stepId: string
+  input: PastInput
+  result: AnswerResult
+}

@@ -1,14 +1,19 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
+import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { CloseLink } from '@/pages/tab1/CloseLink'
 
-/** 카드뉴스: 파란 화면에서 2~3장을 스토리처럼 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1, UI 시안 02~04) */
+/**
+ * 카드뉴스: 파란 화면에서 2~3장을 스토리처럼 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1, UI 시안 02~04)
+ * ?review=날짜(탭3 풀었던 내용 보기)면 학습 화면에도 그대로 넘겨 그날 낸 답을 보여 준다
+ */
 export const CardNewsPage = () => {
   const { cardId = '' } = useParams()
   const navigate = useNavigate()
   const { data: card, isPending, isError } = useCard(cardId)
   const [index, setIndex] = useState(0)
+  const review = useReviewDate()
 
   if (isPending) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
   if (isError) {
@@ -40,7 +45,13 @@ export const CardNewsPage = () => {
 
       <div className="mt-6 flex items-center justify-between">
         <span className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold">
-          {[card.theme, `카드 ${index + 1} / ${total}`].filter(Boolean).join(' · ')}
+          {[
+            review && `풀었던 내용 · ${reviewLabel(review)}`,
+            card.theme,
+            `카드 ${index + 1} / ${total}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
         <CloseLink tone="onBlue" />
       </div>
@@ -67,10 +78,16 @@ export const CardNewsPage = () => {
       <div className="flex flex-col gap-3">
         <button
           type="button"
-          onClick={() => (isLast ? navigate(`/news/${card.id}/learn`) : setIndex(index + 1))}
+          onClick={() =>
+            isLast ? navigate(withReview(`/news/${card.id}/learn`, review)) : setIndex(index + 1)
+          }
           className="text-primary w-full rounded-2xl bg-white py-4 text-base font-bold transition active:scale-[0.99]"
         >
-          {isLast ? '이해했어요, 개념 학습 시작 ›' : '다음 카드 ›'}
+          {isLast
+            ? review
+              ? '풀었던 퀴즈 보기 ›'
+              : '이해했어요, 개념 학습 시작 ›'
+            : '다음 카드 ›'}
         </button>
         {index > 0 && (
           <button
