@@ -45,4 +45,25 @@ public final class MypageDtos {
     public record Summary(int streakDays, boolean studiedToday, int conceptCount, Double accuracy,
                           int gradedCount, int judgementCount) {
     }
+
+    /**
+     * 학습 달력의 카드 하나. 그날 마지막으로 낸 답안 기준.
+     *
+     * @param cardDate  카드가 노출된 날 (yyyy-MM-dd)
+     * @param stepCount 문제 수 (concept 단계 제외)
+     * @param answered  그날 답한 문제 수
+     * @param graded    채점된 문제 수
+     * @param correct   맞은 문제 수
+     */
+    public record CalendarCard(String cardId, String title, String cardDate, int stepCount,
+                               int answered, int graded, int correct) {
+    }
+
+    /** 문제를 푼 하루 (KST, yyyy-MM-dd). 카드는 그날 처음 푼 순서 */
+    public record CalendarDay(String date, List<CalendarCard> cards) {
+    }
+
+    /** GET /api/mypage/calendar. 최근 400일, 최근 날짜 먼저. 기록이 없으면 빈 배열 */
+    public record Calendar(List<CalendarDay> days) {
+    }
 }

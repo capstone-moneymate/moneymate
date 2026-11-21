@@ -26,4 +26,7 @@ public interface MypageRepository {
 
     /** 채점된 답안 수·맞은 수·판단해보기 제출 수. 기록이 없으면 0, 0, 0. */
     AnswerCounts countAnswers(@Param("userId") String userId);
+
+    /** 날짜(KST)·카드별로 푼 문제 수와 맞은 수. 최근 400일, 최근 날짜 먼저 → 그날 처음 푼 순서. */
+    List<CalendarRow> findCalendarRows(@Param("userId") String userId);
 }
