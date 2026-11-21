@@ -70,3 +70,30 @@ export interface Summary {
   /** 판단해보기 제출 수 */
   judgementCount: number
 }
+
+/** 학습 달력의 카드 하나. 숫자는 그날 마지막으로 낸 답안 기준 (서버가 센 값) */
+export interface CalendarCard {
+  cardId: string
+  title: string
+  /** 카드가 노출된 날 (yyyy-MM-dd). 지난 뉴스를 풀었으면 푼 날과 다르다 */
+  cardDate: string
+  /** 문제 수 (개념 설명 단계 제외) */
+  stepCount: number
+  /** 그날 답한 문제 수 */
+  answered: number
+  /** 채점된 문제 수 */
+  graded: number
+  /** 맞은 문제 수 */
+  correct: number
+}
+
+/** 문제를 푼 하루 (KST yyyy-MM-dd). 카드는 그날 처음 푼 순서 */
+export interface CalendarDay {
+  date: string
+  cards: CalendarCard[]
+}
+
+/** GET /api/mypage/calendar. 최근 400일, 최근 날짜 먼저 */
+export interface StudyCalendar {
+  days: CalendarDay[]
+}
