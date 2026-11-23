@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
-import type { AnswerResult, ChartStep as ChartStepData, PastAnswer, QuizStep } from '@/types/card'
+import { useAnswerMeter } from '@/lib/answerMeter'
+import type {
+  AnswerResult,
+  ChartStep as ChartStepData,
+  Confidence,
+  PastAnswer,
+  QuizStep,
+} from '@/types/card'
 import { AnswerFeedback, NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
 import { ChartStep } from '@/pages/tab1/steps/ChartStep'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
@@ -19,27 +26,44 @@ interface QuizViewProps {
 
 const LETTERS = 'ABCDEFGH'
 
-/** 간단 퀴즈와 차트 읽기(보기 고르기). 고르고 정답 확인 → 해설 → 다음 (UI 시안 09~11, 14) */
+/**
+ * 간단 퀴즈와 차트 읽기(보기 고르기). 고르고 [애매해요]/[확신해요] → 정답·해설 → 다음 (UI 시안 09~11, 14).
+ * 확신은 정답을 보기 전에 누른다. 응답 시간과 답을 바꾼 횟수는 화면이 재서 같이 보낸다
+ */
 export const QuizView = ({ step, onNext, quizNo, past }: QuizViewProps) => {
   const reviewing = past !== undefined
   const pastPick =
     past?.input.kind === 'quiz' || past?.input.kind === 'chart' ? past.input.optionIndex : null
   const [picked, setPicked] = useState<number | null>(pastPick)
   const submit = useSubmitAnswer()
+  const meter = useAnswerMeter()
   const result = reviewing ? past?.result : submit.data
 
-  const check = () => {
+  const pick = (i: number) => {
+    if (picked !== null && picked !== i) meter.changed()
+    setPicked(i)
+  }
+
+  const check = (confidence: Confidence) => {
     if (picked === null) return
-    submit.mutate({ stepId: step.id, answer: { kind: step.kind, optionIndex: picked } })
+    submit.mutate({
+      stepId: step.id,
+      answer: { kind: step.kind, optionIndex: picked },
+      meta: meter.read(confidence),
+    })
   }
 
   return (
     <StepFrame
       badge={quizNo && quizNo.total > 1 ? `퀴즈 ${quizNo.no} / ${quizNo.total}` : undefined}
       heading={step.question}
-      buttonLabel={result || reviewing ? '다음 ›' : '정답 확인'}
-      buttonDisabled={!reviewing && (picked === null || submit.isPending)}
-      onButton={() => (reviewing ? onNext(past?.result) : result ? onNext(result) : check())}
+      buttonLabel="다음 ›"
+      onButton={() => onNext(reviewing ? past?.result : result)}
+      confidence={
+        result || reviewing
+          ? undefined
+          : { disabled: picked === null || submit.isPending, onPick: check }
+      }
     >
       {step.kind === 'chart' && <ChartStep chart={step.chart} ticker={step.ticker} />}
       <ul className="flex flex-col gap-3">
@@ -48,7 +72,7 @@ export const QuizView = ({ step, onNext, quizNo, past }: QuizViewProps) => {
             <button
               type="button"
               disabled={!!result || reviewing}
-              onClick={() => setPicked(i)}
+              onClick={() => pick(i)}
               className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left font-semibold transition ${optionClass(i, picked, result)}`}
             >
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-600">

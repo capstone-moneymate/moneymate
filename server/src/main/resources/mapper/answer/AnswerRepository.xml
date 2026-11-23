@@ -37,7 +37,9 @@
     </insert>
 
     <insert id="insertAnswer">
-        INSERT INTO user_answers (user_id, card_id, step_id, answer, is_correct, graded_by)
-        VALUES (CAST(#{userId} AS uuid), #{cardId}, #{stepId}, CAST(#{answerJson} AS jsonb), #{isCorrect}, 'code')
+        INSERT INTO user_answers (user_id, card_id, step_id, answer, is_correct, graded_by,
+                                  confidence, response_ms, answer_changes)
+        VALUES (CAST(#{userId} AS uuid), #{cardId}, #{stepId}, CAST(#{answerJson} AS jsonb), #{isCorrect}, 'code',
+                #{confidence, jdbcType=SMALLINT}, #{responseMs, jdbcType=INTEGER}, #{answerChanges, jdbcType=INTEGER})
     </insert>
 </mapper>

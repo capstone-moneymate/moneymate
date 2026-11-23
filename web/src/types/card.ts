@@ -140,6 +140,19 @@ export interface AnswerResult {
   grade?: JudgementGrade
 }
 
+/** 정답을 보기 전에 누르는 확신: 1 애매해요, 2 확신해요 (판단해보기는 없음) */
+export type Confidence = 1 | 2
+
+/**
+ * 답과 함께 보내는 풀이 기록. 채점에는 쓰지 않고 저장만 한다 (학습자 상태용).
+ * responseMs: 문제가 화면에 뜬 순간 ~ 확신 버튼을 누른 순간. answerChanges: 내기 전에 답을 바꾼 횟수
+ */
+export interface AnswerMeta {
+  confidence: Confidence
+  responseMs: number
+  answerChanges: number
+}
+
 /**
  * 지난번에 낸 답 (GET /api/answers/history). 판단해보기는 고른 선택지 문장만 저장돼 있어 번호 대신 문장이 온다.
  */

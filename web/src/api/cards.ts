@@ -8,6 +8,7 @@ import { NEWS_HOME_KEY } from '@/api/news'
 import { getUserId } from '@/lib/userId'
 import type {
   AnswerInput,
+  AnswerMeta,
   AnswerResult,
   CardDetail,
   JudgementGrade,
@@ -71,13 +72,16 @@ const submitJudgement = async (
  * 답안 제출.
  * - 판단해보기: A의 /api/judgement (루브릭 채점). VITE_USE_MOCK 이 'false' 가 아니면 목 채점
  * - 퀴즈·인과 순서·차트: C의 /api/answers (코드 채점, docs/modules/answers_api.md). 목이면 목 정답
+ *   meta(확신·응답 시간·답 변경 횟수)는 채점에 쓰이지 않고 답과 함께 저장된다
  */
 const submitAnswer = async ({
   stepId,
   answer,
+  meta,
 }: {
   stepId: string
   answer: AnswerInput
+  meta?: AnswerMeta
 }): Promise<AnswerResult> => {
   if (answer.kind === 'judgement') {
     return { stepId, isCorrect: null, grade: await submitJudgement(stepId, answer) }
@@ -87,6 +91,7 @@ const submitAnswer = async ({
       userId: getUserId(),
       stepId: Number(stepId),
       answer,
+      ...meta,
     })
     return data
   }

@@ -1,0 +1,77 @@
+package com.moneymate.learning;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.moneymate.judgement.JudgeProperties;
+import java.time.Duration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
+/**
+ * 학습자 상태(BKT 알 확률) 갱신 요청 (사람2, docs/추가구현_계획.md 2-3).
+ * 계산과 저장은 채점 서버의 POST /learner/answer (worker/learner/api.py)가 한다. 여기서는 채점 결과를 넘기기만 한다.
+ * 주소는 판단 채점과 같은 서버라 moneymate.judge.url 을 같이 쓴다.
+ *
+ * 실패해도 예외를 올리지 않는다. 알 확률을 못 고쳤다고 채점 응답이 깨지면 안 되기 때문이다 (로그만 남긴다).
+ */
+@Component
+public class LearnerStateClient {
+
+    private static final Logger log = LoggerFactory.getLogger(LearnerStateClient.class);
+
+    private final RestClient restClient;
+
+    @Autowired
+    public LearnerStateClient(JudgeProperties props) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        // LLM 을 부르지 않는 짧은 요청이라 판단 채점(30초)보다 훨씬 짧게 기다린다
+        factory.setConnectTimeout(Duration.ofSeconds(2));
+        factory.setReadTimeout(Duration.ofSeconds(3));
+        this.restClient = RestClient.builder().baseUrl(props.url()).requestFactory(factory).build();
+    }
+
+    /** 테스트용: 가짜 서버에 묶은 RestClient 를 받는다. */
+    LearnerStateClient(RestClient restClient) {
+        this.restClient = restClient;
+    }
+
+    /**
+     * 본 문제 답 하나를 그 단계의 개념마다 알 확률에 반영한다.
+     *
+     * @param conceptIds 그 단계의 인과 사전 개념 id (steps.content.concept_ids). 비어 있으면 부르지 않는다
+     * @param kind       quiz / chart / causal_order
+     * @param count      찍어서 맞힐 확률 계산용: quiz·chart 는 보기 수, causal_order 는 놓을 개념 수
+     * @return 반영했으면 true. 개념이 없거나 채점 서버가 실패하면 false
+     */
+    public boolean recordAnswer(String userId, String[] conceptIds, boolean correct, String kind, int count) {
+        if (conceptIds == null || conceptIds.length == 0 || count < 1) {
+            return false;
+        }
+        try {
+            restClient.post()
+                    .uri("/learner/answer")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new Body(userId, conceptIds, correct, kind, count))
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (RestClientException e) {
+            log.warn("알 확률을 고치지 못했어요 (userId={}, kind={}): {}", userId, kind, e.getMessage());
+            return false;
+        }
+    }
+
+    /** worker/learner/api.py 의 AnswerIn. */
+    record Body(
+            @JsonProperty("user_id") String userId,
+            @JsonProperty("concept_ids") String[] conceptIds,
+            boolean correct,
+            String kind,
+            int count) {
+    }
+}

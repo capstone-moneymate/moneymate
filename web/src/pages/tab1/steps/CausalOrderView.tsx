@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
+import { useAnswerMeter } from '@/lib/answerMeter'
 import type { AnswerResult, CausalOrderStep, PastAnswer } from '@/types/card'
 import { AnswerFeedback, NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
@@ -13,7 +14,7 @@ interface CausalOrderViewProps {
 
 /**
  * 인과 순서: 개념 칸을 원인부터 차례대로 누르면 번호가 붙는다 (UI 시안 12·13).
- * 정답은 사전 경로(서버)와 비교
+ * 다 놓으면 [애매해요]/[확신해요]로 낸다 (확신은 정답을 보기 전에). 정답은 사전 경로(서버)와 비교
  */
 export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) => {
   const reviewing = past !== undefined
@@ -21,26 +22,43 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
     past?.input.kind === 'causal_order' ? past.input.order : [],
   )
   const submit = useSubmitAnswer()
+  const meter = useAnswerMeter()
   const result = reviewing ? past?.result : submit.data
   const labelOf = (id: string) => step.items.find((item) => item.conceptId === id)?.label ?? id
   const full = order.length === step.items.length
 
   const toggle = (id: string) => {
     if (result || reviewing) return
-    setOrder(order.includes(id) ? order.filter((x) => x !== id) : [...order, id])
+    if (order.includes(id)) {
+      meter.changed() // 놓았던 카드를 빼면 답을 바꾼 것으로 센다
+      setOrder(order.filter((x) => x !== id))
+    } else {
+      setOrder([...order, id])
+    }
+  }
+
+  const reset = () => {
+    meter.changed()
+    setOrder([])
   }
 
   return (
     <StepFrame
       heading={step.question}
-      buttonLabel={result || reviewing ? '다음 ›' : '정답 확인'}
-      buttonDisabled={!reviewing && (!full || submit.isPending)}
-      onButton={() =>
-        reviewing
-          ? onNext(past?.result)
-          : result
-            ? onNext(result)
-            : submit.mutate({ stepId: step.id, answer: { kind: 'causal_order', order } })
+      buttonLabel="다음 ›"
+      onButton={() => onNext(reviewing ? past?.result : result)}
+      confidence={
+        result || reviewing
+          ? undefined
+          : {
+              disabled: !full || submit.isPending,
+              onPick: (confidence) =>
+                submit.mutate({
+                  stepId: step.id,
+                  answer: { kind: 'causal_order', order },
+                  meta: meter.read(confidence),
+                }),
+            }
       }
     >
       <p className="text-sm text-slate-500">
@@ -77,7 +95,7 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
       {!result && !reviewing && order.length > 0 && (
         <button
           type="button"
-          onClick={() => setOrder([])}
+          onClick={reset}
           className="mt-4 min-h-11 text-sm text-slate-500 underline underline-offset-4"
         >
           다시 고르기
