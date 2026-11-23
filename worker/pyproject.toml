@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "httpx>=0.27"]  # httpx: FastAPI TestClient
+embed = ["sentence-transformers>=3.0"]  # 개념 지도 ③ 로컬 임베딩 (사람1, concepts/term_groups.py). torch 가 같이 깔려 무거워서 따로 둔다
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
