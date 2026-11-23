@@ -16,7 +16,7 @@ public interface AnswerRepository {
 
     /**
      * 코드 채점 답안 1개 저장 (graded_by = 'code'). answerJson 은 사용자가 낸 답 JSON 문자열.
-     * confidence(1 애매, 2 확신)·responseMs·answerChanges 는 화면이 안 보냈으면 null (009).
+     * confidence(1 헷갈려요, 2 확실해요)·responseMs·answerChanges 는 화면이 안 보냈으면 null (009).
      */
     void insertAnswer(@Param("userId") String userId,
                       @Param("cardId") long cardId,

@@ -15,7 +15,7 @@ import java.util.UUID;
  *
  * 아래 셋은 학습자 상태용이다 (docs/추가구현_계획.md 2-1, 2-2). 채점에는 쓰지 않고 저장만 한다. 안 보내면 null.
  *
- * @param confidence    정답을 보기 전에 누른 확신: 1 애매해요, 2 확신해요
+ * @param confidence    정답을 보기 전에 누른 확신: 1 헷갈려요, 2 확실해요
  * @param responseMs    문제가 화면에 뜬 순간부터 낼 때까지 (ms, 화면이 잰다)
  * @param answerChanges 내기 전에 답을 바꾼 횟수
  */

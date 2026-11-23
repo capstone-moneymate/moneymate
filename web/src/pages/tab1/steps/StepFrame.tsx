@@ -12,7 +12,7 @@ interface StepFrameProps {
   buttonDisabled?: boolean
   onButton: () => void
   /**
-   * 있으면 아래 버튼 자리에 [애매해요] [확신해요]를 대신 보여 준다 (답을 고른 뒤, 정답을 보기 전).
+   * 있으면 아래 버튼 자리에 [헷갈려요] [확실해요]를 대신 보여 준다 (답을 고른 뒤, 정답을 보기 전).
    * 누르면 그 확신과 함께 답을 낸다. 누르는 횟수는 [정답 확인] 하나일 때와 같다
    */
   confidence?: ConfidenceProps
@@ -70,7 +70,7 @@ const CONFIDENCE_BASE =
 const ConfidenceButtons = ({ disabled, onPick }: ConfidenceProps) => (
   <div className="mt-6">
     <p className="mb-2 text-center text-sm text-slate-500">
-      얼마나 확신하나요? 누르면 정답을 확인해요
+      이 답, 확실한가요? 누르면 정답을 확인해요
     </p>
     <div
       className="grid grid-cols-2 gap-2.5"
@@ -83,7 +83,7 @@ const ConfidenceButtons = ({ disabled, onPick }: ConfidenceProps) => (
         onClick={() => onPick(1)}
         className={`border-primary text-primary bg-white ${CONFIDENCE_BASE}`}
       >
-        애매해요
+        헷갈려요
       </button>
       <button
         type="button"
@@ -91,7 +91,7 @@ const ConfidenceButtons = ({ disabled, onPick }: ConfidenceProps) => (
         onClick={() => onPick(2)}
         className={`border-primary bg-primary text-white ${CONFIDENCE_BASE}`}
       >
-        확신해요
+        확실해요
       </button>
     </div>
   </div>

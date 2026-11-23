@@ -27,7 +27,7 @@ interface QuizViewProps {
 const LETTERS = 'ABCDEFGH'
 
 /**
- * 간단 퀴즈와 차트 읽기(보기 고르기). 고르고 [애매해요]/[확신해요] → 정답·해설 → 다음 (UI 시안 09~11, 14).
+ * 간단 퀴즈와 차트 읽기(보기 고르기). 고르고 [헷갈려요]/[확실해요] → 정답·해설 → 다음 (UI 시안 09~11, 14).
  * 확신은 정답을 보기 전에 누른다. 응답 시간과 답을 바꾼 횟수는 화면이 재서 같이 보낸다
  */
 export const QuizView = ({ step, onNext, quizNo, past }: QuizViewProps) => {

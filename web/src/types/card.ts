@@ -140,7 +140,7 @@ export interface AnswerResult {
   grade?: JudgementGrade
 }
 
-/** 정답을 보기 전에 누르는 확신: 1 애매해요, 2 확신해요 (판단해보기는 없음) */
+/** 정답을 보기 전에 누르는 확신: 1 헷갈려요, 2 확실해요 (판단해보기는 없음) */
 export type Confidence = 1 | 2
 
 /**

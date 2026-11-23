@@ -17,7 +17,7 @@
 - **테스트**: `AnswerHistoryServiceTest` 5개(퀴즈 고른 보기·정답, 인과 순서, 판단 점수·루브릭·피드백, 채점 못 한 판단, 빈 기록). SQL은 2026-11-21 로컬 PostgreSQL에서 트랜잭션 안에 같은 단계 답 3개(KST 11/20 두 번, 11/21 한 번)와 판단 답 1개를 넣고 date=11/20으로 돌려 11/20의 나중 답(보기 1)과 판단 줄만 나오는 것을 확인 후 ROLLBACK.
 
 ## 확신·응답 시간·답 변경 저장 + 알 확률 갱신 (2026-11-24, 추가 구현 2-1·2-2·2-3)
-- **입력 추가**: `{userId, stepId, answer, confidence, responseMs, answerChanges}`. `confidence`는 정답을 보기 전에 누른 확신(1 애매해요, 2 확신해요), `responseMs`는 문제가 화면에 뜬 순간부터 낼 때까지, `answerChanges`는 내기 전에 답을 바꾼 횟수. 셋 다 화면이 재서 보내고, 안 보내도 된다(null 저장). `confidence`가 1·2가 아니거나 음수가 오면 400.
+- **입력 추가**: `{userId, stepId, answer, confidence, responseMs, answerChanges}`. `confidence`는 정답을 보기 전에 누른 확신(1 헷갈려요, 2 확실해요), `responseMs`는 문제가 화면에 뜬 순간부터 낼 때까지, `answerChanges`는 내기 전에 답을 바꾼 횟수. 셋 다 화면이 재서 보내고, 안 보내도 된다(null 저장). `confidence`가 1·2가 아니거나 음수가 오면 400.
 - **하는 일 추가**: 채점에는 쓰지 않고 `user_answers`의 `confidence`·`response_ms`·`answer_changes`(009)에 저장만 한다. 답안이 커밋된 뒤 `LearnerStateClient`로 채점 서버 `/learner/answer`를 불러 그 단계 개념의 알 확률을 고친다 (`docs/modules/learner_api.md`). 실패해도 채점 응답은 같다.
 - **주의할 점**: `attempt_no`는 아직 안 넣는다(기본 1). 다시 풀기를 시도별로 나누는 것은 계획 1-4에서 한다. 기존 `user_concepts`(correct, total) 기록은 그대로 한다.
 - **테스트**: `AnswerServiceTest`에 4개 추가(확신·시간 저장, 퀴즈는 보기 수·인과 순서는 개념 수를 넘김, 잘못된 답은 안 넘김).

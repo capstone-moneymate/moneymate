@@ -14,7 +14,7 @@ interface CausalOrderViewProps {
 
 /**
  * 인과 순서: 개념 칸을 원인부터 차례대로 누르면 번호가 붙는다 (UI 시안 12·13).
- * 다 놓으면 [애매해요]/[확신해요]로 낸다 (확신은 정답을 보기 전에). 정답은 사전 경로(서버)와 비교
+ * 다 놓으면 [헷갈려요]/[확실해요]로 낸다 (확신은 정답을 보기 전에). 정답은 사전 경로(서버)와 비교
  */
 export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) => {
   const reviewing = past !== undefined
