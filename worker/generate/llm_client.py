@@ -30,11 +30,13 @@ KST = timezone(timedelta(hours=9))  # 한국은 서머타임이 없어 고정 +9
 
 HAIKU = "claude-haiku-5-5"  # 분류·매칭
 SONNET = "claude-sonnet-5-5"  # 출제·채점
+OPUS = "claude-opus-5-5"  # 튜터 에이전트 (사람1, #201). Sonnet 과 비교해 고른 근거: scripts/measure_tutor_latency.py
 
-# USD per 1M tokens (2026-10 기준). long: 입력이 100K 토큰을 넘을 때 단가
+# USD per 1M tokens (2026-10 기준, Opus 는 2026-11). long: 입력이 100K 토큰을 넘을 때 단가
 PRICES = {
     HAIKU: {"input": 0.10, "output": 0.50, "long": {"input": 0.50, "output": 2.50}},
     SONNET: {"input": 2.00, "output": 10.00},
+    OPUS: {"input": 4.00, "output": 20.00},
 }
 LONG_CONTEXT_TOKENS = 100_000
 # 프롬프트 캐시 단가 = 입력 단가 × 배수 (쓰기 5분 캐시 1.25배, 읽기 0.1배)
