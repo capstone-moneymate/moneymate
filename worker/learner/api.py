@@ -5,19 +5,24 @@ Spring 이 본 문제(퀴즈·차트 읽기·인과 순서)를 채점한 뒤 여
 - GET  /learner/mastery/{user_id} 개념별 알 확률 (learner/state.get_mastery)
 - GET  /learner/reviews/{user_id} 오늘 복습할 개념 (learner/state.due_reviews)
 - GET  /learner/calibration/{user_id} 확신 보정 2 × 2 표와 지표 (learner/state.calibration_report)
+- POST /learner/review/quiz      오늘 복습할 개념의 새 문제 하나 (learner/review.prepare·save, 출제는 tutor/quiz.py)
+- POST /learner/review/answer    복습 문제의 답을 채점하고 알 확률·복습 일정에 반영 (learner/review.answer)
 
 찍어서 맞힐 확률은 문제 형식에서 여기서 계산한다 (guess_for_step). Spring 은 형식과 개수만 보낸다.
-채점은 하지 않는다. 정답 여부는 채점한 쪽(Spring)이 넘긴다.
+본 문제는 채점하지 않는다. 정답 여부는 채점한 쪽(Spring)이 넘긴다. 복습 문제만 여기서 내고 채점한다 (정답을 여기서 보관하므로).
 """
+import logging
 import math
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from learner import state
+from learner import review, state
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/learner", tags=["learner"])
 
@@ -98,6 +103,38 @@ class CalibrationOut(BaseModel):
     sure_wrong_concepts: list[str] = Field(description="확실해요라고 했는데 틀렸고 아직 다시 맞히지 못한 개념")
 
 
+class ReviewQuizIn(BaseModel):
+    user_id: UUID
+    node_id: int = Field(description="복습할 개념 (GET /learner/reviews 의 node_id)")
+
+
+class ReviewQuizOut(BaseModel):
+    quiz_id: int
+    node_id: int
+    concept: str
+    kind: str = Field(description="용어 뜻 / 틀린 설명 / O/X")
+    content: dict = Field(description="화면용. 보기 고르기는 {question, options}, O/X 는 {statement, options}. 정답 없음")
+    guess_p: float = Field(description="찍어서 맞힐 확률 (코드 계산)")
+
+
+class ReviewAnswerIn(BaseModel):
+    user_id: UUID
+    quiz_id: int
+    answer: int | list[int] = Field(description="고른 보기 번호 (0부터)")
+    confidence: Literal[1, 2] | None = Field(default=None, description="1 헷갈려요, 2 확실해요")
+    response_ms: int | None = Field(default=None, ge=0)
+    answer_changes: int | None = Field(default=None, ge=0)
+
+
+class ReviewAnswerOut(BaseModel):
+    correct: bool
+    key: int | list[int] = Field(description="정답 보기 번호")
+    explanation: str
+    concept: str
+    p_know: float = Field(description="반영한 뒤의 알 확률")
+    due_at: datetime = Field(description="다음 복습일")
+
+
 def _conn():
     # psycopg 를 여기서 불러온다. judge_api 를 띄우는 것만으로는 DB 가 필요 없게 (채점 테스트는 DB 없이 돈다)
     from db import get_conn
@@ -131,3 +168,43 @@ def read_reviews(user_id: UUID) -> ReviewsOut:
 def read_calibration(user_id: UUID) -> CalibrationOut:
     with _conn() as conn:
         return CalibrationOut(**state.calibration_report(conn, str(user_id)))
+
+
+def make_quiz(kind: str, concept: str, desc: str):
+    """복습 문제 하나를 만든다 (LLM 호출). 테스트는 이 함수를 바꿔 끼운다."""
+    from tutor import quiz as qz   # 여기서 불러온다: 학습자 상태만 쓰는 요청은 LLM 모듈이 필요 없게
+
+    return qz.generate(kind, concept, desc)
+
+
+@router.post("/review/quiz", response_model=ReviewQuizOut)
+def review_quiz(req: ReviewQuizIn) -> ReviewQuizOut:
+    user = str(req.user_id)
+    with _conn() as conn:
+        try:
+            plan = review.prepare(conn, user, req.node_id)
+        except review.NotDue:
+            raise HTTPException(status_code=409, detail="오늘 복습할 개념이 아니에요.") from None
+    if "pending" in plan:
+        return ReviewQuizOut(**plan["pending"])
+    # LLM 을 부르는 동안에는 DB 연결을 잡고 있지 않는다
+    try:
+        quiz = make_quiz(plan["kind"], plan["concept"], plan["desc"])
+    except Exception as e:  # 모양 검사 실패(QuizError), 월 한도(BudgetExceeded), API 오류
+        log.warning("복습 문제를 만들지 못했어요 (%s, %s): %s", plan["concept"], plan["kind"], e)
+        raise HTTPException(status_code=503, detail="문제를 만들지 못했어요. 잠시 뒤에 다시 해 주세요.") from None
+    with _conn() as conn:
+        return ReviewQuizOut(**review.save(conn, user, req.node_id, quiz))
+
+
+@router.post("/review/answer", response_model=ReviewAnswerOut)
+def review_answer(req: ReviewAnswerIn) -> ReviewAnswerOut:
+    with _conn() as conn:
+        try:
+            return ReviewAnswerOut(**review.answer(
+                conn, str(req.user_id), req.quiz_id, req.answer, req.confidence,
+                response_ms=req.response_ms, answer_changes=req.answer_changes))
+        except review.QuizNotFound:
+            raise HTTPException(status_code=404, detail="없는 문제예요.") from None
+        except review.AlreadyAnswered:
+            raise HTTPException(status_code=409, detail="이미 답한 문제예요.") from None
