@@ -35,8 +35,9 @@ OPUS = "claude-opus-5-5"  # 튜터 에이전트 (사람1, #201). Sonnet 과 비�
 # USD per 1M tokens (2026-10 기준, Opus 는 2026-11). long: 입력이 100K 토큰을 넘을 때 단가
 PRICES = {
     HAIKU: {"input": 0.10, "output": 0.50, "long": {"input": 0.50, "output": 2.50}},
-    SONNET: {"input": 2.00, "output": 10.00},
-    # Opus 5.5 캐시 읽기는 $0.20 / 1M (입력 단가의 0.05배)라 모델별로 둔다 (#204 리뷰)
+    # Sonnet 5.5·Opus 5.5 캐시 읽기는 입력 단가의 0.05배($0.10, $0.20 / 1M)라 모델별로 둔다 (#204 리뷰).
+    # Haiku 5.5 는 0.1배($0.01 / 1M)라 기본값 그대로다. 가격표를 2026-11-24 에 다시 확인했다
+    SONNET: {"input": 2.00, "output": 10.00, "cache_read_mult": 0.05},
     OPUS: {"input": 4.00, "output": 20.00, "cache_read_mult": 0.05},
 }
 LONG_CONTEXT_TOKENS = 100_000
