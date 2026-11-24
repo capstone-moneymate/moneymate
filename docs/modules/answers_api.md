@@ -19,5 +19,11 @@
 ## 확신·응답 시간·답 변경 저장 + 알 확률 갱신 (2026-11-24, 추가 구현 2-1·2-2·2-3)
 - **입력 추가**: `{userId, stepId, answer, confidence, responseMs, answerChanges}`. `confidence`는 정답을 보기 전에 누른 확신(1 헷갈려요, 2 확실해요), `responseMs`는 문제가 화면에 뜬 순간부터 낼 때까지, `answerChanges`는 내기 전에 답을 바꾼 횟수. 셋 다 화면이 재서 보내고, 안 보내도 된다(null 저장). `confidence`가 1·2가 아니거나 음수가 오면 400.
 - **하는 일 추가**: 채점에는 쓰지 않고 `user_answers`의 `confidence`·`response_ms`·`answer_changes`(009)에 저장만 한다. 답안이 커밋된 뒤 `LearnerStateClient`로 채점 서버 `/learner/answer`를 불러 그 단계 개념의 알 확률을 고친다 (`docs/modules/learner_api.md`). 실패해도 채점 응답은 같다.
-- **주의할 점**: `attempt_no`는 아직 안 넣는다(기본 1). 다시 풀기를 시도별로 나누는 것은 계획 1-4에서 한다. 기존 `user_concepts`(correct, total) 기록은 그대로 한다.
+- **주의할 점**: 기존 `user_concepts`(correct, total) 기록은 그대로 한다. `attempt_no`는 아래 "시도 번호"를 본다.
+
+## 시도 번호 저장 (2026-11-24, 계획 1-4, #215)
+- **하는 일**: `insertAnswer`가 `user_answers.attempt_no`를 SQL 안에서 정한다(`AnswerRepository.xml`의 `attemptNo` 조각). **카드의 첫 번째 답 단계(개념 단계 제외, step_no가 가장 작은 단계)를 다시 내면 새 시도**(그 사용자·카드의 가장 큰 번호 + 1), 다른 단계는 가장 큰 번호 그대로, 기록이 없으면 1. 판단해보기 저장(`JudgementRepository.xml`)도 같은 조각을 쓴다. 화면·요청은 바뀌지 않는다.
+- **왜 서버가 정하나**: 학습 달력의 "퀴즈 다시 풀기"든 과거 뉴스든 어디서 들어오든 1번부터 다시 풀면 새 시도가 되게 하려고. 판단해보기를 고쳐서 다시 내도 첫 단계가 아니라 같은 시도로 남는다.
+- **주의할 점**: 중간에 그만둔 시도에도 번호가 생긴다(1번만 풀고 나가면 그 시도는 1문제). 고스트 비교(2-6)는 "직전에 끝까지 푼 시도"를 고르는 것을 제안했다. 기록이 없을 때 첫 단계가 아닌 단계부터 내면 그 답은 1, 뒤이어 첫 단계를 내면 2가 된다(화면은 순서대로 내서 보통 생기지 않는다). 동시에 같은 카드 첫 단계를 두 번 내면 같은 번호가 될 수 있다(드묾). `GET /api/answers/history`는 아직 날짜 기준이다.
+- **테스트**: `AttemptNoIntegrationTest` 5개 (Testcontainers PostgreSQL 16 + 마이그레이션 + `fixtures/attempts.sql`, Docker 없으면 건너뜀): 처음 풀기 1, 첫 단계 다시 → 2·3, 판단해보기·뒤 단계 다시 내기는 같은 시도, 뒤 단계부터 시작, 사용자·카드별로 따로.
 - **테스트**: `AnswerServiceTest`에 4개 추가(확신·시간 저장, 퀴즈는 보기 수·인과 순서는 개념 수를 넘김, 잘못된 답은 안 넘김).
