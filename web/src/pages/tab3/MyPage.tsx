@@ -1,21 +1,25 @@
 import { ReactFlowProvider } from '@xyflow/react'
 import { Link, useSearchParams } from 'react-router'
 import { useLogout, useMe } from '@/api/auth'
+import { useCalibration, useReviews } from '@/api/learner'
 import { useCalendar, useCausalMap, useSummary } from '@/api/mypage'
 import { OpenSourceNotice } from '@/components/OpenSourceNotice'
 import { CausalMapView } from '@/pages/tab3/CausalMapView'
+import { ConfidenceCard } from '@/pages/tab3/ConfidenceCard'
+import { ReviewQueueCard } from '@/pages/tab3/ReviewQueueCard'
 import { StudyCalendar } from '@/pages/tab3/StudyCalendar'
 
-type View = 'calendar' | 'map'
+type View = 'calendar' | 'learn' | 'map'
 
 /**
  * 탭3 마이페이지 (2026-11-21 시안 tab3_01·02). 위: 프로필(닉네임·연속 학습·푼 카드뉴스 수),
- * 가운데 탭: 달력(문제를 푼 날 표시, 누르면 그날 카드뉴스·퀴즈 다시 보기) / 인과 지도.
- * 고른 탭은 ?view=map 으로 주소에 남겨 뒤로 가기로 돌아와도 그대로다.
+ * 가운데 탭: 달력(문제를 푼 날 표시, 누르면 그날 카드뉴스·퀴즈 다시 보기) / 내 학습(오늘의 복습·확신 점검,
+ * 추가 구현 2-7) / 인과 지도. 고른 탭은 ?view=learn, ?view=map 으로 주소에 남겨 뒤로 가기로 돌아와도 그대로다.
  */
 export const MyPage = () => {
   const [params, setParams] = useSearchParams()
-  const view: View = params.get('view') === 'map' ? 'map' : 'calendar'
+  const viewParam = params.get('view')
+  const view: View = viewParam === 'map' || viewParam === 'learn' ? viewParam : 'calendar'
   const summary = useSummary()
   const calendar = useCalendar()
 
@@ -27,12 +31,18 @@ export const MyPage = () => {
     <div className="h-full overflow-y-auto bg-[#f0f3fc] pb-6">
       <ProfileHeader streakDays={summary.data?.streakDays ?? null} cardCount={cardCount} />
 
-      <div role="tablist" className="grid grid-cols-2 border-y border-[#dfe4f6] bg-white">
+      <div role="tablist" className="grid grid-cols-3 border-y border-[#dfe4f6] bg-white">
         <TabButton
           active={view === 'calendar'}
           label="달력"
           icon={<CalendarIcon />}
           onClick={() => setParams({}, { replace: true })}
+        />
+        <TabButton
+          active={view === 'learn'}
+          label="내 학습"
+          icon={<GaugeIcon />}
+          onClick={() => setParams({ view: 'learn' }, { replace: true })}
         />
         <TabButton
           active={view === 'map'}
@@ -53,6 +63,8 @@ export const MyPage = () => {
               <StudyCalendar days={calendar.data.days} streakDays={summary.data?.streakDays ?? 0} />
             )}
           </>
+        ) : view === 'learn' ? (
+          <LearnPanel />
         ) : (
           <MapPanel />
         )}
@@ -139,6 +151,24 @@ const TabButton = ({ active, label, icon, onClick }: TabButtonProps) => (
   </button>
 )
 
+/** 내 학습 탭: 오늘의 복습(FSRS 복습 목록)과 확신 점검(2 × 2 표). 둘은 따로 불러와서 한쪽이 실패해도 다른 쪽은 보인다 */
+const LearnPanel = () => {
+  const reviews = useReviews()
+  const calibration = useCalibration()
+
+  return (
+    <div className="space-y-5 px-5">
+      {reviews.isPending && <p className="text-sm text-slate-500">불러오는 중</p>}
+      {reviews.isError && <p className="text-sm text-slate-500">오늘의 복습을 불러오지 못했어요</p>}
+      {reviews.data && <ReviewQueueCard queue={reviews.data} />}
+      {calibration.isError && (
+        <p className="text-sm text-slate-500">확신 점검을 불러오지 못했어요</p>
+      )}
+      {calibration.data && <ConfidenceCard calibration={calibration.data} />}
+    </div>
+  )
+}
+
 /** 인과 지도 탭. 지도 자체(범례·접고 펴기·개념 고르기)는 /mypage/map 과 같은 CausalMapView */
 const MapPanel = () => {
   const { data, isPending, isError } = useCausalMap()
@@ -196,5 +226,20 @@ const ShareIcon = () => (
     <circle cx="6" cy="12" r="3" />
     <circle cx="18" cy="19" r="3" />
     <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+  </svg>
+)
+
+const GaugeIcon = () => (
+  <svg
+    width="26"
+    height="26"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden
+  >
+    <path d="M4 18a8 8 0 1 1 16 0" />
+    <path d="m12 18 4-6" />
   </svg>
 )
