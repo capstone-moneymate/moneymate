@@ -1,15 +1,18 @@
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
+import { useGhost } from '@/api/ghost'
 import { SHOW_TAB2 } from '@/components/BottomNav'
 import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, CardDetail } from '@/types/card'
 import { BackButton, CloseLink } from '@/pages/tab1/CloseLink'
+import { GhostCard } from '@/pages/tab1/GhostCard'
 import { AiAnalysis } from '@/pages/tab1/steps/AiAnalysis'
 
 /**
  * 결과 화면 (UI 시안 17): 종합 점수 원, 개념 이해도·적용 판단, 오늘의 학습 요약, AI 피드백
  * → 13F·ETF로 (유형 3은 종목 상세로)
+ * 이 카드를 이전에 끝까지 푼 적이 있으면 지난번과 이번을 나란히 보여 준다 (고스트 비교, 추가 구현 2-6)
  */
 export const ResultPage = () => {
   const { cardId = '' } = useParams()
@@ -17,6 +20,8 @@ export const ResultPage = () => {
   const { data: card } = useCard(cardId)
   const results = useLearnStore((s) => s.results[cardId])
   const review = useReviewDate()
+  // 풀었던 내용 보기는 새로 푼 게 아니라서 비교하지 않는다. 방금 푼 기록이 없으면(새로고침) 부르지 않는다
+  const ghost = useGhost(cardId, 'result', !review && !!results)
 
   if (!card) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
   if (!results) {
@@ -72,6 +77,8 @@ export const ResultPage = () => {
         <Score label="개념 이해도" value={concept} />
         <Score label="적용 판단" value={judgement} />
       </dl>
+
+      {ghost.data?.comparison && <GhostCard card={card} comparison={ghost.data.comparison} />}
 
       <section className="mt-7">
         <h3 className="font-bold text-slate-900">오늘의 학습 요약</h3>
