@@ -4,15 +4,17 @@ proposals.py 의 "2회 일치"를 넓힌 방식이다. 순환 검사와 ready �
 선수 관계는 인과가 아니다. "금리 인상이 주가를 누른다"(인과)가 아니라 "EPS 를 이해하려면 순이익을 먼저 알아야 한다"(배우는 순서)다.
 
 순서
-1. 후보 쌍: 모든 쌍(n²)을 묻지 않는다. 같은 카드에 같이 나온 쌍 + 임베딩이 가까운 이웃 top_k 만
+1. 후보 쌍: 모든 쌍(n²)을 묻지 않는다. 같은 카드에 같이 나온 쌍 + 설명에 서로 이름이 나오는 쌍 + 임베딩이 가까운 이웃 top_k 만
 2. 쌍마다 VOTES(4) 번 독립 호출. 답은 "앞이 먼저 / 뒤가 먼저 / 관계 없음". 호출마다 두 개념의 순서를 번갈아 바꾼다
    (원래 순서 2번 + 바꾼 순서 2번). "앞에 나온 쪽을 고르는" 버릇(위치 편향)만 있으면 정확히 2:2 로 상쇄된다.
    3번이면 원래 순서 2번 + 바꾼 순서 1번이라 버릇만으로 2:1 이 나와 연결이 생긴다 (test_position_bias_*)
 3. 한 방향이 과반(4표 중 3표)이면 선수 관계. votes 는 그 방향 표 수 (1-2 에서 순환을 끊을 때 표가 적은 연결부터 뺀다)
 """
+import csv
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from itertools import combinations
+from pathlib import Path
 
 import numpy as np
 
@@ -35,20 +37,40 @@ class Prereq:
 
 # --- 1. 후보 쌍 ---
 
+def mention_keys(n: ConceptNode) -> set[str]:
+    """설명에서 이 개념을 찾을 때 쓰는 이름들 (띄어쓰기 없이). 대표 이름·별칭, 그리고 '…액'은 '액'을 뗀 것도
+    (매출액 → '매출에서 …'). '…률'은 떼지 않는다: 수익률 → '수익' 이 '수익과 비용'에 잘못 걸린다."""
+    ks = {k.replace(" ", "") for k in (n.label, *n.aliases)}
+    ks |= {k[:-1] for k in ks if len(k) >= 3 and k.endswith("액")}
+    return {k for k in ks if len(k) >= 2}
+
+
+def definition_pairs(nodes: list[ConceptNode]) -> list[tuple[int, int]]:
+    """(i, j) i < j. 한쪽 설명(desc)에 다른 쪽 이름이 나오는 쌍. 방향은 정하지 않고 후보로만 쓴다:
+    설명에 나왔다고 꼭 선수는 아니라서 ('자사주 취득: 자기 주식을 사들이는 것' 은 오히려 반대) 다수결로 다시 묻는다."""
+    keys = [mention_keys(n) for n in nodes]
+    descs = [n.desc.replace(" ", "") for n in nodes]
+    return [(i, j) for i, j in combinations(range(len(nodes)), 2)
+            if any(k in descs[j] for k in keys[i]) or any(k in descs[i] for k in keys[j])]
+
+
 def candidate_pairs(nodes: list[ConceptNode], sim: np.ndarray | None = None, top_k: int = TOP_K,
                     max_pairs: int = MAX_PAIRS) -> list[tuple[int, int]]:
-    """(i, j) i < j. 같은 카드에 같이 나온 쌍을 먼저, 그다음 임베딩 이웃을 유사도 높은 순으로. 상한에서 자른다."""
+    """(i, j) i < j. 같은 카드에 같이 나온 쌍 → 설명에 서로 이름이 나오는 쌍 → 임베딩 이웃(유사도 높은 순). 상한에서 자른다.
+    설명 쌍은 실제 카드에서 임베딩 이웃만으로 놓친 쌍(계약금액 / 매출액 대비 등)을 채운다 (#203)."""
     cards = [set(n.card_ids) for n in nodes]
     co = [(i, j) for i, j in combinations(range(len(nodes)), 2) if cards[i] & cards[j]]
+    seen = set(co)
+    defs = [p for p in definition_pairs(nodes) if p not in seen]
+    seen |= set(defs)
     near: dict[tuple[int, int], float] = {}
     if sim is not None and len(nodes) > 1:
         for i in range(len(nodes)):
             order = [j for j in np.argsort(-sim[i], kind="stable") if j != i][:top_k]
             for j in order:
                 near[(min(i, j), max(i, j))] = float(sim[i, j])
-    seen = set(co)
     extra = sorted((p for p in near if p not in seen), key=lambda p: (-near[p], p))
-    return (co + extra)[:max_pairs]
+    return (co + defs + extra)[:max_pairs]
 
 
 # --- 2. 묻기 ---
@@ -141,3 +163,95 @@ def build_prereqs(nodes: list[ConceptNode], pairs: list[tuple[int, int]], votes:
         else:
             stats["split"] += 1  # 표가 갈림: 방향이 불안정해서 넣지 않는다
     return edges, stats
+
+
+# --- 4. 사람 검토 (#203) ---
+# ④ 결과는 LLM 을 다시 부르지 않아도 지도가 같게 나오도록 prereq_review.csv 에 남긴다 (Git 에 올림).
+# 실제 카드에서 4/4 만장일치인데도 틀린 연결이 있었다 (발행주식 총수 → 자사주 취득 등). 다수결은 답이 안정적이라는 뜻이지
+# 맞다는 뜻이 아니라서, 사람이 한 번 보고 keep / drop 을 적는다. 다수결이 못 잡은 연결은 사람이 add 로 넣는다.
+# 노드 id(c001..)는 지도를 다시 만들면 바뀌므로 대표 이름으로 적는다.
+
+PREREQ_REVIEW_PATH = Path(__file__).with_name("prereq_review.csv")
+PREREQ_REVIEW_FIELDS = ["pre", "post", "decision", "votes", "note"]
+KEEP, DROP, ADD = "keep", "drop", "add"
+HUMAN_VOTES = VOTES + 1  # 사람이 keep / add 한 연결은 순환을 끊을 때 LLM 연결보다 나중에 뺀다
+
+
+@dataclass
+class PrereqRow:
+    pre: str             # 먼저 (대표 이름)
+    post: str            # 다음
+    decision: str = ""   # keep / drop / add / 빈칸: 아직 안 봄 (LLM 결과 그대로 지도에 넣는다)
+    votes: str = ""      # LLM 표 "3/4". add 는 빈칸
+    note: str = ""
+
+
+def load_prereq_review(path: Path = PREREQ_REVIEW_PATH) -> list[PrereqRow]:
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        return [PrereqRow(**{k: (r.get(k) or "").strip() for k in PREREQ_REVIEW_FIELDS}) for r in csv.DictReader(f)]
+
+
+def save_prereq_review(rows: list[PrereqRow], path: Path = PREREQ_REVIEW_PATH) -> Path:
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:  # 엑셀에서 한글이 안 깨지게 BOM
+        w = csv.DictWriter(f, fieldnames=PREREQ_REVIEW_FIELDS)
+        w.writeheader()
+        w.writerows(asdict(r) for r in rows)
+    return path
+
+
+def name_index(nodes: list[ConceptNode]) -> dict[str, int]:
+    """검토 줄의 이름 → 노드 번호. 대표 이름을 먼저, 그다음 별칭 (묶음의 대표 이름이 바뀌어도 예전 이름으로 찾게)."""
+    idx = {n.label: k for k, n in enumerate(nodes)}
+    for k, n in enumerate(nodes):
+        for a in n.aliases:
+            idx.setdefault(a, k)
+    return idx
+
+
+def merge_llm_edges(rows: list[PrereqRow], nodes: list[ConceptNode], edges: list[Prereq]) -> int:
+    """새로 나온 LLM 연결 중 파일에 없는 것을 빈칸(아직 안 봄) 줄로 더한다 (rows 를 바꾼다). 더한 줄 수.
+    이미 있는 줄(사람이 drop 한 것 포함)은 건드리지 않는다: 다시 돌려도 사람이 뺀 연결은 계속 빠진다."""
+    idx = name_index(nodes)
+    have = {(idx.get(r.pre, r.pre), idx.get(r.post, r.post)) for r in rows}  # 예전 이름(별칭)으로 적힌 줄도 같은 연결
+    added = 0
+    for e in edges:
+        if (e.pre, e.post) not in have:
+            rows.append(PrereqRow(nodes[e.pre].label, nodes[e.post].label, votes=f"{e.votes}/{e.total}"))
+            have.add((e.pre, e.post))
+            added += 1
+    return added
+
+
+def reviewed_edges(rows: list[PrereqRow], nodes: list[ConceptNode]
+                   ) -> tuple[list[Prereq], list[PrereqRow], list[tuple[str, str]]]:
+    """검토 파일에서 지도에 넣을 연결. 이름은 대표 이름 → 별칭 순으로 찾는다.
+    (연결, 지도에 없는 이름이 있는 줄, 사람 결정이 엇갈린 쌍) 을 돌려준다.
+    별칭 때문에 여러 줄이 같은 노드 쌍이 될 수 있어서 쌍마다 하나로 합친다 (#219 리뷰):
+      - drop 이 하나라도 있으면 뺀다 (애매하면 뺀다. keep / add 도 같이 있으면 엇갈린 쌍으로 알린다)
+      - keep / add 가 있으면 HUMAN_VOTES, 없으면 빈칸 줄 중 가장 많은 LLM 표
+    쌍마다 연결이 하나라 순환을 끊을 때 약한 중복 줄 때문에 사람이 남긴 연결이 같이 빠지지 않는다."""
+    idx = name_index(nodes)
+    by_pair: dict[tuple[int, int], list[PrereqRow]] = {}
+    missing = []
+    for r in rows:
+        if r.pre not in idx or r.post not in idx:
+            if r.decision != DROP:
+                missing.append(r)
+            continue
+        if idx[r.pre] != idx[r.post]:  # 두 이름이 같은 노드로 묶였으면 연결이 아니다
+            by_pair.setdefault((idx[r.pre], idx[r.post]), []).append(r)
+    out, conflicts = [], []
+    for (pre, post), rs in by_pair.items():
+        decided = {r.decision for r in rs}
+        if DROP in decided:
+            if decided & {KEEP, ADD}:
+                conflicts.append((nodes[pre].label, nodes[post].label))
+            continue
+        if decided & {KEEP, ADD}:
+            votes, total = HUMAN_VOTES, VOTES
+        else:
+            votes, total = max(tuple(int(x) for x in r.votes.split("/")) for r in rs)
+        out.append(Prereq(pre, post, votes, total))
+    return out, missing, conflicts
