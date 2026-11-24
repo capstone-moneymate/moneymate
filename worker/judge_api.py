@@ -8,6 +8,7 @@
 엔드포인트
 - GET  /health  살아 있는지, 지금 어느 채점기를 쓰는지
 - POST /judge   판단해보기 주관식 근거 1개를 채점한다
+- /learner/*    학습자 상태 (사람2, learner/api.py 라우터). 이 부분만 DB 를 읽고 쓴다
 
 채점 함수 진입점
 - generate/judge.py 의 grade() 가 있으면 그것을 부른다 (Claude 루브릭 채점, 실패하면 그 안에서 규칙 채점으로 전환).
@@ -27,6 +28,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from generate import rule_judge
+from learner import api as learner_api
 
 try:
     from generate import judge as _judge  # Claude 루브릭 채점 (#55)
@@ -113,6 +115,7 @@ class Health(BaseModel):
 # ---------- 앱 ----------
 
 app = FastAPI(title="moneymate judge", version="0.1.0")
+app.include_router(learner_api.router)  # /learner/answer, /learner/mastery/{user_id}
 
 
 @app.get("/health", response_model=Health)

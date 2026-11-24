@@ -1,6 +1,7 @@
 package com.moneymate.answer;
 
 import com.moneymate.learning.ConceptResultRecorder;
+import com.moneymate.learning.LearnerStateClient;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -18,6 +21,8 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * 순서: 단계 확인 → kind·입력 확인 → steps.answer 의 정답과 비교 → user_answers 저장(graded_by='code')
  * → 단계 개념별 학습 기록(B의 ConceptResultRecorder, user_concepts) → 결과·해설·정답.
+ * 저장이 끝난(커밋된) 뒤에 채점 서버의 /learner/answer 를 불러 알 확률(BKT)과 복습 일정(FSRS)을 고친다 (추가 구현 2-3·2-4). 실패해도 채점 응답은 그대로 나간다.
+ * 확신(헷갈려요/확실해요)·응답 시간·답 변경 횟수는 채점에 쓰지 않고 답안과 함께 저장만 한다 (2-1).
  * 정답은 compose.py 가 출제 때 코드로 확인해 steps.answer 에 넣은 값이다. 여기서는 비교만 한다.
  * 판단해보기는 루브릭 채점이라 A의 POST /api/judgement 로 보낸다.
  */
@@ -28,14 +33,17 @@ public class AnswerService {
 
     private final AnswerRepository repository;
     private final ConceptResultRecorder recorder;
+    private final LearnerStateClient learner;
     private final boolean includePending;
     private final JsonMapper json = JsonMapper.builder().build();
 
     public AnswerService(AnswerRepository repository,
                          ConceptResultRecorder recorder,
+                         LearnerStateClient learner,
                          @Value("${NEWS_INCLUDE_PENDING:false}") boolean includePending) {
         this.repository = repository;
         this.recorder = recorder;
+        this.learner = learner;
         this.includePending = includePending;
     }
 
@@ -55,6 +63,7 @@ public class AnswerService {
 
         boolean correct;
         Object correctValue;
+        int count;  // 찍어서 맞힐 확률 계산용: 보기 수 또는 놓을 개념 수
         Map<String, Object> saved = new LinkedHashMap<>();
         saved.put("kind", in.kind());
         switch (step.kind()) {
@@ -69,6 +78,7 @@ public class AnswerService {
                 }
                 correctValue = n.intValue();
                 correct = chosen == n.intValue();
+                count = step.optionCount();
                 saved.put("option_index", chosen);
             }
             case "causal_order" -> {
@@ -85,6 +95,7 @@ public class AnswerService {
                 }
                 correctValue = answer;
                 correct = order.equals(answer);
+                count = answer.size();
                 saved.put("order", order);
             }
             default -> throw new AnswerExceptions.BadAnswer("채점하지 않는 단계예요: " + step.kind());
@@ -92,11 +103,31 @@ public class AnswerService {
 
         String userId = req.userId().toString();
         repository.ensureUser(userId);
-        repository.insertAnswer(userId, step.cardId(), step.stepId(), json.writeValueAsString(saved), correct);
+        repository.insertAnswer(userId, step.cardId(), step.stepId(), json.writeValueAsString(saved), correct,
+                req.confidence(), req.responseMs(), req.answerChanges());
         // P17: 탭3 인과 지도·다시 보는 개념용 user_concepts 기록. 답안 저장과 같은 트랜잭션이라 함께 저장되거나 함께 취소된다
         recorder.recordConceptResult(userId, step.conceptIds(), correct);
+        afterCommit(() -> learner.recordAnswer(userId, step.conceptIds(), correct, step.kind(), count,
+                req.confidence(), req.responseMs(), req.answerChanges()));
         String explanation = key.get("explanation") instanceof String s ? s : null;
         return new AnswerResult(String.valueOf(step.stepId()), correct, explanation, correctValue);
+    }
+
+    /**
+     * 답안이 커밋된 뒤에 돌린다. 채점 서버도 users 에 같은 사용자를 넣으려 하므로, 트랜잭션 안에서 부르면
+     * 처음 답을 내는 사용자에서 서로를 기다리게 된다. 트랜잭션 밖(테스트)에서는 바로 돌린다.
+     */
+    private static void afterCommit(Runnable task) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            task.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                task.run();
+            }
+        });
     }
 
     @SuppressWarnings("unchecked")

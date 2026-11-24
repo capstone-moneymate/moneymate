@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moneymate.learning.ConceptResultRecorder;
+import com.moneymate.learning.LearnerStateClient;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,13 +40,15 @@ class AnswerServiceTest {
 
     AnswerRepository repo;
     ConceptResultRecorder recorder;
+    LearnerStateClient learner;
     AnswerService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(AnswerRepository.class);
         recorder = mock(ConceptResultRecorder.class);
-        service = new AnswerService(repo, recorder, false);
+        learner = mock(LearnerStateClient.class);
+        service = new AnswerService(repo, recorder, learner, false);
         for (AnswerStep s : List.of(QUIZ, CHART, ORDER, JUDGE)) {
             when(repo.findStep(s.stepId(), false)).thenReturn(Optional.of(s));
         }
@@ -69,7 +73,8 @@ class AnswerServiceTest {
         assertThat(r.correct()).isEqualTo(2);
         assertThat(r.explanation()).isEqualTo("동결은 금리를 그대로 두는 것이에요.");
         verify(repo).ensureUser(USER.toString());
-        verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":2}", true);
+        verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":2}", true,
+                null, null, null);
     }
 
     @Test
@@ -78,7 +83,8 @@ class AnswerServiceTest {
 
         assertThat(r.isCorrect()).isFalse();
         assertThat(r.correct()).isEqualTo(2);   // 틀렸을 때 화면이 정답 보기를 보여 준다
-        verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":1}", false);
+        verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":1}", false,
+                null, null, null);
     }
 
     @Test
@@ -97,7 +103,7 @@ class AnswerServiceTest {
                 .isInstanceOf(AnswerExceptions.BadAnswer.class);
         assertThatThrownBy(() -> service.submit(pick(10L, "quiz", null)))
                 .isInstanceOf(AnswerExceptions.BadAnswer.class);
-        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean());
+        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), any(), any(), any());
     }
 
     // --- 인과 순서 ---
@@ -109,7 +115,8 @@ class AnswerServiceTest {
         assertThat(r.isCorrect()).isTrue();
         assertThat(r.correct()).isEqualTo(List.of("rate_hold", "loan_spread", "bank_profit"));
         verify(repo).insertAnswer(eq(USER.toString()), eq(3L), eq(12L),
-                eq("{\"kind\":\"causal_order\",\"order\":[\"rate_hold\",\"loan_spread\",\"bank_profit\"]}"), eq(true));
+                eq("{\"kind\":\"causal_order\",\"order\":[\"rate_hold\",\"loan_spread\",\"bank_profit\"]}"), eq(true),
+                eq(null), eq(null), eq(null));
     }
 
     @Test
@@ -130,7 +137,7 @@ class AnswerServiceTest {
                     .isInstanceOf(AnswerExceptions.BadAnswer.class);
         }
         assertThatThrownBy(() -> service.submit(order(12L, null))).isInstanceOf(AnswerExceptions.BadAnswer.class);
-        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean());
+        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), any(), any(), any());
     }
 
     // --- 단계 확인 ---
@@ -158,7 +165,7 @@ class AnswerServiceTest {
 
     @Test
     void includePendingIsPassedToRepository() {
-        AnswerService pending = new AnswerService(repo, recorder, true);
+        AnswerService pending = new AnswerService(repo, recorder, learner, true);
         when(repo.findStep(10L, true)).thenReturn(Optional.of(QUIZ));
 
         assertThat(pending.submit(pick(10L, "quiz", 2)).isCorrect()).isTrue();
@@ -179,7 +186,7 @@ class AnswerServiceTest {
                 .isInstanceOf(AnswerExceptions.AnswerKeyMissing.class);
         assertThatThrownBy(() -> service.submit(order(22L, List.of("a"))))
                 .isInstanceOf(AnswerExceptions.AnswerKeyMissing.class);
-        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean());
+        verify(repo, never()).insertAnswer(anyString(), anyLong(), anyLong(), anyString(), anyBoolean(), any(), any(), any());
     }
 
     // --- 개념 학습 기록 (P17, user_concepts) ---
@@ -225,5 +232,45 @@ class AnswerServiceTest {
                  "answer":{"kind":"causal_order","order":["a","b"]}}""", AnswerRequest.class);
         assertThat(req.stepId()).isEqualTo(12L);
         assertThat(req.answer().order()).containsExactly("a", "b");
+    }
+
+    // --- 확신·응답 시간·답 변경 (추가 구현 2-1) ---
+
+    @Test
+    void confidenceAndTimingAreSavedWithAnswer() {
+        AnswerRequest req = new AnswerRequest(USER, 10L, new AnswerRequest.Input("quiz", 2, null), 2, 5300, 1);
+
+        assertThat(service.submit(req).isCorrect()).isTrue();   // 채점에는 영향이 없다
+        verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":2}", true,
+                2, 5300, 1);
+        // 복습 일정의 자동 평가에 쓰도록 채점 서버에도 넘긴다
+        verify(learner).recordAnswer(USER.toString(), new String[] {"rate_hold"}, true, "quiz", 4, 2, 5300, 1);
+    }
+
+    // --- 알 확률 갱신 요청 (추가 구현 2-3, 채점 서버 /learner/answer) ---
+
+    @Test
+    void quizSendsOptionCountToLearner() {
+        service.submit(pick(10L, "quiz", 1));   // 보기 4개 중 오답
+
+        verify(learner).recordAnswer(USER.toString(), new String[] {"rate_hold"}, false, "quiz", 4,
+                null, null, null);
+    }
+
+    @Test
+    void causalOrderSendsItemCountToLearner() {
+        service.submit(order(12L, List.of("rate_hold", "loan_spread", "bank_profit")));
+
+        verify(learner).recordAnswer(USER.toString(),
+                new String[] {"rate_hold", "loan_spread", "bank_profit"}, true, "causal_order", 3,
+                null, null, null);
+    }
+
+    @Test
+    void badAnswerDoesNotReachLearner() {
+        assertThatThrownBy(() -> service.submit(pick(10L, "quiz", 9)))
+                .isInstanceOf(AnswerExceptions.BadAnswer.class);
+        verify(learner, never()).recordAnswer(anyString(), any(), anyBoolean(), anyString(), anyInt(),
+                any(), any(), any());
     }
 }
