@@ -104,9 +104,10 @@
         ON CONFLICT (id) DO NOTHING
     </insert>
 
+    <!-- 시도 번호 (#215): 식은 answer/AnswerRepository.xml 의 attemptNo 를 그대로 쓴다 (다른 mapper 의 sql 조각) -->
     <insert id="insertAnswer">
         INSERT INTO user_answers
-            (user_id, card_id, step_id, answer, answer_hash, is_correct, score, rubric, graded_by, feedback)
+            (user_id, card_id, step_id, answer, answer_hash, is_correct, score, rubric, graded_by, feedback, attempt_no)
         VALUES
             (CAST(#{userId} AS uuid), #{cardId}, #{stepId},
              jsonb_build_object('choice', CAST(#{choice} AS text), 'text', CAST(#{answer} AS text)),
@@ -118,6 +119,7 @@
                  </when>
                  <otherwise>NULL,</otherwise>
              </choose>
-             #{gradedBy}, #{feedback})
+             #{gradedBy}, #{feedback},
+             <include refid="com.moneymate.answer.AnswerRepository.attemptNo"/>)
     </insert>
 </mapper>
