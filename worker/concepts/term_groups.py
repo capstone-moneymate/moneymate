@@ -107,8 +107,21 @@ def make_nodes(terms: list[Term], groups: list[list[int]]) -> list[ConceptNode]:
         ts = [terms[i] for i in g]
         head = max(ts, key=lambda t: len(t.card_ids))  # max 는 같은 값이면 앞의 것을 고른다
         cards = sorted({c for t in ts for c in t.card_ids})
-        nodes.append(ConceptNode(head.term, head.desc, [t.term for t in ts if t is not head], cards))
+        aliases = [t.term for t in ts if t is not head]
+        for t in ts:  # ② 에서 같은 뜻이라고 연결된 표기도 별칭으로 ("자기주식 취득" → 자사주 취득)
+            aliases += [v for v in t.variants if v != head.term and v not in aliases]
+        nodes.append(ConceptNode(head.term, head.desc, aliases, cards))
     return nodes
+
+
+# ② 에서 LLM 이 "같은 뜻"이라고 한 쌍을 받아들이는 임베딩 하한. 묶기 기준(0.90)보다 낮다: LLM 판단과 임베딩 두 신호가
+# 모두 같다고 할 때만 합치기 때문이다. 2026-11-24 실제 카드: 자기주식 취득/자사주 취득 0.893 (같음, 통과),
+# 자기주식/자사주 취득 0.750 (LLM 이 같다고 했지만 가진 주식 / 사는 행동이라 다름, 거절)
+SAME_AS_MIN = 0.80
+
+
+def same_meaning(encode: Encoder, a: str, b: str, low: float = SAME_AS_MIN) -> bool:
+    return float(similarity(encode([a, b]))[0, 1]) >= low
 
 
 def confusable_pairs(nodes: list[ConceptNode], groups: list[list[int]], sim: np.ndarray,

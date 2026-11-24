@@ -74,3 +74,20 @@ def test_group_terms_with_fake_encoder():
     nodes = group_terms(terms, encode, threshold=0.9)
     assert [(n.label, n.aliases) for n in nodes] == [("EPS", ["주당순이익"]), ("환율", [])]
     assert group_terms([], encode, 0.9) == []
+
+
+def test_make_nodes_keeps_step2_variants_as_aliases():
+    t = Term("자사주 취득", "", [1, 2])
+    t.variants = ["자기주식 취득"]
+    nodes = make_nodes([t, Term("자사주 매입", "", [3])], [[0, 1]])
+    assert nodes[0].label == "자사주 취득" and nodes[0].aliases == ["자사주 매입", "자기주식 취득"]
+
+
+def test_same_meaning_threshold():
+    from concepts.term_groups import same_meaning
+
+    def encode(texts):   # 길이 1 벡터: a·b = 0.8, a·c = 0.6
+        v = {"a": [1.0, 0.0], "b": [0.8, 0.6], "c": [0.6, 0.8]}
+        return np.array([v[t] for t in texts])
+
+    assert same_meaning(encode, "a", "b") and not same_meaning(encode, "a", "c")

@@ -79,3 +79,64 @@ def test_save_files(tmp_path):
     lines = review.read_text(encoding="utf-8-sig").splitlines()
     assert lines[0] == "id\t최저유사도\t묶인 용어\t잘못(O 표시)"
     assert lines[1] == "c001\t0.96\t순이익 | 당기순이익\t"
+
+
+def test_prereq_cycles_are_broken_and_review_file_written(monkeypatch, tmp_path):
+    # 순이익 → 주당순이익 (4표), 주당순이익 → 순이익 (3표) 이 둘 다 나오면 순환: 표가 적은 쪽을 뺀다
+    monkeypatch.setattr(pv, "build_prereqs", lambda nodes, pairs: (
+        [pv.Prereq(0, 1, 4, 4), pv.Prereq(1, 0, 3, 4)], {"pairs": 1, "calls": 8, "edges": 2, "split": 0, "none": 0}))
+    r = bm.run(materials(), encode, threshold=0.97, prereq=True)
+    assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": 4, "total": 4}]
+    assert r["prereqs_removed_for_cycles"] == [{"pre_id": "c002", "post_id": "c001", "votes": 3}]
+    bm.save(r, tmp_path)
+    lines = (tmp_path / "prereq_review.tsv").read_text(encoding="utf-8-sig").splitlines()
+    assert lines[1] == "순이익\t주당순이익\t4/4\t" and lines[2] == "주당순이익\t순이익\t3\t순환이라 뺌"
+
+
+def test_tutor_reads_confusable_from_map():
+    from tutor.agent import ConceptMap
+    r = bm.run(materials(), encode, threshold=0.97)
+    m = ConceptMap.from_build(r)
+    assert m.confusable == {"순이익": ["당기순이익"], "당기순이익": ["순이익"]}
+    assert ConceptMap.from_build(r, confusable={}).confusable == {}
+
+
+def test_prereq_review_drop_add_and_merge(monkeypatch):
+    # LLM 은 늘 "순이익 → 주당순이익". 검토 파일은 그걸 drop 하고 사람이 "주당순이익 → 당기순이익"을 add (지도용 가짜)
+    monkeypatch.setattr(pv, "ask_once", lambda x, y: "first" if x.label == "순이익" else "second")
+    rows = [pv.PrereqRow("순이익", "주당순이익", "drop", "4/4"), pv.PrereqRow("주당순이익", "당기순이익", "add")]
+    r = bm.run(materials(), encode, threshold=0.97, prereq=True, prereq_review=rows)
+    # 순이익 → 주당순이익 은 사람이 이미 drop 해서 다시 넣지 않는다. 순이익 → 당기순이익 은 처음 나온 연결이라 빈칸 줄로 더함
+    assert r["prereq_stats"]["new_review_rows"] == 1 and rows[2] == pv.PrereqRow("순이익", "당기순이익", "", "4/4")
+    assert r["prereqs"] == [{"pre_id": "c002", "post_id": "c003", "votes": pv.HUMAN_VOTES, "total": 4},
+                            {"pre_id": "c001", "post_id": "c003", "votes": 4, "total": 4}]
+    # LLM 없이 다시 만들어도 같다
+    assert bm.run(materials(), encode, threshold=0.97, prereq_review=rows)["prereqs"] == r["prereqs"]
+
+
+def test_new_llm_edge_becomes_blank_row_and_counts(monkeypatch):
+    monkeypatch.setattr(pv, "ask_once", lambda x, y: "first" if x.label == "순이익" else "second")
+    rows = []
+    r = bm.run(materials(), encode, threshold=0.9, prereq=True, prereq_review=rows)
+    assert rows == [pv.PrereqRow("순이익", "주당순이익", "", "4/4")]
+    assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": 4, "total": 4}]   # 빈칸은 LLM 표 그대로
+
+
+def test_review_row_with_unknown_name_is_reported():
+    rows = [pv.PrereqRow("순이익", "없는 개념", "keep", "3/4")]
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [] and r["prereq_review_missing"] == [{"pre": "순이익", "post": "없는 개념", "decision": "keep"}]
+
+
+def test_human_edge_survives_cycle_over_llm_edge():
+    rows = [pv.PrereqRow("순이익", "주당순이익", "", "4/4"), pv.PrereqRow("주당순이익", "순이익", "add")]
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs_removed_for_cycles"] == [{"pre_id": "c001", "post_id": "c002", "votes": 4}]
+
+
+def test_prereq_review_file_roundtrip(tmp_path):
+    p = tmp_path / "prereq_review.csv"
+    rows = [pv.PrereqRow("매출액", "영업이익", "keep", "4/4", "사람 검토")]
+    pv.save_prereq_review(rows, p)
+    assert pv.load_prereq_review(p) == rows
+    assert pv.load_prereq_review(tmp_path / "없음.csv") == []

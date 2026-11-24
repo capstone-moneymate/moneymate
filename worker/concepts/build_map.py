@@ -20,8 +20,10 @@ from pathlib import Path
 import numpy as np
 
 from concepts import prereq_votes as pv
+from concepts.prereq_check import break_cycles
 from concepts import term_groups as tg
-from concepts.concept_map import OUT_DIR, Materials, extract_terms, gather
+from concepts.concept_map import (OUT_DIR, REVIEW_PATH, Materials, apply_review, extract_terms, gather,
+                                  load_review, save_review)
 
 
 def node_id(k: int) -> str:
@@ -41,8 +43,11 @@ def review_rows(terms, groups: list[list[int]], sim: np.ndarray) -> list[dict]:
 
 
 def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRESHOLD, prereq: bool = False,
-        max_pairs: int = pv.MAX_PAIRS, top_k: int = pv.TOP_K) -> dict:
-    """③④ 를 돌려 저장할 결과를 만든다 (①② 는 m 에 이미 들어 있다). DB·파일을 건드리지 않는다."""
+        max_pairs: int = pv.MAX_PAIRS, top_k: int = pv.TOP_K,
+        prereq_review: list[pv.PrereqRow] | None = None) -> dict:
+    """③④ 를 돌려 저장할 결과를 만든다 (①② 는 m 에 이미 들어 있다). DB·파일을 건드리지 않는다.
+    prereq_review 를 주면 선수 관계는 그 검토 줄에서 만든다 (drop 만 뺌). prereq=True 면 새 LLM 연결을 빈칸 줄로 더한다
+    (prereq_review 를 바꾼다. 저장은 부른 쪽이). 주지 않으면 LLM 결과를 그대로 쓴다."""
     terms = m.terms
     if terms:
         term_sim = tg.similarity(encode([t.term for t in terms]))
@@ -52,11 +57,22 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
     nodes = tg.make_nodes(terms, groups)
     confusable = tg.confusable_pairs(nodes, groups, term_sim) if terms else {}
 
-    edges, stats = [], None
+    edges, stats, removed, missing = [], None, [], []
     if prereq and len(nodes) > 1:
         node_sim = tg.similarity(encode([n.label for n in nodes]))
         pairs = pv.candidate_pairs(nodes, node_sim, top_k=top_k, max_pairs=max_pairs)
         edges, stats = pv.build_prereqs(nodes, pairs)
+        if prereq_review is not None:
+            stats["new_review_rows"] = pv.merge_llm_edges(prereq_review, nodes, edges)
+    if prereq_review is not None:
+        edges, missing_rows = pv.reviewed_edges(prereq_review, nodes)
+        missing = [{"pre": r.pre, "post": r.post, "decision": r.decision} for r in missing_rows]
+    if edges:
+        # 순환 검사 (#199 prereq.dl): 순환 위 연결 중 표가 가장 적은 것부터 하나씩 뺀다
+        checked = break_cycles([(node_id(e.pre), node_id(e.post), e.votes) for e in edges])
+        removed = [{"pre_id": a, "post_id": b, "votes": v} for a, b, v in checked.removed]
+        gone = {(r["pre_id"], r["post_id"]) for r in removed}
+        edges = [e for e in edges if (node_id(e.pre), node_id(e.post)) not in gone]
 
     return {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -74,6 +90,8 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
         "nodes": [{"id": node_id(k), **asdict(n)} for k, n in enumerate(nodes)],
         "prereqs": [{"pre_id": node_id(e.pre), "post_id": node_id(e.post), "votes": e.votes, "total": e.total}
                     for e in edges],
+        "prereqs_removed_for_cycles": removed,
+        "prereq_review_missing": missing,  # 검토 파일에 있지만 지금 지도에 없는 이름 (용어가 바뀌었을 때 확인)
         "confusable": confusable,  # 튜터의 "헷갈리는 쌍" 퀴즈 재료 (대표 이름 → 가까운 대표 이름들)
         "review": review_rows(terms, groups, term_sim),
     }
@@ -88,6 +106,13 @@ def save(result: dict, out_dir: Path = OUT_DIR) -> tuple[Path, Path]:
     lines = ["id\t최저유사도\t묶인 용어\t잘못(O 표시)"]
     lines += [f"{r['id']}\t{r['min_sim']}\t{' | '.join(r['members'])}\t" for r in result["review"]]
     review.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")  # 엑셀에서 한글이 안 깨지게 BOM
+    if result["prereqs"] or result.get("prereqs_removed_for_cycles"):  # 선수 관계도 사람이 훑어볼 수 있게
+        name = {n["id"]: n["label"] for n in result["nodes"]}
+        pl = ["먼저\t다음\t표\t잘못(O 표시)"]
+        pl += [f"{name[e['pre_id']]}\t{name[e['post_id']]}\t{e['votes']}/{e['total']}\t" for e in result["prereqs"]]
+        pl += [f"{name[e['pre_id']]}\t{name[e['post_id']]}\t{e['votes']}\t순환이라 뺌"
+               for e in result.get("prereqs_removed_for_cycles", [])]
+        (out_dir / "prereq_review.tsv").write_text("\n".join(pl) + "\n", encoding="utf-8-sig")
     return main, review
 
 
@@ -115,11 +140,29 @@ def main() -> None:
 
     with get_conn() as conn:
         m = gather(conn)
+    encode = tg.load_encoder(args.model)
+    review = load_review()
+    a = apply_review(m, review)  # 사람이 keep / same 으로 정한 ② 용어 (LLM 없음)
+    pending = sum(1 for r in review if not r.decision)
+    print(f"② 검토 반영: keep {a['keep']}개, same {a['same']}개 (아직 안 본 후보 {pending}개, {REVIEW_PATH.name})")
     if args.extract:
-        extract_terms(m)
-    result = run(m, tg.load_encoder(args.model), threshold=args.threshold, prereq=args.prereq,
-                 max_pairs=args.max_pairs)
+        s = extract_terms(m, same_check=lambda x, y: tg.same_meaning(encode, x, y), review=review)
+        save_review(review)
+        print(f"② 뽑기: 카드 {s['cards']}장, 새 후보 {s['candidates']}개 (그중 같은 뜻 자동 same "
+              f"{s['candidates_same']}개, 같은 뜻 거절 {s['same_rejected']}개), 사람이 뺀 용어가 다시 나옴 "
+              f"{s['dropped_by_review']}개, 코드가 버림 {s['dropped']}개")
+        print(f"   → {REVIEW_PATH} 의 decision 칸을 채워 주세요 (keep / drop / same)")
+    prereq_review = pv.load_prereq_review()
+    result = run(m, encode, threshold=args.threshold, prereq=args.prereq, max_pairs=args.max_pairs,
+                 prereq_review=prereq_review)
     result["settings"]["model"] = args.model
+    if args.prereq:
+        pv.save_prereq_review(prereq_review)
+        print(f"④ 새 연결 {result['prereq_stats']['new_review_rows']}개를 {pv.PREREQ_REVIEW_PATH.name} 에 빈칸으로 더함 "
+              f"(keep / drop 을 적어 주세요)")
+    decided = sum(1 for r in prereq_review if r.decision)
+    print(f"④ 검토 반영: {len(prereq_review)}줄 중 사람이 정한 것 {decided}개, "
+          f"지도에 없는 이름 {len(result['prereq_review_missing'])}개 ({pv.PREREQ_REVIEW_PATH.name})")
     main_path, review_path = save(result)
     print(summary(result))
     print(f"   저장: {main_path}\n   검토 표: {review_path}")

@@ -87,14 +87,14 @@ def test_check_keeps_only_terms_in_titles():
     items = [
         {"term": "기준 금리", "desc": "중앙은행이 정하는 금리"},  # 띄어쓰기만 달라도 제목에 있음
         {"term": "자기주식 취득", "desc": "회사가 자기 주식을 사는 것"},
-        {"term": "주당순이익", "desc": "지어낸 말"},                # 제목에 없음
+        {"term": "주당순이익", "desc": "지어낸 말"},                # 글에 없음
         {"term": "0.25", "desc": "숫자"},
         {"term": "", "desc": "빈 값"},
         {"term": "인하", "desc": "이미 있음"},
     ]
     kept, dropped = cm.check_extracted(items, TITLES, known_keys={cm.term_key("인하")})
     assert [k["term"] for k in kept] == ["기준 금리", "자기주식 취득"]
-    assert dropped == ["주당순이익: 제목에 없음", "0.25: 숫자", "(빈 값): 빈 용어", "인하: 이미 있음"]
+    assert dropped == ["주당순이익: 글에 없음", "0.25: 숫자", "(빈 값): 빈 용어", "인하: 이미 있음"]
 
 
 def test_check_drops_long_duplicate_and_over_limit(monkeypatch):
@@ -107,22 +107,45 @@ def test_check_drops_long_duplicate_and_over_limit(monkeypatch):
 
 
 def test_extract_adds_new_and_links_existing(monkeypatch):
-    m = Materials([Term("기준금리", "중앙은행이 정하는 금리", [1]), Term("자사주", "", [2])],
-                  {1: ["기준금리 인하"], 2: ["자기주식 취득 결정, 기준금리 영향"]})
+    m = Materials([Term("기준금리", "중앙은행이 정하는 금리", [1]), Term("자사주", "", [2])], {},
+                  texts={1: ["기준금리 인하"], 2: ["자기주식 취득 결정, 기준금리 영향"]})
     calls = fake_create(monkeypatch,
-                        [{"term": "인하", "desc": "낮춤"}],                                       # 카드 1
-                        [{"term": "자기주식", "desc": "회사가 가진 자기 주식"}, {"term": "기준금리", "desc": "x"}])  # 카드 2
+                        [{"term": "인하", "same_as": "", "desc": "낮춤"}],                                   # 카드 1
+                        [{"term": "자기주식 취득", "same_as": "", "desc": "회사가 자기 주식을 사는 것"},
+                         {"term": "기준금리", "same_as": "", "desc": "x"}])                                  # 카드 2
     stats = cm.extract_terms(m)
-    assert stats == {"cards": 2, "added": 2, "linked": 1, "dropped": 0}
+    assert stats == {"cards": 2, "added": 2, "linked": 1, "same_as": 0, "same_rejected": 0, "dropped": 0,
+                     "candidates": 0, "candidates_same": 0, "dropped_by_review": 0}
     by = {t.term: t for t in m.terms}
     assert by["기준금리"].card_ids == [1, 2]                     # 새로 만들지 않고 카드 2를 더함
-    assert by["인하"].origin == "source" and by["자기주식"].card_ids == [2]
+    assert by["인하"].origin == "source" and by["자기주식 취득"].card_ids == [2]
     assert calls[0]["module"] == "concept_map" and calls[0]["card_id"] == 1
-    assert '"기준금리"' in calls[0]["messages"][0]["content"].split("</known>")[0]   # 이 카드 용어는 known 으로
-    assert "자사주" not in calls[0]["messages"][0]["content"]                       # 다른 카드 용어는 안 넘김
+    first = calls[0]["messages"][0]["content"]
+    assert '"자사주"' in first.split("</map>")[0]                          # 지도 전체 용어는 <map> 으로
+    assert first.split("<this_card>")[1].split("</this_card>")[0].strip() == '["기준금리"]'  # 이 카드 용어만
+    assert '"인하"' in calls[1]["messages"][0]["content"].split("</map>")[0]  # 앞 카드에서 생긴 용어도 다음부터 지도에
+    enum = calls[0]["output_config"]["format"]["schema"]["properties"]["terms"]["items"]["properties"]["same_as"]["enum"]
+    assert enum == ["", "기준금리", "자사주"]
 
 
-def test_extract_skips_cards_without_sources(monkeypatch):
+def test_extract_same_as_links_to_existing_term(monkeypatch):
+    m = Materials([Term("자사주 취득", "회사가 자기 주식을 사는 것", [1])], {}, texts={2: ["자기주식 취득 결정"]})
+    fake_create(monkeypatch, [{"term": "자기주식 취득", "same_as": "자사주 취득", "desc": "자기 주식을 삼"}])
+    stats = cm.extract_terms(m)
+    assert stats["same_as"] == 1 and stats["added"] == 0 and len(m.terms) == 1
+    assert m.terms[0].card_ids == [1, 2] and m.terms[0].variants == ["자기주식 취득"]
+
+
+def test_check_same_as_outside_map_is_cleared_and_dup_is_dropped():
+    items = [{"term": "자기주식 취득", "same_as": "지어낸 이름", "desc": ""},
+             {"term": "자기주식", "same_as": "자사주 취득", "desc": ""}]
+    kept, dropped = cm.check_extracted(items, ["자기주식 취득 결정"], {cm.term_key("자사주 취득")}, ["자사주 취득"])
+    # 첫째: 지도 밖 이름이라 same_as 를 비우고 새 용어로 / 둘째: 같은 뜻이라고 한 용어가 이 카드에 이미 있어서 뺀다
+    assert kept == [{"term": "자기주식 취득", "same_as": "", "desc": ""}]
+    assert dropped == ["자기주식: 이미 있음"]
+
+
+def test_extract_skips_cards_without_text(monkeypatch):
     m = Materials([Term("환율", "", [3])], {})
     calls = fake_create(monkeypatch)
     assert cm.extract_terms(m)["cards"] == 0 and calls == []
@@ -131,4 +154,79 @@ def test_extract_skips_cards_without_sources(monkeypatch):
 def test_extract_raises_on_cut_response(monkeypatch):
     fake_create(monkeypatch, [], stop="max_tokens")
     with pytest.raises(RuntimeError):
-        cm.extract_terms(Materials([], {1: TITLES}))
+        cm.extract_terms(Materials([], {}, texts={1: TITLES}))
+
+
+def test_slide_texts_keeps_words_not_numbers():
+    slides = [{"heading": "기준금리 그대로", "body": "동결은 유지한다는 뜻이에요.", "label": "무슨 일",
+               "facts": [{"label": "결정", "value": "기준금리 동결"}, {"label": "발표일", "value": "2026-10-22"}]},
+              {"heading": "", "body": "성장주 가치평가에 부담", "facts": None}]
+    assert cm.slide_texts("한국은행 기준금리 동결", slides) == [
+        "한국은행 기준금리 동결", "기준금리 그대로", "동결은 유지한다는 뜻이에요.", "결정", "발표일", "성장주 가치평가에 부담"]
+    assert cm.slide_texts("", None) == []
+
+
+def test_extract_uses_card_text_not_source_titles(monkeypatch):
+    m = Materials([], {1: ["MICROSOFT CORP 8-K Item 2.02"]}, texts={1: ["영업이익이 늘었어요"]})
+    calls = fake_create(monkeypatch, [{"term": "영업이익", "desc": "본업으로 번 돈"}])
+    assert cm.extract_terms(m)["added"] == 1
+    assert "영업이익이 늘었어요" in calls[0]["messages"][0]["content"] and "8-K" not in calls[0]["messages"][0]["content"]
+
+
+def test_extract_same_as_rejected_by_check_becomes_new_term(monkeypatch):
+    m = Materials([Term("자사주 취득", "", [1])], {}, texts={2: ["자기주식을 보유하고 있다"]})
+    fake_create(monkeypatch, [{"term": "자기주식", "same_as": "자사주 취득", "desc": "회사가 가진 자기 주식"}])
+    stats = cm.extract_terms(m, same_check=lambda a, b: False)   # 임베딩이 같다고 하지 않음
+    assert stats["same_rejected"] == 1 and stats["same_as"] == 0 and stats["added"] == 1
+    assert [t.term for t in m.terms] == ["자사주 취득", "자기주식"] and m.terms[0].variants == []
+
+
+# --- ② 사람 검토 (term_review.csv) ---
+
+from concepts.concept_map import ReviewRow, apply_review, load_review, save_review
+
+
+def test_review_file_roundtrip(tmp_path):
+    rows = [ReviewRow("금융통화위원회", "keep", "", "금리를 정하는 곳"), ReviewRow("마감", "drop", note="일반 단어")]
+    path = save_review(rows, tmp_path / "r.csv")
+    assert load_review(path) == rows
+    assert load_review(tmp_path / "없음.csv") == []
+
+
+def test_apply_review_keep_same_and_grounding():
+    m = Materials([Term("자사주 취득", "", [1])], {},
+                  texts={1: ["자사주 취득"], 2: ["자기주식 취득 결정"], 3: ["금융통화위원회가 금리 동결"], 4: ["마감"]})
+    rows = [ReviewRow("금융통화위원회", "keep", desc="금리를 정하는 곳"),
+            ReviewRow("자기주식 취득", "same", "자사주 취득"),
+            ReviewRow("마감", "drop"), ReviewRow("공시", ""), ReviewRow("주주가치", "same", "지도에 없는 이름")]
+    stats = apply_review(m, rows)
+    assert stats == {"keep": 1, "same": 1, "missing_target": 1}
+    by = {t.term: t for t in m.terms}
+    assert by["금융통화위원회"].card_ids == [3] and by["금융통화위원회"].origin == "source"   # 글에 나온 카드에 코드가 잇는다
+    assert by["자사주 취득"].variants == ["자기주식 취득"] and by["자사주 취득"].card_ids == [1, 2]
+    assert "마감" not in by and "공시" not in by
+    apply_review(m, rows)   # 두 번 불러도 같다
+    assert len(m.terms) == 2 and by["자사주 취득"].variants == ["자기주식 취득"]
+
+
+def test_extract_with_review_only_adds_candidates(monkeypatch):
+    m = Materials([Term("자사주 취득", "", [1])], {}, texts={2: ["자기주식 취득 결정, 공시일 거래량, 마감"]})
+    review = [ReviewRow("마감", "drop")]
+    fake_create(monkeypatch, [{"term": "자기주식 취득", "same_as": "자사주 취득", "desc": "a"},
+                              {"term": "공시일 거래량", "same_as": "", "desc": "b"},
+                              {"term": "마감", "same_as": "", "desc": "c"}])
+    s = cm.extract_terms(m, same_check=lambda a, b: True, review=review)
+    assert s["candidates"] == 2 and s["candidates_same"] == 1 and s["dropped_by_review"] == 1 and s["added"] == 0
+    assert [(r.term, r.decision, r.same_as) for r in review] == [
+        ("마감", "drop", ""), ("자기주식 취득", "same", "자사주 취득"), ("공시일 거래량", "", "")]
+    assert [t.term for t in m.terms] == ["자사주 취득"]              # 새 용어는 지도에 안 들어간다 (사람이 볼 때까지)
+    assert m.terms[0].variants == ["자기주식 취득"] and 2 in m.terms[0].card_ids   # 두 신호 통과한 같은 뜻은 바로
+
+
+def test_extract_with_review_same_rejected_stays_blank(monkeypatch):
+    m = Materials([Term("자사주 취득", "", [1])], {}, texts={2: ["자기주식을 보유"]})
+    review = []
+    fake_create(monkeypatch, [{"term": "자기주식", "same_as": "자사주 취득", "desc": "a"}])
+    s = cm.extract_terms(m, same_check=lambda a, b: False, review=review)
+    assert s["same_rejected"] == 1 and [(r.term, r.decision) for r in review] == [("자기주식", "")]
+    assert m.terms[0].variants == []
