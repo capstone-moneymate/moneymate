@@ -2,7 +2,7 @@
 import numpy as np
 
 from concepts.concept_map import Term
-from concepts.term_groups import group_indices, group_terms, make_nodes, pair_scores
+from concepts.term_groups import confusable_pairs, group_indices, group_terms, make_nodes, pair_scores
 
 # 0 금리 인상, 1 기준금리 인상, 2 금리 인하, 3 EPS, 4 주당순이익
 SIM = np.array([
@@ -24,6 +24,16 @@ def test_threshold_moves_groups():
     assert group_indices(SIM, 0.95) == [[0], [1], [2], [3], [4]]
     assert group_indices(SIM, 0.65) == [[0, 1, 2], [3, 4]]
     assert group_indices(SIM, 0.05) == [[0, 1, 2, 3, 4]]
+
+
+def test_confusable_pairs_by_hand():
+    # 기준 0.8 묶음: [금리 인상, 기준금리 인상] [금리 인하] [EPS, 주당순이익]
+    # 묶음 사이 가장 가까운 쌍: 첫 묶음·금리 인하 = max(0.85, 0.70) = 0.85 → 헷갈리는 쌍. 나머지는 0.10
+    names = ["금리 인상", "기준금리 인상", "금리 인하", "EPS", "주당순이익"]
+    groups = group_indices(SIM, 0.8)
+    nodes = make_nodes([Term(n, "", [1]) for n in names], groups)
+    assert confusable_pairs(nodes, groups, SIM) == {"금리 인상": ["금리 인하"], "금리 인하": ["금리 인상"]}
+    assert confusable_pairs(nodes, groups, SIM, low=0.9) == {}
 
 
 def test_group_indices_edge_sizes():

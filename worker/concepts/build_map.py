@@ -50,6 +50,7 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
     else:
         term_sim, groups = np.zeros((0, 0)), []
     nodes = tg.make_nodes(terms, groups)
+    confusable = tg.confusable_pairs(nodes, groups, term_sim) if terms else {}
 
     edges, stats = [], None
     if prereq and len(nodes) > 1:
@@ -59,18 +60,21 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
 
     return {
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "settings": {"threshold": threshold, "votes": pv.VOTES, "top_k": top_k, "max_pairs": max_pairs},
+        "settings": {"threshold": threshold, "confusable_low": tg.CONFUSABLE_LOW, "votes": pv.VOTES,
+                     "top_k": top_k, "max_pairs": max_pairs},
         "counts": {
             "terms": len(terms),
             "terms_from_source": sum(t.origin == "source" for t in terms),
             "nodes": len(nodes),
             "merged_nodes": sum(len(g) > 1 for g in groups),
             "prereqs": len(edges),
+            "confusable_nodes": len(confusable),
         },
         "prereq_stats": stats,
         "nodes": [{"id": node_id(k), **asdict(n)} for k, n in enumerate(nodes)],
         "prereqs": [{"pre_id": node_id(e.pre), "post_id": node_id(e.post), "votes": e.votes, "total": e.total}
                     for e in edges],
+        "confusable": confusable,  # 튜터의 "헷갈리는 쌍" 퀴즈 재료 (대표 이름 → 가까운 대표 이름들)
         "review": review_rows(terms, groups, term_sim),
     }
 
@@ -91,7 +95,8 @@ def summary(result: dict) -> str:
     """완료 기준 로그: 몇 개가 만들어졌는지."""
     c, s = result["counts"], result["prereq_stats"]
     text = (f"개념 지도: 용어 {c['terms']}개 (② 에서 {c['terms_from_source']}개) → 노드 {c['nodes']}개 "
-            f"(두 용어 이상 묶임 {c['merged_nodes']}개), 선수 관계 {c['prereqs']}개")
+            f"(두 용어 이상 묶임 {c['merged_nodes']}개), 선수 관계 {c['prereqs']}개, "
+            f"헷갈리는 이웃이 있는 노드 {c['confusable_nodes']}개")
     if s:
         text += f"\n   ④ 후보 {s['pairs']}쌍, 호출 {s['calls']}회, 연결 {s['edges']} / 표 갈림 {s['split']} / 관계 없음 {s['none']}"
     return text

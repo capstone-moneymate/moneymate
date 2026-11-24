@@ -29,11 +29,25 @@ def materials():
 
 def test_run_groups_without_prereq():
     r = bm.run(materials(), encode, threshold=0.9)
-    assert r["counts"] == {"terms": 4, "terms_from_source": 1, "nodes": 2, "merged_nodes": 2, "prereqs": 0}
+    assert r["counts"] == {"terms": 4, "terms_from_source": 1, "nodes": 2, "merged_nodes": 2, "prereqs": 0,
+                           "confusable_nodes": 0}
+    assert r["confusable"] == {}   # 두 묶음 사이 가장 가까운 쌍이 0.47 이라 0.70 아래
     assert [(n["id"], n["label"], n["aliases"]) for n in r["nodes"]] == [
         ("c001", "순이익", ["당기순이익"]), ("c002", "주당순이익", ["EPS"])]
     assert r["nodes"][0]["card_ids"] == [1, 2, 3]
     assert r["prereq_stats"] is None and r["prereqs"] == []
+
+
+def test_close_but_not_merged_becomes_confusable():
+    # 기준 0.97 이면 순이익·당기순이익(0.96)은 따로 남고, 0.70 이상이라 서로 헷갈리는 이웃이 된다
+    r = bm.run(materials(), encode, threshold=0.97)
+    assert [n["label"] for n in r["nodes"]] == ["순이익", "주당순이익", "당기순이익"]
+    assert r["confusable"] == {"순이익": ["당기순이익"], "당기순이익": ["순이익"]}
+    assert r["counts"]["confusable_nodes"] == 2 and r["settings"]["confusable_low"] == 0.70
+
+
+def test_default_threshold_is_090():
+    assert bm.tg.DEFAULT_THRESHOLD == 0.90
 
 
 def test_review_lists_merged_lowest_first():

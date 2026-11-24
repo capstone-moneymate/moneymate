@@ -26,11 +26,18 @@ MODELS = {
     "nlpai-lab/KURE-v1": "",
 }
 
-# 기본값: scripts/compare_embeddings.py 비교 결과 (2026-11-23, 인과 사전 글 100개).
-# KURE-v1 기준 0.70 에서 F1 0.689·정밀도 0.912 로 가장 높고, 기준금리 인상/인하 같은 반대말을 합치지 않았다.
-# bge-m3 (F1 0.676) 와 차이는 작다. 정밀도를 앞에 두는 이유: 못 묶으면 칸이 둘로 남을 뿐이지만 잘못 묶으면 개념이 섞인다
+# 모델: scripts/compare_embeddings.py 비교 결과 (2026-11-23, 인과 사전 글 100개).
+# KURE-v1 이 F1 0.689·정밀도 0.912 로 가장 높고, 기준금리 인상/인하 같은 반대말을 합치지 않았다. bge-m3 (0.676) 와 차이는 작다.
+# 기준값: 처음엔 인과 사전에서 F1 최고였던 0.70 이었다. 2026-11-24 실제 카드 용어 26개로 돌리니 0.70 에서 묶인 7개 중
+# 5개가 다른 개념이었다 (사람 검토: 등락률/등락 종목 수, 매출액/매출액 대비, 영업이익/당기순이익, 자사주 취득/기취득 자기주식,
+# 시가총액/시가총액 비중). 다른 개념 쌍이 0.86 까지 나와서, 그보다 위인 0.90 으로 올리고 괄호만 다른 표기는
+# concept_map.term_key 규칙으로 합친다. 정밀도를 앞에 두는 이유: 못 묶으면 칸이 둘로 남을 뿐이지만 잘못 묶으면 개념이 섞인다
+# (튜터가 영업이익을 맞힌 사람을 당기순이익도 안다고 처리한다). 인과 사전에서 KURE-v1 은 0.80 이상에서 잘못 묶은 쌍이 0 이었다
 DEFAULT_MODEL = "nlpai-lab/KURE-v1"
-DEFAULT_THRESHOLD = 0.70
+DEFAULT_THRESHOLD = 0.90
+# 헷갈리는 쌍: 묶기에는 모자라지만 가까운 개념. 위 5쌍(0.725~0.860)이 바로 학습자가 헷갈리기 쉬운 쌍이라,
+# 튜터의 "헷갈리는 쌍" 퀴즈 재료로 쓴다 (계획 1-3 "쌍은 개념 지도에서 임베딩이 가까운 개념끼리 자동으로")
+CONFUSABLE_LOW = 0.70
 
 
 def load_encoder(model_name: str) -> Encoder:
@@ -102,6 +109,20 @@ def make_nodes(terms: list[Term], groups: list[list[int]]) -> list[ConceptNode]:
         cards = sorted({c for t in ts for c in t.card_ids})
         nodes.append(ConceptNode(head.term, head.desc, [t.term for t in ts if t is not head], cards))
     return nodes
+
+
+def confusable_pairs(nodes: list[ConceptNode], groups: list[list[int]], sim: np.ndarray,
+                     low: float = CONFUSABLE_LOW, top: int = 3) -> dict[str, list[str]]:
+    """노드마다 헷갈리기 쉬운 다른 노드 (대표 이름 → 대표 이름 목록, 가까운 순, 최대 top 개).
+    두 노드의 유사도 = 두 묶음 사이 용어 쌍 중 가장 높은 값. low 이상이면 헷갈리는 쌍이다.
+    따로 남은 노드끼리라 대부분 묶기 기준값보다 낮다. 기준값 이상인데 완전 연결 때문에 못 묶인 쌍도 헷갈리기 쉬워서 넣는다."""
+    out: dict[str, list[tuple[float, str]]] = {}
+    for a, b in combinations(range(len(groups)), 2):
+        v = max(float(sim[i, j]) for i in groups[a] for j in groups[b])
+        if v >= low:
+            out.setdefault(nodes[a].label, []).append((v, nodes[b].label))
+            out.setdefault(nodes[b].label, []).append((v, nodes[a].label))
+    return {k: [n for _, n in sorted(vs, key=lambda x: (-x[0], x[1]))[:top]] for k, vs in out.items()}
 
 
 def group_terms(terms: list[Term], encode: Encoder, threshold: float = DEFAULT_THRESHOLD) -> list[ConceptNode]:

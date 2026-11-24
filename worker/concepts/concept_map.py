@@ -15,6 +15,7 @@
 """
 import argparse
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -41,10 +42,22 @@ class Materials:
     sources: dict[int, list[str]]  # card_id -> 1차 자료 제목들 (② 에서 LLM 에 줌)
 
 
-def term_key(text: str) -> str:
-    """글자만 같은지 볼 때 쓰는 키. 띄어쓰기·대소문자 무시: "주당 순이익" == "주당순이익", "eps" == "EPS".
-    뜻이 같은 다른 말("EPS" / "주당순이익")은 여기서 묶지 않고 ③ 임베딩에서 묶는다."""
+PAREN = re.compile(r"\([^()]*\)")
+
+
+def squash(text: str) -> str:
+    """띄어쓰기·대소문자만 없앤다. ② 에서 "제목에 글자 그대로 있나" 볼 때 쓴다 (괄호 안 글자도 남긴다)."""
     return "".join(text.split()).lower()
+
+
+def term_key(text: str) -> str:
+    """같은 용어인지 볼 때 쓰는 키. 띄어쓰기·대소문자·괄호 안 글자를 무시한다:
+    "주당 순이익" == "주당순이익", "eps" == "EPS", "지수 기여도(%p)" == "지수 기여도", "%p(퍼센트포인트)" == "%p".
+    괄호 규칙 (2026-11-24, #203): 실제 카드 용어 26개에서 진짜 같은 뜻으로 묶인 쌍 3개가 모두 괄호만 다른 표기였다.
+    임베딩은 이 쌍(0.82~0.89)보다 다른 개념 쌍("매출액"/"매출액 대비" 0.86)을 더 높게 보기도 해서 규칙으로 뺐다.
+    괄호를 빼면 아무것도 안 남는 용어("(주)")는 괄호째 쓴다. 뜻이 같은 다른 말("EPS" / "주당순이익")은 ③ 몫이다."""
+    stripped = squash(PAREN.sub("", text))
+    return stripped or squash(text)
 
 
 def collect_terms(rows: list[tuple[int, list | None]]) -> list[Term]:
@@ -160,7 +173,7 @@ def check_extracted(items: list[dict], titles: list[str], known_keys: set[str]) 
     """LLM 이 뽑은 용어를 코드가 거른다. (남긴 것, 버린 이유) 를 돌려준다.
     남기는 조건: 비어 있지 않음, MAX_TERM_LEN 이하, 숫자만은 아님, 제목에 글자 그대로 있음(띄어쓰기·대소문자 무시),
     이미 있는 용어가 아님, 금지 표현 없음. 상한 MAX_EXTRACT 개."""
-    title_keys = [term_key(t) for t in titles]
+    title_keys = [squash(t) for t in titles]  # 괄호 안 글자도 제목의 일부라 squash (term_key 는 괄호를 뺀다)
     kept, dropped, seen = [], [], set(known_keys)
     for it in items:
         name = " ".join((it.get("term") or "").split())
@@ -172,7 +185,7 @@ def check_extracted(items: list[dict], titles: list[str], known_keys: set[str]) 
             reason = "너무 김"
         elif key.replace(".", "").replace(",", "").replace("%", "").isdigit():
             reason = "숫자"
-        elif not any(key in tk for tk in title_keys):
+        elif not any(squash(name) in tk for tk in title_keys):
             reason = "제목에 없음"
         elif key in seen:
             reason = "이미 있음"

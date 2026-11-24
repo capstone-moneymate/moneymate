@@ -14,6 +14,25 @@ def test_term_key_ignores_spaces_and_case():
     assert term_key("EPS") != term_key("주당순이익")  # 뜻이 같은 다른 말은 ③ 임베딩에서 묶는다
 
 
+def test_term_key_ignores_parentheses():
+    # 실제 카드에서 같은 뜻으로 확인된 쌍 (2026-11-24 사람 검토)
+    assert term_key("지수 기여도(%p)") == term_key("지수 기여도")
+    assert term_key("%p(퍼센트포인트)") == term_key("%p")
+    assert term_key("매출액 대비(%)") == term_key("매출액 대비")
+    assert term_key("매출액 대비") != term_key("매출액")      # 괄호가 아닌 말이 붙으면 다른 용어
+    assert term_key("(주)") == "(주)"                        # 괄호를 빼면 빈 용어가 되면 그대로
+
+
+def test_collect_merges_parenthesized_spelling():
+    terms = collect_terms([(1, [{"term": "지수 기여도(%p)", "desc": "a"}]), (2, [{"term": "지수 기여도", "desc": "b"}])])
+    assert len(terms) == 1 and terms[0].term == "지수 기여도(%p)" and terms[0].card_ids == [1, 2]
+
+
+def test_check_finds_term_inside_title_parentheses():
+    kept, dropped = cm.check_extracted([{"term": "EPS", "desc": "주당순이익"}], ["삼성전자 주당순이익(EPS) 12% 증가"], set())
+    assert [k["term"] for k in kept] == ["EPS"] and dropped == []
+
+
 def test_collect_merges_same_text_and_keeps_order():
     rows = [
         (1, [{"term": "기준금리", "desc": "중앙은행이 정하는 금리"}, {"term": "EPS", "desc": "주당순이익"}]),
