@@ -192,7 +192,18 @@ def _call(s: Session):
 
 
 def _advance(s: Session) -> Session:
-    """퀴즈를 내서 멈추거나 끝날 때까지 돈다."""
+    """퀴즈를 내서 멈추거나 끝날 때까지 돈다. 예상 못 한 오류(API 오류, 월 한도 BudgetExceeded 등)가 나면
+    세션을 error 로 끝내고 done 이벤트를 남긴 뒤 오류를 그대로 올린다 (화면이 "running" 인 채로 기다리지 않게).
+    이어서 다시 돌리지는 않는다: 퀴즈를 만들다 실패하면 대화가 답 없는 tool_use 로 끝나 있어서,
+    다시 돌리려면 그 tool_use 에 먼저 답해야 한다 (#204 리뷰)."""
+    try:
+        return _run(s)
+    except Exception as e:
+        _finish(s, f"stop:{type(e).__name__}")
+        raise
+
+
+def _run(s: Session) -> Session:
     nudged = False
     while True:
         if s.calls >= MAX_CALLS:

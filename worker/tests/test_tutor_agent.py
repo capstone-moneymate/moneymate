@@ -152,3 +152,46 @@ def test_answer_without_pending_raises():
 def test_confusable_pair_needs_neighbor():
     with pytest.raises(qz.QuizError, match="이웃이 없어요"):
         ag.make_quiz(session(), "순이익", "헷갈리는 쌍")
+
+
+# --- #204 리뷰 반영 ---
+
+def test_unexpected_error_ends_session_and_reraises(monkeypatch):
+    def boom(module, **kw):
+        raise RuntimeError("API 오류")
+    monkeypatch.setattr(ag, "create", boom)
+    s = session()
+    with pytest.raises(RuntimeError, match="API 오류"):
+        ag.start(s)
+    assert s.status == "error" and s.finished_by == "stop:RuntimeError"
+    assert s.events[-1] == {"type": "done", "by": "stop:RuntimeError"}
+
+
+def test_error_while_making_quiz_also_ends_session(monkeypatch):
+    def make(s, concept, kind):
+        raise RuntimeError("월 한도")   # QuizError 가 아닌 오류 (BudgetExceeded 같은)
+    monkeypatch.setattr(ag, "make_quiz", make)
+    script(monkeypatch, ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="O/X")]))
+    s = session()
+    with pytest.raises(RuntimeError):
+        ag.start(s)
+    assert s.status == "error" and s.pending is None
+
+
+def test_demo_wrong_answer_is_never_the_key():
+    from tutor.demo import wrong_answer
+    for key in ([0, 1, 1, 0], [1, 0, 0, 1], [0, 1, 0, 1], [0, 0, 1, 1]):   # 사례 분류 (뒤집어도 같은 것 포함)
+        q = qz.Quiz("사례 분류", "c", {"baskets": ["a", "b"], "cases": list("abcd")}, key, "", 1 / 16)
+        assert not qz.grade(q, wrong_answer(q))
+    chips = qz.Quiz("칩 빈칸", "c", {"sentence": "___ ___", "chips": list("abcd")}, [2, 3], "", 1 / 12)
+    assert not qz.grade(chips, wrong_answer(chips))
+    choice = qz.Quiz("용어 뜻", "c", {"question": "?", "options": ["a", "b", "c"]}, 2, "", 1 / 3)
+    assert not qz.grade(choice, wrong_answer(choice))
+
+
+def test_measure_counts_multiple_tools_as_miss():
+    from scripts.measure_tutor_latency import choice_key
+    one = tool_use("ask_quiz", concept="순이익", kind="틀린 설명")
+    two = [one, tool_use("explain", concept="순이익", style="예시 위주", text="t")]
+    assert choice_key([one]) == "ask_quiz:틀린 설명"
+    assert choice_key(two) == "(도구 2개)" and choice_key([]) == "(도구 없음)"

@@ -52,7 +52,10 @@ LEARNERS = [
 def wrong_answer(q: Quiz):
     if isinstance(q.key, int):
         return (q.key + 1) % len(q.content["options"])
-    return list(reversed(q.key)) if len(set(q.key)) > 1 else [1 - k for k in q.key]
+    # 뒤집어도 같은 답([0, 1, 1, 0])이면 정답이 돼 버려서, 그때는 칸마다 0↔1 을 바꾼다 (#204 리뷰).
+    # (칩 빈칸은 정답 칩이 서로 달라 뒤집으면 항상 달라지고, 이 경우는 사례 분류에서만 생긴다)
+    flipped = list(reversed(q.key))
+    return flipped if flipped != q.key else [1 - k for k in q.key]
 
 
 def respond(learner: Learner, q: Quiz, rng: random.Random):
@@ -82,6 +85,7 @@ def run(learner: Learner, seed: int = 0) -> ag.Session:
 
 
 def main() -> None:
+    (ROOT / "logs").mkdir(exist_ok=True)  # 돈 드는 호출 전에. 새로 받은 저장소에는 logs/ 가 없다
     out = []
     for learner in LEARNERS:
         s = run(learner)

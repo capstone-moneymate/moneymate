@@ -85,8 +85,12 @@ def state(s: dict) -> dict:
 
 
 def choice_key(uses) -> str:
+    """고른 행동. 도구를 하나만 불러야 맞을 수 있다 (SYSTEM 이 한 번에 하나만 부르라고 한다).
+    여러 개를 부르면 "(도구 N개)"로 남겨 틀린 것으로 센다 (#204 리뷰: 전에는 첫 번째만 봤다)."""
     if not uses:
         return "(도구 없음)"
+    if len(uses) > 1:
+        return f"(도구 {len(uses)}개)"
     u = uses[0]
     return f"ask_quiz:{u.input.get('kind')}" if u.name == "ask_quiz" else u.name
 
@@ -121,13 +125,21 @@ def p90(xs: list[float]) -> float:
 
 def main(argv: list[str]) -> None:
     n = int(argv[0]) if argv else 4
+    (ROOT / "logs").mkdir(exist_ok=True)  # 돈 드는 호출 전에. 새로 받은 저장소에는 logs/ 가 없다 (#204 리뷰)
     call_once(*CONDITIONS[-1], state(SCENARIOS[0][1]))  # 첫 연결 시간이 한 조건에만 섞이지 않게 버리는 호출
     runs = []  # (조건, 상황 이름, 결과, 맞음)
-    for _ in range(n):  # 상황·조건을 번갈아 불러 시간대에 따른 서버 상황 차이를 고르게 나눈다
-        for name, s, ok in SCENARIOS:
-            for c in CONDITIONS:
+    raw = []   # 부른 순서 그대로 (순번, 반복, 상황, 모델, 시간, 고른 것). 순서 효과를 나중에 확인할 수 있게
+    k = 0
+    for rep in range(n):  # 상황·조건을 번갈아 불러 시간대에 따른 서버 상황 차이를 고르게 나눈다
+        for si, (name, s, ok) in enumerate(SCENARIOS):
+            # 조건 순서를 번갈아 바꾼다: 같은 상황에서 늘 같은 모델이 먼저 불리지 않게 (#204 리뷰)
+            order = CONDITIONS if (rep + si) % 2 == 0 else list(reversed(CONDITIONS))
+            for c in order:
                 r = call_once(*c, state(s))
                 runs.append((c, name, r, r["pick"] in ok))
+                k += 1
+                raw.append({"seq": k, "rep": rep, "scenario": name, "model": c[0], "effort": c[1],
+                            "sec": r["sec"], "pick": r["pick"], "hit": r["pick"] in ok})
     results = []
     for c in CONDITIONS:
         mine = [(name, r, hit) for cc, name, r, hit in runs if cc == c]
@@ -142,7 +154,7 @@ def main(argv: list[str]) -> None:
         for name, picks in row["by_scenario"].items():
             print(f"   {name:<10} {', '.join(picks)}")
     path = ROOT / "logs" / "tutor_latency.json"
-    path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps({"summary": results, "runs": raw}, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n저장: {path}  /  전체 비용 ${sum(r['cost'] for *_, r, _ in runs):.4f}")
 
 
