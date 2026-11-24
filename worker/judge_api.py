@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from generate import rule_judge
 from learner import api as learner_api
+from tutor import api as tutor_api
 
 try:
     from generate import judge as _judge  # Claude 루브릭 채점 (#55)
@@ -116,6 +117,7 @@ class Health(BaseModel):
 
 app = FastAPI(title="moneymate judge", version="0.1.0")
 app.include_router(learner_api.router)  # /learner/answer, /learner/mastery/{user_id}
+app.include_router(tutor_api.router)  # /tutor/start, /tutor/{session_id}/answer (사람1, #240)
 
 
 @app.get("/health", response_model=Health)
