@@ -2,6 +2,8 @@ package com.moneymate.learning;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.moneymate.judgement.JudgeProperties;
+import com.moneymate.learning.LearnerDtos.Calibration;
+import com.moneymate.learning.LearnerDtos.ReviewQueue;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +19,8 @@ import org.springframework.web.client.RestClientException;
  * 계산과 저장은 채점 서버의 POST /learner/answer (worker/learner/api.py)가 한다. 여기서는 채점 결과를 넘기기만 한다.
  * 주소는 판단 채점과 같은 서버라 moneymate.judge.url 을 같이 쓴다.
  *
- * 실패해도 예외를 올리지 않는다. 알 확률을 못 고쳤다고 채점 응답이 깨지면 안 되기 때문이다 (로그만 남긴다).
+ * 답을 넘기는 recordAnswer 는 실패해도 예외를 올리지 않는다. 알 확률을 못 고쳤다고 채점 응답이 깨지면 안 되기 때문이다 (로그만 남긴다).
+ * 조회(reviews, calibration)는 보여 줄 값이 없으니 예외를 그대로 올린다 (LearnerController 가 503 으로 바꾼다).
  */
 @Component
 public class LearnerStateClient {
@@ -68,6 +71,32 @@ public class LearnerStateClient {
             log.warn("알 확률을 고치지 못했어요 (userId={}, kind={}): {}", userId, kind, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * 오늘 복습할 개념 (GET /learner/reviews/{user_id}).
+     *
+     * @throws RestClientException 연결 실패·시간 초과·4xx·5xx·응답이 비어 있음
+     */
+    public ReviewQueue reviews(String userId) {
+        return get("/learner/reviews/{userId}", userId, ReviewQueue.class);
+    }
+
+    /**
+     * 확신 보정 2 × 2 표와 지표 (GET /learner/calibration/{user_id}).
+     *
+     * @throws RestClientException 연결 실패·시간 초과·4xx·5xx·응답이 비어 있음
+     */
+    public Calibration calibration(String userId) {
+        return get("/learner/calibration/{userId}", userId, Calibration.class);
+    }
+
+    private <T> T get(String path, String userId, Class<T> type) {
+        T body = restClient.get().uri(path, userId).retrieve().body(type);
+        if (body == null) {
+            throw new RestClientException("채점 서버 응답이 비어 있어요: " + path);
+        }
+        return body;
     }
 
     /** worker/learner/api.py 의 AnswerIn. */
