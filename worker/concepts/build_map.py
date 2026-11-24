@@ -1,13 +1,17 @@
 """개념 지도 한 번에 만들기 (사람1, #198). ① 재료 → ② 용어 뽑기 → ③ 같은 뜻 묶기 → ④ 선수 관계 다수결 → ⑤ 저장.
 각 단계 코드는 concept_map.py (①②), term_groups.py (③), prereq_votes.py (④) 에 있고, 여기서는 잇기만 한다.
 
-⑤ 저장: 사람2의 009 마이그레이션(concept_nodes, concept_prereq) 전이라 DB 대신 파일로 남긴다 (Git 에 안 올라감).
+사람 검토 파일 (Git 에 올림. 지도의 정답지): concepts/term_review.csv (②), concepts/prereq_review.csv (④).
+LLM 을 다시 돌리면 새 결과만 빈칸 줄로 더해지고, 사람이 decision 을 채운다 (#203).
+
+⑤ 저장: 사람2의 009 테이블에 넣기 전까지 파일로 남긴다 (logs/ 라 Git 에 안 올라감).
     logs/concept_map/concept_map.json   노드·선수 관계·설정·개수. 테이블이 생기면 이 파일을 그대로 넣는다
     logs/concept_map/groups_review.tsv  두 용어 이상 묶인 노드만. 사람이 훑어보고 잘못 묶인 줄에 표시한다
+    logs/concept_map/prereq_review.tsv  선수 관계와 순환으로 뺀 연결
 
 실행 (worker/ 에서, ③ 은 pip install -e ".[embed]" 필요):
-    python -m concepts.build_map                       # ①③ 만 (LLM 호출 없음, 비용 0)
-    python -m concepts.build_map --extract --prereq    # ①②③④ 전부 (Haiku 비용 발생)
+    python -m concepts.build_map                       # LLM 호출 없음, 비용 0. ①③ + 두 검토 파일로 같은 지도
+    python -m concepts.build_map --extract --prereq    # ②④ 를 다시 돌림 (Haiku 비용 발생)
     python -m concepts.build_map --prereq --max-pairs 20   # ④ 를 20쌍만 시험
 """
 import argparse
