@@ -47,10 +47,12 @@ class ConceptMap:
 
     @classmethod
     def from_build(cls, result: dict, confusable: dict[str, list[str]] | None = None) -> "ConceptMap":
-        """concepts.build_map 결과(concept_map.json)에서. 노드 id 를 대표 이름으로 바꾼다."""
+        """concepts.build_map 결과(concept_map.json)에서. 노드 id 를 대표 이름으로 바꾼다.
+        헷갈리기 쉬운 이웃은 결과 파일의 confusable 을 쓴다 (#203, 임베딩 0.70 이상). confusable 을 주면 그걸 쓴다."""
         name = {n["id"]: n["label"] for n in result["nodes"]}
+        near = confusable if confusable is not None else result.get("confusable", {})
         return cls([n["label"] for n in result["nodes"]], {n["label"]: n["desc"] for n in result["nodes"]},
-                   [(name[e["pre_id"]], name[e["post_id"]], e["votes"]) for e in result["prereqs"]], confusable or {})
+                   [(name[e["pre_id"]], name[e["post_id"]], e["votes"]) for e in result["prereqs"]], near)
 
     def ancestors(self, targets: list[str]) -> list[str]:
         """목표 개념과, 목표를 배우려면 먼저 알아야 하는 개념 전부 (labels 순서)."""
