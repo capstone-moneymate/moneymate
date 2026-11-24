@@ -61,7 +61,7 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
     nodes = tg.make_nodes(terms, groups)
     confusable = tg.confusable_pairs(nodes, groups, term_sim) if terms else {}
 
-    edges, stats, removed, missing = [], None, [], []
+    edges, stats, removed, missing, conflicts = [], None, [], [], []
     if prereq and len(nodes) > 1:
         node_sim = tg.similarity(encode([n.label for n in nodes]))
         pairs = pv.candidate_pairs(nodes, node_sim, top_k=top_k, max_pairs=max_pairs)
@@ -69,7 +69,7 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
         if prereq_review is not None:
             stats["new_review_rows"] = pv.merge_llm_edges(prereq_review, nodes, edges)
     if prereq_review is not None:
-        edges, missing_rows = pv.reviewed_edges(prereq_review, nodes)
+        edges, missing_rows, conflicts = pv.reviewed_edges(prereq_review, nodes)
         missing = [{"pre": r.pre, "post": r.post, "decision": r.decision} for r in missing_rows]
     if edges:
         # 순환 검사 (#199 prereq.dl): 순환 위 연결 중 표가 가장 적은 것부터 하나씩 뺀다
@@ -96,6 +96,7 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
                     for e in edges],
         "prereqs_removed_for_cycles": removed,
         "prereq_review_missing": missing,  # 검토 파일에 있지만 지금 지도에 없는 이름 (용어가 바뀌었을 때 확인)
+        "prereq_review_conflicts": [{"pre": a, "post": b} for a, b in conflicts],  # 같은 쌍에 drop 과 keep/add (뺐음)
         "confusable": confusable,  # 튜터의 "헷갈리는 쌍" 퀴즈 재료 (대표 이름 → 가까운 대표 이름들)
         "review": review_rows(terms, groups, term_sim),
     }
@@ -167,7 +168,8 @@ def main() -> None:
               f"(keep / drop 을 적어 주세요)")
     decided = sum(1 for r in prereq_review if r.decision)
     print(f"④ 검토 반영: {len(prereq_review)}줄 중 사람이 정한 것 {decided}개, "
-          f"지도에 없는 이름 {len(result['prereq_review_missing'])}개 ({pv.PREREQ_REVIEW_PATH.name})")
+          f"지도에 없는 이름 {len(result['prereq_review_missing'])}개, "
+          f"drop 과 keep 이 엇갈린 쌍 {len(result['prereq_review_conflicts'])}개 ({pv.PREREQ_REVIEW_PATH.name})")
     main_path, review_path = save(result)
     print(summary(result))
     print(f"   저장: {main_path}\n   검토 표: {review_path}")

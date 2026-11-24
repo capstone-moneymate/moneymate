@@ -224,20 +224,34 @@ def merge_llm_edges(rows: list[PrereqRow], nodes: list[ConceptNode], edges: list
     return added
 
 
-def reviewed_edges(rows: list[PrereqRow], nodes: list[ConceptNode]) -> tuple[list[Prereq], list[PrereqRow]]:
-    """검토 파일에서 지도에 넣을 연결 (drop 만 뺀다). 이름은 대표 이름 → 별칭 순으로 찾고, 지도에 없는 이름이 있는 줄은 따로 돌려준다.
-    표: LLM 줄은 적힌 표, 사람이 keep / add 한 줄은 HUMAN_VOTES."""
+def reviewed_edges(rows: list[PrereqRow], nodes: list[ConceptNode]
+                   ) -> tuple[list[Prereq], list[PrereqRow], list[tuple[str, str]]]:
+    """검토 파일에서 지도에 넣을 연결. 이름은 대표 이름 → 별칭 순으로 찾는다.
+    (연결, 지도에 없는 이름이 있는 줄, 사람 결정이 엇갈린 쌍) 을 돌려준다.
+    별칭 때문에 여러 줄이 같은 노드 쌍이 될 수 있어서 쌍마다 하나로 합친다 (#219 리뷰):
+      - drop 이 하나라도 있으면 뺀다 (애매하면 뺀다. keep / add 도 같이 있으면 엇갈린 쌍으로 알린다)
+      - keep / add 가 있으면 HUMAN_VOTES, 없으면 빈칸 줄 중 가장 많은 LLM 표
+    쌍마다 연결이 하나라 순환을 끊을 때 약한 중복 줄 때문에 사람이 남긴 연결이 같이 빠지지 않는다."""
     idx = name_index(nodes)
-    out, missing = [], []
+    by_pair: dict[tuple[int, int], list[PrereqRow]] = {}
+    missing = []
     for r in rows:
-        if r.decision == DROP:
-            continue
         if r.pre not in idx or r.post not in idx:
-            missing.append(r)
+            if r.decision != DROP:
+                missing.append(r)
             continue
-        if r.decision in (KEEP, ADD):
+        if idx[r.pre] != idx[r.post]:  # 두 이름이 같은 노드로 묶였으면 연결이 아니다
+            by_pair.setdefault((idx[r.pre], idx[r.post]), []).append(r)
+    out, conflicts = [], []
+    for (pre, post), rs in by_pair.items():
+        decided = {r.decision for r in rs}
+        if DROP in decided:
+            if decided & {KEEP, ADD}:
+                conflicts.append((nodes[pre].label, nodes[post].label))
+            continue
+        if decided & {KEEP, ADD}:
             votes, total = HUMAN_VOTES, VOTES
         else:
-            votes, total = (int(x) for x in r.votes.split("/"))
-        out.append(Prereq(idx[r.pre], idx[r.post], votes, total))
-    return out, missing
+            votes, total = max(tuple(int(x) for x in r.votes.split("/")) for r in rs)
+        out.append(Prereq(pre, post, votes, total))
+    return out, missing, conflicts

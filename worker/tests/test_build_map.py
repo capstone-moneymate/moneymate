@@ -169,3 +169,29 @@ def test_main_with_prereq_and_one_node_still_saves(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.argv", ["build_map", "--prereq"])
     bm.main()
     assert saved["r"]["counts"]["nodes"] == 1 and saved["r"]["prereq_stats"] is None
+
+
+def test_dropped_pair_stays_dropped_through_alias_row():
+    # '당기순이익'은 '순이익' 노드의 별칭. 대표 이름 줄을 drop 했으면 별칭으로 적힌 빈칸 줄이 있어도 빠진다 (#219 리뷰)
+    rows = [pv.PrereqRow("순이익", "주당순이익", "drop", "4/4"), pv.PrereqRow("당기순이익", "EPS", "", "3/4")]
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [] and r["prereq_review_conflicts"] == []
+    rows.append(pv.PrereqRow("당기순이익", "주당순이익", "keep"))   # 같은 쌍에 drop 과 keep: 빼고 알린다
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [] and r["prereq_review_conflicts"] == [{"pre": "순이익", "post": "주당순이익"}]
+
+
+def test_human_kept_pair_not_lost_through_weaker_duplicate():
+    # A→B 사람 keep(5), 별칭 A'→B 빈칸 3표, B→A 빈칸 4표. 쌍마다 하나로 합쳐서 순환에서는 B→A(4) 만 빠진다 (#219 리뷰)
+    rows = [pv.PrereqRow("순이익", "주당순이익", "keep"), pv.PrereqRow("당기순이익", "주당순이익", "", "3/4"),
+            pv.PrereqRow("주당순이익", "순이익", "", "4/4")]
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": pv.HUMAN_VOTES, "total": 4}]
+    assert r["prereqs_removed_for_cycles"] == [{"pre_id": "c002", "post_id": "c001", "votes": 4}]
+
+
+def test_alias_rows_merge_to_highest_llm_votes_and_skip_same_node():
+    rows = [pv.PrereqRow("당기순이익", "EPS", "", "3/4"), pv.PrereqRow("순이익", "주당순이익", "", "4/4"),
+            pv.PrereqRow("순이익", "당기순이익", "", "4/4")]   # 같은 노드끼리는 연결이 아니다
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": 4, "total": 4}]
