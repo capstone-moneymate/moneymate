@@ -30,14 +30,17 @@ KST = timezone(timedelta(hours=9))  # 한국은 서머타임이 없어 고정 +9
 
 HAIKU = "claude-haiku-5-5"  # 분류·매칭
 SONNET = "claude-sonnet-5-5"  # 출제·채점
+OPUS = "claude-opus-5-5"  # 튜터 에이전트 (사람1, #201). Sonnet 과 비교해 고른 근거: scripts/measure_tutor_latency.py
 
-# USD per 1M tokens (2026-10 기준). long: 입력이 100K 토큰을 넘을 때 단가
+# USD per 1M tokens (2026-10 기준, Opus 는 2026-11). long: 입력이 100K 토큰을 넘을 때 단가
 PRICES = {
     HAIKU: {"input": 0.10, "output": 0.50, "long": {"input": 0.50, "output": 2.50}},
     SONNET: {"input": 2.00, "output": 10.00},
+    # Opus 5.5 캐시 읽기는 $0.20 / 1M (입력 단가의 0.05배)라 모델별로 둔다 (#204 리뷰)
+    OPUS: {"input": 4.00, "output": 20.00, "cache_read_mult": 0.05},
 }
 LONG_CONTEXT_TOKENS = 100_000
-# 프롬프트 캐시 단가 = 입력 단가 × 배수 (쓰기 5분 캐시 1.25배, 읽기 0.1배)
+# 프롬프트 캐시 단가 = 입력 단가 × 배수 (쓰기 5분 캐시 1.25배, 읽기 0.1배). 모델에 cache_read_mult 가 있으면 그 값
 CACHE_WRITE_MULT = 1.25
 CACHE_READ_MULT = 0.1
 
@@ -54,10 +57,11 @@ def cost_usd(model: str, usage) -> float:
     cache_write = getattr(usage, "cache_creation_input_tokens", None) or 0
     cache_read = getattr(usage, "cache_read_input_tokens", None) or 0
     price = PRICES[model]
+    read_mult = price.get("cache_read_mult", CACHE_READ_MULT)
     if plain + cache_write + cache_read > LONG_CONTEXT_TOKENS and "long" in price:
         price = price["long"]
     input_cost = price["input"] * (
-        plain + cache_write * CACHE_WRITE_MULT + cache_read * CACHE_READ_MULT
+        plain + cache_write * CACHE_WRITE_MULT + cache_read * read_mult
     )
     # 생각(thinking) 토큰도 output_tokens 에 포함되어 과금된다
     return (input_cost + usage.output_tokens * price["output"]) / 1_000_000

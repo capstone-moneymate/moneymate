@@ -46,6 +46,13 @@ def test_cost_sonnet_with_cache():
     assert llm_client.cost_usd("claude-sonnet-5-5", usage(1000, 500, cw=4000, cr=10_000)) == pytest.approx(0.019)
 
 
+def test_cost_opus_cache_read_is_005():
+    # Opus 5.5 캐시 읽기 $0.20/1M = 입력 4.00 × 0.05
+    # 입력 1,000×4 + 캐시쓰기 4,000×4×1.25 + 캐시읽기 10,000×4×0.05 = 4,000 + 20,000 + 2,000 = 26,000
+    # 출력 500×20 = 10,000 → (26,000 + 10,000)/1M = 0.036
+    assert llm_client.cost_usd("claude-opus-5-5", usage(1000, 500, cw=4000, cr=10_000)) == pytest.approx(0.036)
+
+
 def test_cost_haiku_long_context():
     # 입력 120,000 > 100K → 긴 입력 단가: 120,000×0.50 + 1,000×2.50 = 60,000 + 2,500 → 0.0625
     assert llm_client.cost_usd("claude-haiku-5-5", usage(120_000, 1_000)) == pytest.approx(0.0625)
