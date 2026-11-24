@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import type { ReviewItem, ReviewQueue } from '@/types/learner'
 
 const percent = (x: number) => `${Math.round(x * 100)}%`
@@ -6,7 +7,7 @@ const percent = (x: number) => `${Math.round(x * 100)}%`
  * 마이페이지 "오늘의 복습" (추가 구현 2-7). 서버가 정한 순서 그대로 보여 준다:
  * 확실해요라고 했는데 틀린 개념 먼저, 나머지는 지금 기억 확률이 낮은 순, 하루 상한까지.
  * 기억 확률·순서·개수는 모두 서버 값이고 화면은 % 로 바꿔 표기만 한다.
- * 복습 문제를 푸는 화면은 아직 없다 (개념마다 새 문제를 내는 기능과 이어야 한다).
+ * [복습 시작]을 누르면 이 순서대로 개념마다 새 문제를 하나씩 푼다 (ReviewPage).
  */
 export const ReviewQueueCard = ({ queue }: { queue: ReviewQueue }) => {
   const waiting = queue.dueTotal - queue.items.length
@@ -37,6 +38,15 @@ export const ReviewQueueCard = ({ queue }: { queue: ReviewQueue }) => {
             </li>
           ))}
         </ol>
+      )}
+
+      {queue.items.length > 0 && (
+        <Link
+          to="/mypage/review"
+          className="mt-4 block w-full rounded-2xl bg-[#3a4a99] py-3.5 text-center font-bold text-white"
+        >
+          복습 시작 · 개념마다 1문제
+        </Link>
       )}
 
       {(queue.doneToday > 0 || waiting > 0) && (

@@ -2,6 +2,7 @@ package com.moneymate.learning;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 학습자 상태 조회 응답 (사람2, docs/추가구현_계획.md 2-7). 채점 서버(worker/learner/api.py)가 준 값을 그대로 화면에 넘긴다.
@@ -41,6 +42,38 @@ public final class LearnerDtos {
             @JsonAlias("p_know") double pKnow,
             double retrievability,
             String reason,
+            @JsonAlias("due_at") String dueAt) {
+    }
+
+    /**
+     * 복습 문제 하나 (POST /learner/review/quiz). 정답과 해설은 들어 있지 않다 (채점 서버가 보관).
+     *
+     * @param kind    용어 뜻 / 틀린 설명 / O/X
+     * @param content 화면용. 보기 고르기는 {question, options}, O/X 는 {statement, options}
+     * @param guessP  찍어서 맞힐 확률 (채점 서버가 계산)
+     */
+    public record ReviewQuiz(
+            @JsonAlias("quiz_id") long quizId,
+            @JsonAlias("node_id") long nodeId,
+            String concept,
+            String kind,
+            Map<String, Object> content,
+            @JsonAlias("guess_p") double guessP) {
+    }
+
+    /**
+     * 복습 문제 채점 결과 (POST /learner/review/answer).
+     *
+     * @param key   정답 보기 번호
+     * @param pKnow 반영한 뒤의 알 확률 (BKT)
+     * @param dueAt 다음 복습일 (ISO 시각)
+     */
+    public record ReviewResult(
+            boolean correct,
+            Object key,
+            String explanation,
+            String concept,
+            @JsonAlias("p_know") double pKnow,
             @JsonAlias("due_at") String dueAt) {
     }
 

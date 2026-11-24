@@ -66,3 +66,31 @@ export interface Calibration {
   /** 확실해요라고 했는데 틀렸고 아직 다시 맞히지 못한 개념 이름 */
   sureWrongConcepts: string[]
 }
+
+/** 복습 문제 종류 (worker/tutor/quiz.py 의 이름 그대로). 지금은 보기 고르기 세 가지만 낸다 */
+export type ReviewQuizKind = '용어 뜻' | '틀린 설명' | 'O/X'
+
+/** POST /api/learner/review/quiz. 정답과 해설은 들어 있지 않다 (답을 내면 ReviewResult 로 온다) */
+export interface ReviewQuiz {
+  quizId: number
+  nodeId: number
+  concept: string
+  kind: ReviewQuizKind
+  /** 보기 고르기는 question, O/X 는 statement 가 온다. options 는 고를 보기 */
+  content: { question?: string; statement?: string; options: string[] }
+  /** 찍어서 맞힐 확률 (서버 계산) */
+  guessP: number
+}
+
+/** POST /api/learner/review/answer */
+export interface ReviewResult {
+  correct: boolean
+  /** 정답 보기 번호 */
+  key: number
+  explanation: string
+  concept: string
+  /** 반영한 뒤의 알 확률 (BKT) */
+  pKnow: number
+  /** 다음 복습일 (ISO 시각) */
+  dueAt: string
+}

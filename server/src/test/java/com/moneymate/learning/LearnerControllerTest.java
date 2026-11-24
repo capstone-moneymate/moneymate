@@ -71,4 +71,48 @@ class LearnerControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         assertThat(response.getBody()).containsKey("message");
     }
+
+    // --- 복습 문제 풀기 ---
+
+    @Test
+    void reviewQuizAndAnswerPassThroughForCheckedUser() {
+        LearnerDtos.ReviewQuiz quiz = new LearnerDtos.ReviewQuiz(9L, 3L, "EPS", "O/X",
+                java.util.Map.of("statement", "문장", "options", List.of("O", "X")), 0.5);
+        LearnerDtos.ReviewResult result = new LearnerDtos.ReviewResult(true, 0, "해설", "EPS", 0.65,
+                "2026-11-26T09:00:00Z");
+        when(client.reviewQuiz(USER.toString(), 3L)).thenReturn(quiz);
+        when(client.reviewAnswer(USER.toString(), 9L, 0, 2, 4200, 1)).thenReturn(result);
+
+        assertThat(controller.reviewQuiz(new LearnerController.ReviewQuizRequest(USER, 3L), null)).isSameAs(quiz);
+        assertThat(controller.reviewAnswer(new LearnerController.ReviewAnswerRequest(USER, 9L, 0, 2, 4200, 1), null))
+                .isSameAs(result);
+    }
+
+    @Test
+    void reviewNeedsLoginForAccountUser() {
+        when(guard.check(USER, null)).thenThrow(new AuthExceptions.LoginRequired());
+
+        assertThatThrownBy(() -> controller.reviewQuiz(new LearnerController.ReviewQuizRequest(USER, 3L), null))
+                .isInstanceOf(AuthExceptions.LoginRequired.class);
+        assertThatThrownBy(() -> controller.reviewAnswer(
+                new LearnerController.ReviewAnswerRequest(USER, 9L, 0, 2, null, null), null))
+                .isInstanceOf(AuthExceptions.LoginRequired.class);
+        verify(client, never()).reviewQuiz(any(), org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void learnerServerRejectionKeepsItsMeaning() {
+        assertThat(controller.learnerServerRejected(rejected(HttpStatus.NOT_FOUND)).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(controller.learnerServerRejected(rejected(HttpStatus.CONFLICT)).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        var bad = controller.learnerServerRejected(rejected(HttpStatus.valueOf(422)));
+        assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(bad.getBody()).containsKey("message");
+    }
+
+    static org.springframework.web.client.HttpClientErrorException rejected(HttpStatus status) {
+        return org.springframework.web.client.HttpClientErrorException.create(
+                status, status.getReasonPhrase(), new org.springframework.http.HttpHeaders(), new byte[0], null);
+    }
 }

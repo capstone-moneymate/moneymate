@@ -126,3 +126,89 @@ def test_calibration(client, calls, monkeypatch):
     assert body["all"]["sure_wrong"] == 3 and body["all"]["illusion"] == pytest.approx(0.375)
     assert body["earlier"]["total"] == 0 and body["earlier"]["gamma"] is None      # 분모 0 은 null 로 간다
     assert body["sure_wrong_concepts"] == ["EPS"] and calls["calibration"] == USER
+
+
+# ---------- 복습 문제 (learner/review.py 는 test_learner_review.py) ----------
+
+QUIZ_OUT = {"quiz_id": 9, "node_id": 3, "concept": "EPS", "kind": "용어 뜻",
+            "content": {"question": "EPS 의 뜻은?", "options": ["a", "b", "c"]}, "guess_p": 1 / 3}
+
+
+@pytest.fixture
+def review_calls(monkeypatch):
+    seen = {"made": []}
+
+    def make_quiz(kind, concept, desc):
+        seen["made"].append((kind, concept, desc))
+        return "만든 문제"
+
+    def save(conn, user_id, node_id, quiz):
+        seen["saved"] = (user_id, node_id, quiz)
+        return QUIZ_OUT
+
+    monkeypatch.setattr(api, "_conn", FakeConn)
+    monkeypatch.setattr(api, "make_quiz", make_quiz)
+    monkeypatch.setattr(api.review, "save", save)
+    return seen
+
+
+def test_review_quiz_makes_and_saves_new_quiz(client, review_calls, monkeypatch):
+    monkeypatch.setattr(api.review, "prepare",
+                        lambda conn, user, node: {"concept": "EPS", "desc": "주당순이익", "kind": "용어 뜻"})
+    r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
+    assert r.status_code == 200
+    assert r.json() == QUIZ_OUT                       # 정답·해설은 응답에 없다
+    assert review_calls["made"] == [("용어 뜻", "EPS", "주당순이익")]
+    assert review_calls["saved"] == (USER, 3, "만든 문제")
+
+
+def test_review_quiz_reuses_pending_without_calling_llm(client, review_calls, monkeypatch):
+    monkeypatch.setattr(api.review, "prepare", lambda conn, user, node: {"pending": QUIZ_OUT})
+    r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
+    assert r.status_code == 200 and r.json()["quiz_id"] == 9
+    assert review_calls["made"] == [] and "saved" not in review_calls
+
+
+def test_review_quiz_not_due_is_409(client, review_calls, monkeypatch):
+    def not_due(conn, user, node):
+        raise api.review.NotDue(node)
+
+    monkeypatch.setattr(api.review, "prepare", not_due)
+    r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
+    assert r.status_code == 409 and review_calls["made"] == []
+
+
+def test_review_quiz_generation_failure_is_503(client, review_calls, monkeypatch):
+    def broken(kind, concept, desc):
+        raise RuntimeError("월 한도")
+
+    monkeypatch.setattr(api.review, "prepare",
+                        lambda conn, user, node: {"concept": "EPS", "desc": "", "kind": "O/X"})
+    monkeypatch.setattr(api, "make_quiz", broken)
+    r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
+    assert r.status_code == 503 and "saved" not in review_calls
+
+
+def test_review_answer_passes_values_and_maps_errors(client, monkeypatch):
+    seen = {}
+
+    def answer(conn, user_id, quiz_id, picked, confidence, **extra):
+        seen["args"] = (user_id, quiz_id, picked, confidence, extra)
+        if quiz_id == 404:
+            raise api.review.QuizNotFound(quiz_id)
+        if quiz_id == 409:
+            raise api.review.AlreadyAnswered(quiz_id)
+        return {"correct": False, "key": 2, "explanation": "해설", "concept": "EPS", "p_know": 0.15,
+                "due_at": "2026-11-25T09:00:00+00:00"}
+
+    monkeypatch.setattr(api, "_conn", FakeConn)
+    monkeypatch.setattr(api.review, "answer", answer)
+    body = {"user_id": USER, "quiz_id": 9, "answer": 1, "confidence": 2, "response_ms": 4200, "answer_changes": 1}
+    r = client.post("/learner/review/answer", json=body)
+    assert r.status_code == 200
+    assert r.json() == {"correct": False, "key": 2, "explanation": "해설", "concept": "EPS", "p_know": 0.15,
+                        "due_at": "2026-11-25T09:00:00Z"}
+    assert seen["args"] == (USER, 9, 1, 2, {"response_ms": 4200, "answer_changes": 1})
+    assert client.post("/learner/review/answer", json=body | {"quiz_id": 404}).status_code == 404
+    assert client.post("/learner/review/answer", json=body | {"quiz_id": 409}).status_code == 409
+    assert client.post("/learner/review/answer", json=body | {"confidence": 3}).status_code == 422
