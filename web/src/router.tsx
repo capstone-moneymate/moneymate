@@ -12,6 +12,7 @@ import { EtfPage } from '@/pages/tab2/EtfPage'
 import { StockDetailPage } from '@/pages/tab2/StockDetailPage'
 import { CausalMapPage } from '@/pages/tab3/CausalMapPage'
 import { MyPage } from '@/pages/tab3/MyPage'
+import { ReviewPage } from '@/pages/tab3/ReviewPage'
 
 export const router = createBrowserRouter([
   {
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
         : [{ path: '/etf/*', loader: () => redirect('/') }]),
       { path: '/mypage', element: <MyPage /> },
       { path: '/mypage/map', element: <CausalMapPage /> },
+      { path: '/mypage/review', element: <ReviewPage /> },
       { path: '/login', element: <LoginPage /> },
     ],
   },

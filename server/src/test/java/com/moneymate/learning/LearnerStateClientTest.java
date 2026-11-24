@@ -128,4 +128,63 @@ class LearnerStateClientTest {
         assertThatThrownBy(() -> client.reviews(USER)).isInstanceOf(RestClientException.class);
         server.verify();
     }
+
+    // --- 복습 문제 풀기 (추가 구현 2-7) ---
+
+    @Test
+    void reviewQuizSendsNodeAndReadsQuizWithoutKey() {
+        server.expect(requestTo("http://judge/learner/review/quiz"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"user_id":"11111111-2222-3333-4444-555555555555","node_id":3}"""))
+                .andRespond(withSuccess("""
+                        {"quiz_id":9,"node_id":3,"concept":"EPS","kind":"용어 뜻",
+                         "content":{"question":"EPS 의 뜻은?","options":["a","b","c"]},"guess_p":0.3333}""",
+                        MediaType.APPLICATION_JSON));
+
+        LearnerDtos.ReviewQuiz q = client.reviewQuiz(USER, 3L);
+
+        assertThat(q.quizId()).isEqualTo(9L);
+        assertThat(q.nodeId()).isEqualTo(3L);
+        assertThat(q.concept()).isEqualTo("EPS");
+        assertThat(q.kind()).isEqualTo("용어 뜻");
+        assertThat(q.content()).containsEntry("question", "EPS 의 뜻은?")
+                .containsEntry("options", java.util.List.of("a", "b", "c"));
+        assertThat(q.guessP()).isEqualTo(0.3333);
+        server.verify();
+    }
+
+    @Test
+    void reviewAnswerSendsSnakeCaseAndReadsResult() {
+        server.expect(requestTo("http://judge/learner/review/answer"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"user_id":"11111111-2222-3333-4444-555555555555","quiz_id":9,"answer":1,
+                         "confidence":2,"response_ms":4200,"answer_changes":1}"""))
+                .andRespond(withSuccess("""
+                        {"correct":false,"key":2,"explanation":"해설","concept":"EPS","p_know":0.15,
+                         "due_at":"2026-11-25T09:00:00Z"}""", MediaType.APPLICATION_JSON));
+
+        LearnerDtos.ReviewResult r = client.reviewAnswer(USER, 9L, 1, 2, 4200, 1);
+
+        assertThat(r.correct()).isFalse();
+        assertThat(r.key()).isEqualTo(2);
+        assertThat(r.explanation()).isEqualTo("해설");
+        assertThat(r.pKnow()).isEqualTo(0.15);
+        assertThat(r.dueAt()).isEqualTo("2026-11-25T09:00:00Z");
+        server.verify();
+    }
+
+    @Test
+    void reviewRejectionKeepsItsStatus() {
+        // 오늘 복습할 개념이 아니면 채점 서버가 409 를 준다 → 상태를 가진 예외로 올라가 컨트롤러가 409 로 전한다
+        server.expect(requestTo("http://judge/learner/review/quiz"))
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators
+                        .withStatus(org.springframework.http.HttpStatus.CONFLICT));
+
+        assertThatThrownBy(() -> client.reviewQuiz(USER, 3L))
+                .isInstanceOfSatisfying(org.springframework.web.client.HttpClientErrorException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(409));
+        server.verify();
+    }
 }
