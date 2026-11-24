@@ -17,6 +17,7 @@ dependencies = [
   "uvicorn[standard]>=0.30",  # judge_api 실행
   "rapidfuzz>=3.0",  # 문제 중복 검사 (B, validate/validators.py)
   "apscheduler>=3.10,<4",  # 매일 실행 (C, run_daily.py --schedule)
+  "fsrs>=6.3,<7",  # 복습 일정 FSRS 공식 구현 py-fsrs (사람2, learner/schedule.py)
 ]
 
 [project.optional-dependencies]
