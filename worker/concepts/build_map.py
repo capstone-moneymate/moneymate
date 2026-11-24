@@ -4,7 +4,7 @@
 사람 검토 파일 (Git 에 올림. 지도의 정답지): concepts/term_review.csv (②), concepts/prereq_review.csv (④).
 LLM 을 다시 돌리면 새 결과만 빈칸 줄로 더해지고, 사람이 decision 을 채운다 (#203).
 
-⑤ 저장: 사람2의 009 테이블에 넣기 전까지 파일로 남긴다 (logs/ 라 Git 에 안 올라감).
+⑤ 저장: 파일로 남긴다 (logs/ 라 Git 에 안 올라감). DB(009 테이블)에는 python -m concepts.load_map 이 넣는다.
     logs/concept_map/concept_map.json   노드·선수 관계·설정·개수. 테이블이 생기면 이 파일을 그대로 넣는다
     logs/concept_map/groups_review.tsv  두 용어 이상 묶인 노드만. 사람이 훑어보고 잘못 묶인 줄에 표시한다
     logs/concept_map/prereq_review.tsv  선수 관계와 순환으로 뺀 연결
