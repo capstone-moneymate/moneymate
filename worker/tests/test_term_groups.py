@@ -1,8 +1,9 @@
 """개념 지도 ③ 같은 뜻 묶기. 실제 모델 없이 손으로 만든 유사도·벡터로 본다."""
 import numpy as np
 
+from concepts import term_groups as tg
 from concepts.concept_map import Term
-from concepts.term_groups import confusable_pairs, group_indices, group_terms, make_nodes, pair_scores
+from concepts.term_groups import ConceptNode, confusable_pairs, group_indices, group_terms, make_nodes, pair_scores
 
 # 0 금리 인상, 1 기준금리 인상, 2 금리 인하, 3 EPS, 4 주당순이익
 SIM = np.array([
@@ -91,3 +92,44 @@ def test_same_meaning_threshold():
         return np.array([v[t] for t in texts])
 
     assert same_meaning(encode, "a", "b") and not same_meaning(encode, "a", "c")
+
+
+# --- 헷갈리는 이웃 후보와 사람 검토 (#228) ---
+
+def _four():
+    # 0 적자전환, 1 흑자전환, 2 적자, 3 매출액. 0-1 0.85, 0-2 0.80, 1-2 0.72, 2-3 0.71, 0-3 0.70, 1-3 0.50
+    sim = np.array([[1, .85, .80, .70], [.85, 1, .72, .50], [.80, .72, 1, .71], [.70, .50, .71, 1]])
+    nodes = [ConceptNode(x, "", [], []) for x in ["적자전환", "흑자전환", "적자", "매출액"]]
+    return nodes, [[0], [1], [2], [3]], sim
+
+
+def test_confusable_candidates_top_of_either_side():
+    nodes, groups, sim = _four()
+    # top=1: 0→1, 1→0, 2→0, 3→2 → 쌍 (0,1) (0,2) (2,3). 유사도 높은 순
+    assert tg.confusable_candidates(nodes, groups, sim, top=1) == [(0, 1, 0.85), (0, 2, 0.8), (2, 3, 0.71)]
+    assert tg.confusable_candidates(nodes, groups, sim, low=0.9) == []
+
+
+def test_confusable_review_merge_keep_only_and_map():
+    nodes, groups, sim = _four()
+    rows = [tg.ConfusableRow("적자전환", "흑자전환", "0.850", "keep"), tg.ConfusableRow("매출액", "적자", "0.710", "drop")]
+    added = tg.merge_confusable(rows, nodes, tg.confusable_candidates(nodes, groups, sim, top=1))
+    assert added == 1 and rows[2] == tg.ConfusableRow("적자전환", "적자", "0.800")   # 이미 있는 쌍은 순서가 달라도 안 더함
+    kept, missing = tg.reviewed_confusable(rows, nodes)
+    assert kept == [(0, 1, 0.85)] and missing == []                              # 빈칸·drop 은 안 넣는다
+    assert tg.confusable_map(nodes, kept) == {"적자전환": ["흑자전환"], "흑자전환": ["적자전환"]}
+
+
+def test_confusable_review_drop_wins_and_missing_names():
+    nodes = [ConceptNode("자기주식", "", ["자사주"], []), ConceptNode("자사주 취득", "", [], [])]
+    rows = [tg.ConfusableRow("자기주식", "자사주 취득", "0.8", "keep"), tg.ConfusableRow("자사주", "자사주 취득", "", "drop"),
+            tg.ConfusableRow("없는 이름", "자기주식", "", "keep")]
+    kept, missing = tg.reviewed_confusable(rows, nodes)
+    assert kept == [] and [(r.a, r.b) for r in missing] == [("없는 이름", "자기주식")]
+
+
+def test_confusable_review_file_roundtrip(tmp_path):
+    p = tmp_path / "c.csv"
+    rows = [tg.ConfusableRow("적자", "적자전환", "0.800", "keep", "사람 검토")]
+    tg.save_confusable_review(rows, p)
+    assert tg.load_confusable_review(p) == rows and tg.load_confusable_review(tmp_path / "x.csv") == []

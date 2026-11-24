@@ -139,3 +139,22 @@ def test_causal_link_and_not_stealing(conn):
     before = state.get_mastery(conn, user)[f"가{tag}"]
     state.update_causal(conn, user, [f"x_{tag}"], True, 0.25)
     assert state.get_mastery(conn, user)[f"가{tag}"] > before
+
+
+def test_load_confusable_both_directions_and_replace(conn):
+    tag = uuid.uuid4().hex[:8]
+    card = _card(conn)
+    m = _map(tag, card, card)
+    m["confusable_pairs"] = [{"a": f"가{tag}", "b": f"나{tag}", "sim": 0.85}]
+    s = load(conn, m)
+    assert s["confusable"] == 2
+    rows = conn.execute(
+        """SELECT a.label, b.label, round(c.sim::numeric, 2) FROM concept_confusable c
+             JOIN concept_nodes a ON a.id = c.node_id JOIN concept_nodes b ON b.id = c.other_id
+            WHERE a.label LIKE %s ORDER BY 1""", (f"%{tag}",)).fetchall()
+    assert [(a, b, float(v)) for a, b, v in rows] == [(f"가{tag}", f"나{tag}", 0.85), (f"나{tag}", f"가{tag}", 0.85)]
+    m["confusable_pairs"] = []                       # 사람이 drop 으로 바꿨다
+    assert load(conn, m)["confusable"] == 0
+    assert conn.execute("SELECT count(*) FROM concept_confusable").fetchone()[0] == 0
+    m.pop("confusable_pairs")                        # 검토 파일 전의 옛 결과 파일: 표를 건드리지 않는다
+    assert load(conn, m)["confusable"] is None
