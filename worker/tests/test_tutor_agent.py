@@ -6,6 +6,7 @@ import pytest
 from tutor import agent as ag
 from tutor import quiz as qz
 from tutor.mastery import FakeMastery
+from tutor.quiz import Quiz
 
 # 순이익 → 주당순이익 ← 유통 주식 수 → 자사주 소각
 CMAP = ag.ConceptMap(
@@ -124,11 +125,14 @@ def test_explain_banned_is_rejected(monkeypatch):
 
 def test_limits(monkeypatch):
     fake_quiz(monkeypatch)
-    monkeypatch.setattr(ag, "MAX_QUIZZES", 1)
     script(monkeypatch,
            ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="O/X")]),
            ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="O/X")]))
-    s = ag.answer(ag.start(session()), 0, "확신해요")
+    one = session()
+    one.max_quizzes = 1                      # 상한은 세션마다 (1-5 평가의 6 / 10 비교, #238)
+    s = ag.start(one)
+    assert '"max_quizzes": 1' in s.messages[0]["content"]
+    s = ag.answer(s, 0, "확신해요")
     assert s.finished_by == "quiz_limit" and s.quizzes == 1
 
     monkeypatch.setattr(ag, "MAX_CALLS", 2)
@@ -195,3 +199,15 @@ def test_measure_counts_multiple_tools_as_miss():
     two = [one, tool_use("explain", concept="순이익", style="예시 위주", text="t")]
     assert choice_key([one]) == "ask_quiz:틀린 설명"
     assert choice_key(two) == "(도구 2개)" and choice_key([]) == "(도구 없음)"
+
+
+def test_quiz_maker_replaces_generation(monkeypatch):
+    # 1-5 평가의 퀴즈 은행: quiz_maker 를 주면 Haiku 출제(make_quiz) 대신 그걸 쓴다 (#238)
+    monkeypatch.setattr(ag, "make_quiz", lambda *a: pytest.fail("make_quiz 를 부르면 안 된다"))
+    script(monkeypatch, ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="용어 뜻")]))
+    got = []
+    s = session()
+    s.quiz_maker = lambda s_, c, k: got.append((c, k)) or Quiz("용어 뜻", c, {"question": "q", "options": ["a", "b", "c"]},
+                                                              0, "e", 1 / 3)
+    s = ag.start(s)
+    assert got == [("순이익", "용어 뜻")] and s.status == "waiting"
