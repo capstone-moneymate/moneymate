@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.moneymate.answer.GhostRepository">
+
+    <resultMap id="stepMap" type="com.moneymate.answer.GhostRepository$GhostStep">
+        <constructor>
+            <arg column="step_id" javaType="_long"/>
+            <arg column="kind" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="rowMap" type="com.moneymate.answer.GhostRow">
+        <constructor>
+            <arg column="attempt_no" javaType="_int"/>
+            <arg column="step_id" javaType="_long"/>
+            <arg column="is_correct" javaType="Boolean"/>
+            <arg column="score" javaType="Integer"/>
+            <arg column="confidence" javaType="Integer"/>
+            <arg column="response_ms" javaType="Integer"/>
+            <arg column="day" javaType="java.time.LocalDate"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 답 단계: 개념 단계는 답안이 없어서 뺀다 (시도 번호 규칙 #215 와 같은 기준) -->
+    <select id="findSteps" resultMap="stepMap">
+        SELECT s.id AS step_id, s.kind
+          FROM steps s
+         WHERE s.card_id = #{cardId} AND s.kind &lt;&gt; 'concept'
+         ORDER BY s.step_no
+    </select>
+
+    <!-- (시도, 단계)마다 마지막 답안. day 는 그 시도의 첫 답안 날짜(KST). 창 함수는 DISTINCT ON 보다 먼저 계산된다 -->
+    <select id="findRows" resultMap="rowMap">
+        SELECT DISTINCT ON (ua.attempt_no, ua.step_id)
+               ua.attempt_no, ua.step_id, ua.is_correct, ua.score::int AS score,
+               ua.confidence::int AS confidence, ua.response_ms,
+               (MIN(ua.created_at) OVER (PARTITION BY ua.attempt_no) AT TIME ZONE 'Asia/Seoul')::date AS day
+          FROM user_answers ua
+          JOIN steps s ON s.id = ua.step_id
+         WHERE ua.user_id = CAST(#{userId} AS uuid)
+           AND ua.card_id = #{cardId}
+           AND s.kind &lt;&gt; 'concept'
+         ORDER BY ua.attempt_no, ua.step_id, ua.created_at DESC, ua.id DESC
+    </select>
+</mapper>
