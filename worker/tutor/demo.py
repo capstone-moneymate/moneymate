@@ -1,21 +1,24 @@
 """튜터 에이전트 시연 (사람1, #201 완료 기준): 지식 상태가 다른 가상 학습자 2명에게 서로 다른 순서를 고르는지 본다.
 실제 Opus(튜터)·Haiku(퀴즈 출제)를 부른다 (비용 발생, 한 번에 약 $0.1~0.3).
 
-실행 (worker/ 에서): python -m tutor.demo
+실행 (worker/ 에서): python -m tutor.demo              # 손 예시 지도 + 가짜 숙련도 (DB 없음)
+                     python -m tutor.demo --card 17    # 실제 DB 지도·카드 + 진짜 BKT (#230). 끝에 모두 되돌린다
 결과: 화면 + logs/tutor_demo.json
 
 가상 학습자는 1-5 평가 전 단계의 간단한 규칙이다 (LLM 학습자가 아니다):
 - 진짜로 아는 개념 → 정답, 확신해요 / 잘못 아는 개념 → 오답, 확신해요 / 모르는 개념 → 찍기(guess_p 확률로 정답), 애매해요
 - explain 으로 설명을 들은 개념은 그 뒤로 안다 (잘못 알던 것도 고쳐진다)
-개념 지도는 작은 손 예시다. 실제 카드 개념 지도는 #203 에서 붙인다.
+기본 개념 지도는 작은 손 예시다. --card 는 실제 DB 지도(#224)와 진짜 BKT(#230)를 쓴다.
 """
+import argparse
 import json
 import random
+import uuid
 from dataclasses import dataclass, field
 
 from generate.llm_client import ROOT
 from tutor import agent as ag
-from tutor.mastery import SURE, UNSURE, FakeMastery
+from tutor.mastery import SURE, UNSURE, DbMastery, FakeMastery
 from tutor.quiz import Quiz
 
 CMAP = ag.ConceptMap(
@@ -68,8 +71,11 @@ def respond(learner: Learner, q: Quiz, rng: random.Random):
 
 
 def run(learner: Learner, seed: int = 0) -> ag.Session:
-    rng = random.Random(seed)
     s = ag.Session(learner.name, CMAP, TARGETS, FakeMastery({learner.name: dict(learner.start_p)}), card=CARD)
+    return play(s, learner, random.Random(seed))
+
+
+def play(s: ag.Session, learner: Learner, rng: random.Random) -> ag.Session:
     seen_events = 0
     s = ag.start(s)
     while True:
@@ -84,20 +90,63 @@ def run(learner: Learner, seed: int = 0) -> ag.Session:
         s = ag.answer(s, *respond(learner, q, rng))
 
 
+def run_db(card_id: int, seed: int = 0) -> list[dict]:
+    """실제 DB 의 지도·카드로, 처음 배우는 학습자와 다 아는 학습자 두 명. 임시 사용자를 만들고 끝에 모두 되돌린다
+    (concept_answers·user_concept_state 에 남기지 않는다. 비용 기록 llm_cost_log 는 llm_client 가 따로 남긴다)."""
+    from db import get_conn
+
+    out = []
+    with get_conn() as conn:
+        cmap = ag.ConceptMap.from_db(conn)
+        targets = ag.card_targets(conn, card_id)
+        (title,) = conn.execute("SELECT title FROM cards WHERE id = %s", (card_id,)).fetchone()
+        scope = cmap.ancestors(targets)
+        print(f"카드 {card_id} {title}: 목표 {targets}, 선수 포함 {scope}")
+        for learner in (Learner("처음 배움", set()), Learner("다 앎", set(scope))):
+            user = str(uuid.uuid4())
+            conn.execute("INSERT INTO users (id) VALUES (%s::uuid)", (user,))
+            s = ag.Session(user, cmap, targets, DbMastery(conn, card_id, commit=False), card=title, card_id=card_id)
+            s = play(s, learner, random.Random(seed))
+            rows = conn.execute("""SELECT n.label, a.quiz_kind, a.is_correct, a.attempt_no FROM concept_answers a
+                                     JOIN concept_nodes n ON n.id = a.node_id
+                                    WHERE a.user_id = %s::uuid AND a.source = 'tutor' ORDER BY a.id""", (user,)).fetchall()
+            m = s.mastery.get_mastery(user)
+            out.append({"learner": learner.name, "session": s, "answers": rows,
+                        "mastery": {c: round(m[c], 2) for c in scope}})
+        conn.rollback()
+    return out
+
+
+def report(name: str, s: ag.Session) -> None:
+    print(f"\n== {name}: 끝 = {s.finished_by}, 퀴즈 {s.quizzes}개, 모델 호출 {s.calls}번")
+    for i, e in enumerate(s.log, 1):
+        inp = ", ".join(f"{k}={v}" for k, v in e["input"].items() if k != "text")
+        res = e.get("result")
+        tail = f"  → {'맞힘' if res['correct'] else '틀림'}·{res['confidence']}" if res else ""
+        print(f"   {i}. {e['tool']}({inp}){tail}\n      이유: {e['reason']}")
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="튜터 시연")
+    parser.add_argument("--card", type=int, help="실제 DB 카드 id (진짜 BKT, 끝에 되돌림)")
+    args = parser.parse_args()
     (ROOT / "logs").mkdir(exist_ok=True)  # 돈 드는 호출 전에. 새로 받은 저장소에는 logs/ 가 없다
     out = []
-    for learner in LEARNERS:
-        s = run(learner)
-        print(f"\n== {learner.name}: 끝 = {s.finished_by}, 퀴즈 {s.quizzes}개, 모델 호출 {s.calls}번")
-        for i, e in enumerate(s.log, 1):
-            inp = ", ".join(f"{k}={v}" for k, v in e["input"].items() if k != "text")
-            res = e.get("result")
-            tail = f"  → {'맞힘' if res['correct'] else '틀림'}·{res['confidence']}" if res else ""
-            print(f"   {i}. {e['tool']}({inp}){tail}\n      이유: {e['reason']}")
-        out.append({"learner": learner.name, "finished_by": s.finished_by, "log": s.log, "events": s.events,
-                    "mastery": s.mastery.get_mastery(learner.name)})
-    path = ROOT / "logs" / "tutor_demo.json"
+    if args.card is not None:
+        for r in run_db(args.card):
+            s = r["session"]
+            report(r["learner"], s)
+            print(f"   concept_answers (되돌리기 전): {r['answers']}\n   알 확률: {r['mastery']}")
+            out.append({"learner": r["learner"], "finished_by": s.finished_by, "log": s.log, "events": s.events,
+                        "answers": r["answers"], "mastery": r["mastery"]})
+        path = ROOT / "logs" / f"tutor_demo_card{args.card}.json"
+    else:
+        for learner in LEARNERS:
+            s = run(learner)
+            report(learner.name, s)
+            out.append({"learner": learner.name, "finished_by": s.finished_by, "log": s.log, "events": s.events,
+                        "mastery": s.mastery.get_mastery(learner.name)})
+        path = ROOT / "logs" / "tutor_demo.json"
     path.write_text(json.dumps(out, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print(f"\n저장: {path}")
 
