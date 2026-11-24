@@ -73,14 +73,18 @@ def _explain(concept: str, learner: Learner, ep: Episode):
 def fixed(scope, targets, learner: Learner, draw, mastery, cap: int) -> Episode:
     ep = Episode(targets)
     ep.check(learner)
-    i = 0
+    i = misses = 0
     while ep.quizzes < cap:
         c = scope[i % len(scope)]
         i += 1
         try:
             q = draw(None, c, "용어 뜻")
         except qz.QuizError:
+            misses += 1
+            if misses >= len(scope):   # 한 바퀴 내내 없다: 은행에 용어 뜻 퀴즈가 없음 (그대로 두면 끝나지 않는다, #239 리뷰)
+                raise qz.QuizError("퀴즈 은행에 이 범위의 용어 뜻 퀴즈가 없어요") from None
             continue
+        misses = 0
         correct, _ = _ask(q, learner, mastery, ep)
         if not correct:
             _explain(c, learner, ep)

@@ -186,11 +186,21 @@ def test_run_one_bkt_params_and_learner_slip():
 
 def test_summarize_by_hand():
     c = rn.cell("main", "rules", 0.5)
-    rows = [{**c, "bkt": "0.3/0.1/0.1", "mastered_at": m, "targets_known": k, "n_targets": 2, "test_right": r,
-             "test_total": 4, "quizzes": q} for m, k, r, q in ((3, 2, 4, 3), (None, 1, 2, 6))]
+    rows = [{**c, "bkt": "0.3/0.1/0.1", "inputs": "abc", "mastered_at": m, "targets_known": k, "n_targets": 2,
+             "test_right": r, "test_total": 4, "quizzes": q} for m, k, r, q in ((3, 2, 4, 3), (None, 1, 2, 6))]
     t = rn.summarize(rows)[0]
-    assert t == {**c, "bkt": "0.3/0.1/0.1", "n": 2, "test_acc": 0.75, "targets_known": 0.75, "mastered_rate": 0.5,
-                 "quizzes": 4.5, "mastered_at": 3}
+    assert t == {**c, "bkt": "0.3/0.1/0.1", "inputs": "abc", "n": 2, "test_acc": 0.75, "targets_known": 0.75,
+                 "mastered_rate": 0.5, "quizzes": 4.5, "mastered_at": 3}
+
+
+def test_summarize_empty_test_is_none_and_inputs_split(tmp_path):
+    c = rn.cell("main", "rules", 0.5)
+    base = {**c, "bkt": "0.3/0.1/0.1", "mastered_at": None, "targets_known": 0, "n_targets": 1, "test_right": 0,
+            "test_total": 0, "quizzes": 6}
+    rows = [base | {"inputs": "a"}, base | {"inputs": "b"}]
+    ts = rn.summarize(rows)
+    assert len(ts) == 2 and all(t["test_acc"] is None for t in ts)   # 시험이 없으면 0% 가 아니라 없음, 지문이 다르면 따로
+    assert "| 1 | - |" in rn.report(rows, tmp_path).read_text(encoding="utf-8")
 
 
 def test_grid_counts():
@@ -208,8 +218,49 @@ def test_grid_counts():
 def test_old_rows_are_skipped(tmp_path):
     p = tmp_path / "r.jsonl"
     p.write_text('{"setting": "main"}\n' + __import__("json").dumps({**rn.cell("main", "fixed", 0.5), "bkt": "0.3/0.1/0.1",
-                 "card": 1, "profile": "처음 배움", "seed": 0}) + "\n", encoding="utf-8")
-    assert len(rn.load_rows(p)) == 1   # 확신·BKT 값 기록 전의 옛 줄은 버린다
+                 "inputs": "abc", "card": 1, "profile": "처음 배움", "seed": 0}) + "\n", encoding="utf-8")
+    assert len(rn.load_rows(p)) == 1   # 확신·BKT 값·입력 지문 기록 전의 옛 줄은 버린다
+
+
+def test_partial_last_line_is_moved_aside(tmp_path):
+    import json
+    import pytest
+    good = json.dumps({**rn.cell("main", "fixed", 0.5), "bkt": "0.3/0.1/0.1", "inputs": "abc", "card": 1,
+                       "profile": "처음 배움", "seed": 0})
+    p = tmp_path / "r.jsonl"
+    p.write_text(good + "\n" + '{"setting": "ma', encoding="utf-8")   # 쓰다가 끊김
+    assert len(rn.load_rows(p)) == 1
+    assert p.read_text(encoding="utf-8") == good + "\n"               # 줄바꿈이 맞춰져 다음 줄을 이어 쓸 수 있다
+    assert (tmp_path / "r.jsonl.bad").read_text(encoding="utf-8") == '{"setting": "ma\n'
+    p.write_text('{"broken\n' + good + "\n", encoding="utf-8")          # 중간 줄이 깨진 건 끊김이 아니다
+    with pytest.raises(ValueError):
+        rn.load_rows(p)
+
+
+def test_fingerprint_changes_with_bank_or_map():
+    cmap = ag.ConceptMap(SCOPE, {}, EDGES)
+    a = rn.fingerprint({"cards": {"1": CARD_BANK}}, cmap)
+    assert a == rn.fingerprint({"cards": {"1": CARD_BANK}}, ag.ConceptMap(SCOPE, {}, EDGES))
+    assert a != rn.fingerprint({"cards": {}}, cmap) and a != rn.fingerprint({"cards": {"1": CARD_BANK}},
+                                                                            ag.ConceptMap(SCOPE, {}, EDGES[:1]))
+
+
+def test_fixed_stops_when_bank_has_no_term_quiz():
+    import pytest
+    from tutor import quiz as qz
+    bank = {"targets": TARGETS, "teach": {k: v for k, v in CARD_BANK["teach"].items() if "용어 뜻" not in k},
+            "test": CARD_BANK["test"]}
+    with pytest.raises(qz.QuizError):   # 끝없이 돌지 않고 멈춘다
+        te.fixed(SCOPE, TARGETS, learner(), bk.Draw(bank, random.Random(0)), te.MemMastery(SCOPE), cap=6)
+
+
+def test_test_quiz_differs_from_teach():
+    a = {"kind": "용어 뜻", "concept": "가", "content": {"q": "가?", "options": ["x", "y"]}, "key": 0}
+    b = {**a, "content": {"q": "가?", "options": ["y", "x"]}}             # 보기 순서만 다름 → 같은 문제
+    c = {**a, "content": {"q": "가는?", "options": ["x", "y"]}}
+    assert bk.question(a) == bk.question(b) != bk.question(c)
+    bank = {"cards": {"1": {"teach": {"가|용어 뜻": [a]}, "test": {"가": [b, c, c]}}}}
+    assert bk.overlaps(bank) == [("1", "가", 0), ("1", "가", 2)]
 
 
 def test_prior_record_same_for_all_conditions_and_does_not_teach():

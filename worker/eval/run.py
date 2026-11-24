@@ -22,6 +22,7 @@ BKT 값은 기본이 지금 앱의 값(learner.bkt.DEFAULT). --bkt 0.25,0.1,0.1 
     python -m eval.run --report              # 표·그래프만 다시
 """
 import argparse
+import hashlib
 import json
 import random
 import statistics
@@ -76,8 +77,16 @@ def bkt_tag(params: bkt.Params) -> str:
     return f"{params.p_init}/{params.p_learn}/{params.p_slip}"
 
 
+def fingerprint(bank: dict, cmap: ag.ConceptMap) -> str:
+    """퀴즈 은행과 개념 지도의 지문. 둘 중 하나라도 바뀌면 다른 실험이라 이어 돌리지도, 한 표로 묶지도 않는다 (#239 리뷰)."""
+    data = {"bank": bank, "map": {"labels": cmap.labels, "desc": cmap.desc, "edges": cmap.edges,
+                                  "confusable": cmap.confusable}}
+    return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True, default=list).encode()).hexdigest()[:12]
+
+
 def key(row) -> str:
-    parts = [str(row[k]) for k in CELL_FIELDS] + [row["bkt"], str(row["card"]), row["profile"], str(row["seed"])]
+    parts = [str(row[k]) for k in CELL_FIELDS] + [row["bkt"], row["inputs"], str(row["card"]), row["profile"],
+                                                  str(row["seed"])]
     return "|".join(parts)
 
 
@@ -86,7 +95,7 @@ def done_keys(path: Path = RESULTS) -> set[str]:
 
 
 def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed: int, c: dict,
-            params: bkt.Params = bkt.DEFAULT) -> dict:
+            params: bkt.Params = bkt.DEFAULT, inputs: str = "") -> dict:
     targets, scope = card_bank["targets"], card_bank["scope"]
     edges = [e for e in cmap.edges if e[0] in scope and e[1] in scope]
     hidden = profiles(scope, targets, edges)[profile]
@@ -96,7 +105,7 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
                       prereq_effect=c["prereq_effect"], slip=c["slip"], conf_noise=c["conf_noise"],
                       rng=random.Random(base))
     draw = bk.Draw(card_bank, random.Random(base + 1))
-    row = {**c, "bkt": bkt_tag(params), "card": card, "profile": profile, "seed": seed}
+    row = {**c, "bkt": bkt_tag(params), "inputs": inputs, "card": card, "profile": profile, "seed": seed}
     mastery = te.MemMastery(scope, blind=c["condition"] == "agent_no_bkt", params=params)
     if c["prior"]:
         row["prior_record"] = te.prior_record(card_bank, scope, learner, mastery, random.Random(base + 3))
@@ -123,15 +132,17 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
 def summarize(rows: list[dict]) -> list[dict]:
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
-        groups.setdefault(tuple(r[k] for k in CELL_FIELDS) + (r["bkt"],), []).append(r)
+        groups.setdefault(tuple(r[k] for k in CELL_FIELDS) + (r["bkt"], r["inputs"]), []).append(r)
     order = {"main": 0, "ablation": 1, "conf": 2, "cap10": 3, "sens": 4, "slip": 5}
     out = []
-    for g, rs in sorted(groups.items(), key=lambda x: (x[0][-1], not x[0][5], order.get(x[0][0], 9), -x[0][2],
-                                                       x[0][3], x[0][6], str(x[0][7]), x[0][1])):
+    for g, rs in sorted(groups.items(), key=lambda x: (x[0][-1], x[0][-2], not x[0][5], order.get(x[0][0], 9),
+                                                       -x[0][2], x[0][3], x[0][6], str(x[0][7]), x[0][1])):
         mastered = [r["mastered_at"] for r in rs if r["mastered_at"] is not None]
+        total = sum(r["test_total"] for r in rs)
         out.append({
-            **dict(zip(CELL_FIELDS, g[:-1])), "bkt": g[-1], "n": len(rs),
-            "test_acc": round(sum(r["test_right"] for r in rs) / max(1, sum(r["test_total"] for r in rs)), 3),
+            **dict(zip(CELL_FIELDS, g[:-2])), "bkt": g[-2], "inputs": g[-1], "n": len(rs),
+            # 시험 문제가 하나도 없으면 0% 가 아니라 "없음" (#239 리뷰)
+            "test_acc": round(sum(r["test_right"] for r in rs) / total, 3) if total else None,
             "targets_known": round(statistics.mean(r["targets_known"] / r["n_targets"] for r in rs), 3),
             "mastered_rate": round(len(mastered) / len(rs), 3),
             "quizzes": round(statistics.mean(r["quizzes"] for r in rs), 2),
@@ -142,13 +153,14 @@ def summarize(rows: list[dict]) -> list[dict]:
 
 def report(rows: list[dict], out_dir: Path = OUT) -> Path:
     table = summarize(rows)
-    lines = ["| BKT(처음/배움/실수) | 과거 기록 | 설정 | 조건 | 선수 효과 | 학습자 배울 | 학습자 실수 | 확신 잡음 | 상한 | 세션 | "
+    lines = ["| 입력 | BKT(처음/배움/실수) | 과거 기록 | 설정 | 조건 | 선수 효과 | 학습자 배울 | 학습자 실수 | 확신 잡음 | 상한 | 세션 | "
              "마지막 시험 정답률 | 목표 개념 앎 비율 | 목표 다 앎 | 낸 퀴즈 | 다 알기까지 퀴즈 |",
-             "| :--- | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+             "| :--- | :--- | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for t in table:
         noise = "-" if t["conf_noise"] is None else t["conf_noise"]
-        lines.append(f"| {t['bkt']} | {'있음' if t['prior'] else '없음'} | {t['setting']} | {t['condition']} | {t['prereq_effect']} | "
-                     f"{t['p_learn']} | {t['slip']} | {noise} | {t['cap']} | {t['n']} | {t['test_acc']:.0%} | "
+        acc = "-" if t["test_acc"] is None else f"{t['test_acc']:.0%}"
+        lines.append(f"| {t['inputs']} | {t['bkt']} | {'있음' if t['prior'] else '없음'} | {t['setting']} | {t['condition']} | {t['prereq_effect']} | "
+                     f"{t['p_learn']} | {t['slip']} | {noise} | {t['cap']} | {t['n']} | {acc} | "
                      f"{t['targets_known']:.0%} | {t['mastered_rate']:.0%} | {t['quizzes']} | "
                      f"{t['mastered_at'] if t['mastered_at'] is not None else '-'} |")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -175,8 +187,11 @@ def _graph(table: list[dict], path: Path) -> None:
     fig, ax = plt.subplots(figsize=(7, 4))
     width = 0.8 / len(conds)
     for i, c in enumerate(conds):
-        ys = [next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e), 0) for e in EFFECTS]
-        ax.bar([x + i * width for x in range(len(EFFECTS))], ys, width, label=c)
+        # 안 돌린 칸은 0 이 아니라 막대를 그리지 않는다 (재서 0 이 나온 칸은 0 으로 그린다, #239 리뷰)
+        pts = [(x, next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e), None))
+               for x, e in enumerate(EFFECTS)]
+        pts = [(x, y) for x, y in pts if y is not None]
+        ax.bar([x + i * width for x, _ in pts], [y for _, y in pts], width, label=c)
     ax.set_xticks([x + width * (len(conds) - 1) / 2 for x in range(len(EFFECTS))])
     ax.set_xticklabels([f"선수 효과 {e}" for e in EFFECTS])
     ax.set_ylim(0, 1)
@@ -187,11 +202,42 @@ def _graph(table: list[dict], path: Path) -> None:
     plt.close(fig)
 
 
+def repair(path: Path = RESULTS) -> int:
+    """중간에 끊겨 마지막 줄이 반쪽인 결과 파일을 고친다 (#239 리뷰): 그 줄만 <이름>.bad 에 옮기고 줄바꿈을 맞춘다.
+    마지막이 아닌 줄이 깨졌으면 손대지 않고 오류를 낸다 (끊긴 게 아니라 다른 문제라서). 옮긴 줄 수."""
+    if not path.exists():
+        return 0
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    for i, line in enumerate(lines[:-1], 1):
+        if line.strip():
+            try:
+                json.loads(line)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"{path} {i}번째 줄이 깨졌어요: {e}") from None
+    moved = 0
+    if lines:
+        try:
+            json.loads(lines[-1])
+        except json.JSONDecodeError:
+            with open(path.with_suffix(path.suffix + ".bad"), "a", encoding="utf-8") as bad:
+                bad.write(lines.pop() + "\n")
+            moved = 1
+    fixed = "".join(line + "\n" for line in lines)
+    if fixed != text:
+        path.write_text(fixed, encoding="utf-8")
+    return moved
+
+
 def load_rows(path: Path = RESULTS) -> list[dict]:
     if not path.exists():
         return []
+    repair(path)
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    return [r for r in rows if "bkt" in r]   # 확신·BKT 값을 기록하기 전의 옛 줄은 쓰지 않는다
+    # 확신·BKT 값·입력 지문을 기록하기 전의 옛 줄은 쓰지 않는다
+    return [r for r in rows if "bkt" in r and "inputs" in r]
 
 
 def parse_bkt(text: str | None) -> bkt.Params:
@@ -220,6 +266,7 @@ def main() -> None:
         titles = {cid: t for cid, t in conn.execute("SELECT id, title FROM cards WHERE id = ANY(%s)",
                                                         ([int(c) for c in bank["cards"]],)).fetchall()}
         conn.rollback()
+    inputs = fingerprint(bank, cmap)
     done = done_keys()
     OUT.mkdir(parents=True, exist_ok=True)
     agent_runs = 0
@@ -232,14 +279,15 @@ def main() -> None:
                 cb = {**cb, "title": titles.get(int(card_s), "")}
                 for profile in profiles(cb["scope"], cb["targets"], []):
                     for seed in SEEDS:
-                        probe = {**c, "bkt": bkt_tag(params), "card": int(card_s), "profile": profile, "seed": seed}
+                        probe = {**c, "bkt": bkt_tag(params), "inputs": inputs, "card": int(card_s), "profile": profile,
+                                 "seed": seed}
                         if key(probe) in done:
                             continue
                         if is_agent:
                             if args.limit is not None and agent_runs >= args.limit:
                                 continue
                             agent_runs += 1
-                        r = run_one(cmap, cb, int(card_s), profile, seed, c, params)
+                        r = run_one(cmap, cb, int(card_s), profile, seed, c, params, inputs)
                         f.write(json.dumps(r, ensure_ascii=False) + "\n")
                         f.flush()
                         if is_agent:
