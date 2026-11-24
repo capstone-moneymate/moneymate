@@ -88,6 +88,7 @@ def _fake(monkeypatch, *payloads):
         return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(queue.pop(0)))])
 
     monkeypatch.setattr(qz, "create", create)
+    monkeypatch.setattr(qz, "check", lambda q, desc, card_id=None: [])   # 내용 검사는 따로 본다 (아래)
     return calls
 
 
@@ -99,7 +100,7 @@ def test_generate_retries_bad_shape_then_ok(monkeypatch):
 
 
 def test_generate_gives_up(monkeypatch):
-    _fake(monkeypatch, CHOICE | {"options": ["a"]}, CHOICE | {"options": ["a"]})
+    _fake(monkeypatch, *[CHOICE | {"options": ["a"]}] * 3)
     with pytest.raises(qz.QuizError, match="보기가 3개"):
         qz.generate("용어 뜻", "주당순이익", "")
     with pytest.raises(qz.QuizError, match="모르는"):
@@ -142,3 +143,92 @@ def test_generate_shuffles(monkeypatch):
     _fake(monkeypatch, *[CHOICE] * 30)
     keys = {qz.generate("용어 뜻", "주당순이익", "", rng=random.Random(i)).key for i in range(30)}
     assert keys == {0, 1, 2}
+
+
+# --- 내용 검사 (#234) ---
+
+def test_claims_by_kind():
+    c = _chips()   # 해설 "e"
+    cl = qz.claims(c)
+    assert cl[0] == ("회사가 [자사주] 를 사서 [소각] 하면", True) and cl[-1] == ("해설: e", True)
+    body = cl[1:-1]
+    assert len(body) == 11 and not any(ok for _, ok in body)            # 4 × 3 = 12 가지 중 정답 1개 빼고 모두 거짓
+    assert ("회사가 [소각] 를 사서 [자사주] 하면", False) in body           # 정답 두 칩을 바꿔 넣은 것 (#237 리뷰)
+    assert ("회사가 [배당] 를 사서 [증자] 하면", False) in body
+    q = qz.to_quiz("용어 뜻", "주당순이익", CHOICE)
+    assert qz.claims(q) == [("'주당순이익'의 뜻: 주당순이익", True), ("'주당순이익'의 뜻: 주가수익비율", False),
+                            ("'주당순이익'의 뜻: 자기자본", False), ("해설: 순이익을 주식 수로 나눈 값", True)]
+    wrong = qz.to_quiz("틀린 설명", "주당순이익", CHOICE | {"answer_index": 1, "explanation": " "})
+    assert [ok for _, ok in qz.claims(wrong)] == [True, False, True]   # 빈 해설은 넣지 않는다
+    cls = {"baskets": ["기업", "상장기업"], "explanation": "",
+           "cases": [{"text": x, "basket": b} for x, b in [("가", 0), ("나", 1), ("다", 0), ("라", 1)]]}
+    got = qz.claims(qz.to_quiz("사례 분류", "자사주 소각", cls))
+    assert got[:4] == [("'가' → 기업", True), ("'가' → 상장기업", False), ("'나' → 기업", False), ("'나' → 상장기업", True)]
+    assert len(got) == 8                                                # 사례마다 두 바구니 (#237 리뷰)
+
+
+def _judge(monkeypatch, judges, advice=False):
+    """검사 호출 가짜: 문장 번호 순서대로 judges 를 답한다. 보낸 글도 남긴다."""
+    sent = []
+
+    def create(module, **kw):
+        sent.append(kw["messages"][0]["content"])
+        items = [{"no": i + 1, "reason": "r", "judge": j} for i, j in enumerate(judges)]
+        return SimpleNamespace(stop_reason="end_turn",
+                               content=[SimpleNamespace(type="text", text=json.dumps({"items": items, "advice": advice}))])
+
+    monkeypatch.setattr(qz, "create", create)
+    return sent
+
+
+def test_check_compares_each_statement(monkeypatch):
+    q = qz.to_quiz("용어 뜻", "주당순이익", CHOICE | {"explanation": ""})
+    sent = _judge(monkeypatch, ["참", "거짓", "거짓"])
+    assert qz.check(q, "순이익 ÷ 주식 수") == []
+    assert "answer" not in sent[0] and "참" not in sent[0].split("</check>")[0].split("statements")[1]   # 정답은 안 보여 준다
+    _judge(monkeypatch, ["참", "참", "거짓"])        # 오답 보기도 참이라 함 → 정답이 둘
+    assert len(qz.check(q, "")) == 1
+    _judge(monkeypatch, ["애매", "거짓", "거짓"])     # 참이어야 할 문장이 애매면 탈락
+    assert "애매" in qz.check(q, "")[0]
+    _judge(monkeypatch, ["참", "애매", "거짓"])       # 거짓이어야 할 문장이 애매(말이 안 됨)면 통과: 학습자에게도 오답
+    assert qz.check(q, "") == []
+    _judge(monkeypatch, ["참", "거짓", "거짓"], advice=True)
+    assert qz.check(q, "") == ["매수·매도 권유나 주가 예측이 있어요"]
+    _judge(monkeypatch, ["참", "거짓"])               # 문장 하나를 빼먹음
+    assert qz.check(q, "") == ["3번 문장을 판단하지 않았어요"]
+
+
+def test_generate_retries_when_check_fails(monkeypatch):
+    calls = _fake(monkeypatch, CHOICE, CHOICE)
+    verdicts = iter([["1번 틀림"], []])
+    monkeypatch.setattr(qz, "check", lambda q, desc, card_id=None: next(verdicts))
+    q = qz.generate("용어 뜻", "주당순이익", "")
+    assert q.content["options"][q.key] == "주당순이익" and len(calls) == 2
+    _fake(monkeypatch, *[CHOICE] * 3)
+    monkeypatch.setattr(qz, "check", lambda q, desc, card_id=None: ["늘 틀림"])
+    with pytest.raises(qz.QuizError, match="내용 검사 탈락"):
+        qz.generate("용어 뜻", "주당순이익", "")
+
+
+def test_ox_and_pairs_are_not_checked(monkeypatch):
+    _fake(monkeypatch, {"statement": "s", "answer": True, "explanation": "e"})
+    monkeypatch.setattr(qz, "check", lambda *a, **k: pytest.fail("O/X 는 검사하지 않는다"))
+    assert qz.generate("O/X", "자사주 소각", "").kind == "O/X"
+
+
+def test_chip_blank_uses_sonnet_others_haiku(monkeypatch):
+    from generate.llm_client import HAIKU, SONNET
+    chip = {"sentence": "회사가 ___ 를 사서 ___ 하면", "chips": ["자사주", "소각", "배당", "증자"],
+            "answers": ["자사주", "소각"], "explanation": "e"}
+    calls = _fake(monkeypatch, chip, CHOICE)
+    qz.generate("칩 빈칸", "자사주 소각", "")
+    qz.generate("용어 뜻", "주당순이익", "")
+    assert [c["model"] for c in calls] == [SONNET, HAIKU] and qz.CHECK_MODEL == HAIKU
+
+
+def test_wrong_explanation_fails_check(monkeypatch):
+    # 보기는 맞는데 해설이 틀린 퀴즈: 마지막 문장(해설)이 거짓이면 탈락 (#237 리뷰)
+    q = qz.to_quiz("용어 뜻", "주당순이익", CHOICE | {"explanation": "순이익 100원, 주식 10주면 주당순이익은 1원"})
+    _judge(monkeypatch, ["참", "거짓", "거짓", "거짓"])
+    problems = qz.check(q, "")
+    assert len(problems) == 1 and "해설" in problems[0]
