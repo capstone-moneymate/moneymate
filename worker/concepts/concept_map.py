@@ -8,7 +8,7 @@
     카드뉴스 글은 우리가 만든 글이라 기사 본문을 저장하지 않는다는 규칙과도 맞는다)
 ③ 같은 뜻 묶기: 로컬 한국어 임베딩으로 "EPS" = "주당순이익" 을 한 노드로
 ④ 선수 관계: 개념 쌍마다 독립 여러 번 묻고 다수결
-⑤ 저장: concept_nodes, concept_prereq (사람2의 009 마이그레이션 전에는 파일로)
+⑤ 저장: 파일(build_map) → concept_nodes, concept_node_cards, concept_prereq (load_map)
 
 실행 (worker/ 에서):
     python -m concepts.concept_map           # 재료를 모아 개수만 출력
