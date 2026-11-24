@@ -138,8 +138,8 @@ QUIZ_OUT = {"quiz_id": 9, "node_id": 3, "concept": "EPS", "kind": "용어 뜻",
 def review_calls(monkeypatch):
     seen = {"made": []}
 
-    def make_quiz(kind, concept, desc):
-        seen["made"].append((kind, concept, desc))
+    def make_quiz(kind, concept, desc, pair=None):
+        seen["made"].append((kind, concept, desc, pair))
         return "만든 문제"
 
     def save(conn, user_id, node_id, quiz):
@@ -158,8 +158,17 @@ def test_review_quiz_makes_and_saves_new_quiz(client, review_calls, monkeypatch)
     r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
     assert r.status_code == 200
     assert r.json() == QUIZ_OUT                       # 정답·해설은 응답에 없다
-    assert review_calls["made"] == [("용어 뜻", "EPS", "주당순이익")]
+    assert review_calls["made"] == [("용어 뜻", "EPS", "주당순이익", None)]
     assert review_calls["saved"] == (USER, 3, "만든 문제")
+
+
+def test_review_quiz_passes_the_confusable_pair_to_the_generator(client, review_calls, monkeypatch):
+    plan = {"concept": "영업이익", "desc": "영업이익: 본업 이익\n당기순이익: 최종 이익", "kind": "헷갈리는 쌍",
+            "pair": ["영업이익", "당기순이익"]}
+    monkeypatch.setattr(api.review, "prepare", lambda conn, user, node: plan)
+    r = client.post("/learner/review/quiz", json={"user_id": USER, "node_id": 3})
+    assert r.status_code == 200
+    assert review_calls["made"] == [("헷갈리는 쌍", "영업이익", plan["desc"], ["영업이익", "당기순이익"])]
 
 
 def test_review_quiz_reuses_pending_without_calling_llm(client, review_calls, monkeypatch):

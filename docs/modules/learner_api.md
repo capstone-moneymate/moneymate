@@ -16,6 +16,6 @@
 - 테스트: `test_learner_api.py` 13개(확신·시간 넘김, 안 보낸 요청, 범위 밖 값 422, 복습 목록). 2026-11-24 로컬에서 Spring(8081) → 채점 서버(8001) → PostgreSQL로 답 3개: 맞힘 + 확실해요 → 안정도 2.307·2일 뒤, 같은 개념을 같은 날 헷갈려요로 다시 맞힘 → 난이도만 오름, 틀림 + 확실해요 → 안정도 0.212·1일 뒤·`sure_wrong_at` 기록. 확인한 행은 지웠다.
 
 ## 복습 문제 풀기 추가 (2026-11-24, 계획 2-7)
-- `POST /learner/review/quiz` `{user_id, node_id}` → `{quiz_id, node_id, concept, kind, content, guess_p}` (정답 없음). 오늘 복습할 개념이 아니면 409, 문제를 못 만들면 503.
+- `POST /learner/review/quiz` `{user_id, node_id}` → `{quiz_id, node_id, concept, kind, content, guess_p}` (정답 없음). `kind`는 용어 뜻 / 헷갈리는 쌍 / 틀린 설명 / O/X. 오늘 복습할 개념이 아니면 409, 문제를 못 만들면 503.
 - `POST /learner/review/answer` `{user_id, quiz_id, answer, confidence, response_ms, answer_changes}` → `{correct, key, explanation, concept, p_know, due_at}`. 없는 문제 404, 이미 답한 문제 409.
 - 본 문제와 달리 이 둘은 채점 서버가 직접 내고 채점한다 (정답을 채점 서버가 보관해서). Spring `LearnerStateClient.reviewQuiz`는 LLM을 기다리느라 응답을 30초까지 기다리고, `LearnerController`가 채점 서버의 404·409를 그대로, 그 밖의 4xx는 400으로 전한다. 자세한 내용은 `docs/modules/learner_review.md`.
