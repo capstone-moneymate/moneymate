@@ -14,10 +14,16 @@ public interface AnswerRepository {
     /** users 에 없으면 넣는다 (user_answers 의 외래키). */
     void ensureUser(@Param("userId") String userId);
 
-    /** 코드 채점 답안 1개 저장 (graded_by = 'code'). answerJson 은 사용자가 낸 답 JSON 문자열. */
+    /**
+     * 코드 채점 답안 1개 저장 (graded_by = 'code'). answerJson 은 사용자가 낸 답 JSON 문자열.
+     * confidence(1 헷갈려요, 2 확실해요)·responseMs·answerChanges 는 화면이 안 보냈으면 null (009).
+     */
     void insertAnswer(@Param("userId") String userId,
                       @Param("cardId") long cardId,
                       @Param("stepId") long stepId,
                       @Param("answerJson") String answerJson,
-                      @Param("isCorrect") boolean isCorrect);
+                      @Param("isCorrect") boolean isCorrect,
+                      @Param("confidence") Integer confidence,
+                      @Param("responseMs") Integer responseMs,
+                      @Param("answerChanges") Integer answerChanges);
 }
