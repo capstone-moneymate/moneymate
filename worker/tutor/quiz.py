@@ -12,9 +12,16 @@
 
 주의: 용어 뜻처럼 "정답"이 정의인 문제는 코드가 맞는지 계산할 수 없다. 개념 지도의 설명(desc)을 근거로 주고,
 코드는 모양(보기 수, 정답 번호 범위, 보기 중복, 금지 표현)만 확인한다.
+
+정답 위치 (#231): LLM 에게 칩 번호를 세게 하지 않는다. 2026-11-24 칩 빈칸 6번 중 5번 Haiku 가 칩 번호를 1부터 세서
+(코드는 0부터) 모양 검사는 통과하고 정답이 틀렸다. 그래서 칩 빈칸 정답은 칩 글자 그대로 받고 코드가 번호로 바꾼다.
+또 LLM 은 정답을 첫 보기에 두는 버릇이 있어서 (용어 뜻·헷갈리는 쌍 4번 모두 0번) generate 가 보기·칩·사례 순서를 섞고
+정답 번호를 따라 옮긴다. 그래야 찍어서 맞힐 확률이 위 표대로 된다. O/X 는 늘 O, X 순서. 짝 맞추기는 뜻을 용어 순서대로 받고
+화면이 섞어서 보여 준다 (채점은 원래 순서 기준).
 """
 import json
 import math
+import random
 from dataclasses import dataclass, field
 
 from generate.llm_client import HAIKU, create, text_of
@@ -74,7 +81,7 @@ SCHEMAS = {
     "choice": _obj({"question": S, "options": {"type": "array", "items": S}, "answer_index": I, "explanation": S}),
     "O/X": _obj({"statement": S, "answer": {"type": "boolean"}, "explanation": S}),
     "칩 빈칸": _obj({"sentence": S, "chips": {"type": "array", "items": S},
-                   "answers": {"type": "array", "items": I}, "explanation": S}),
+                   "answers": {"type": "array", "items": S}, "explanation": S}),   # 번호가 아니라 칩 글자 (#231)
     "짝 맞추기": _obj({"meanings": {"type": "array", "items": S}, "explanation": S}),
     "사례 분류": _obj({"baskets": {"type": "array", "items": S},
                     "cases": {"type": "array", "items": _obj({"text": S, "basket": I})}, "explanation": S}),
@@ -85,7 +92,7 @@ HOW = {
     "헷갈리는 쌍": "<pair> 의 두 개념 중 어느 쪽에 맞는 설명인지 묻는다. options 는 두 개념 이름 그대로 2개.",
     "틀린 설명": "개념에 대한 설명 3개 중 틀린 것 하나를 고르게 한다. answer_index 는 틀린 설명의 번호. 흔한 오개념을 틀린 설명으로 쓴다.",
     "O/X": "개념에 대한 한 문장이 맞는지(O) 틀렸는지(X) 묻는다.",
-    "칩 빈칸": f"개념이 쓰이는 짧은 문장에 빈칸 {BLANK} 를 2개 두고, 칩 4개 중 빈칸에 들어갈 것을 순서대로 고르게 한다. answers 는 빈칸 순서대로 칩 번호.",
+    "칩 빈칸": f"개념이 쓰이는 짧은 문장에 빈칸 {BLANK} 를 2개 두고, 칩 4개 중 빈칸에 들어갈 것을 순서대로 고르게 한다. answers 는 빈칸 순서대로 들어갈 칩의 글자 그대로 (번호가 아니다).",
     "짝 맞추기": "<terms> 의 용어마다 짧은 뜻을 같은 순서로 하나씩 쓴다. 화면이 뜻을 섞어서 보여 준다.",
     "사례 분류": "바구니 2개(예: 이 개념에 해당 / 해당 안 함)와 짧은 사례 4개. basket 은 사례가 들어갈 바구니 번호. 두 바구니 모두 한 번 이상 쓴다.",
 }
@@ -137,14 +144,17 @@ def to_quiz(kind: str, concept: str, data: dict, pair: list[str] | None = None,
     elif kind == "O/X":
         content, key = {"statement": data["statement"], "options": ["O", "X"]}, 0 if data["answer"] else 1
     elif kind == "칩 빈칸":
-        chips, answers, blanks = data["chips"], data["answers"], data["sentence"].count(BLANK)
+        chips = [c.strip() for c in data["chips"]]
+        flat = {c.replace(" ", ""): c for c in chips}          # 띄어쓰기만 다르게 쓴 정답도 같은 칩으로 본다
+        answers = [flat.get(a.replace(" ", ""), a.strip()) for a in data["answers"]]
+        blanks = data["sentence"].count(BLANK)
         if len(chips) != 4 or len(set(chips)) != 4:
             raise QuizError("칩은 서로 다른 4개여야 해요")
         if blanks != 2 or len(answers) != 2:
             raise QuizError(f"빈칸({BLANK})과 정답이 2개씩이어야 해요 (빈칸 {blanks}, 정답 {len(answers)})")
-        if len(set(answers)) != 2 or not all(0 <= a < 4 for a in answers):
-            raise QuizError(f"정답 칩 번호가 잘못됐어요: {answers}")
-        content, key = {"sentence": data["sentence"], "chips": chips}, answers
+        if len(set(answers)) != 2 or not all(a in chips for a in answers):
+            raise QuizError(f"정답 칩은 칩 글자 그대로 서로 다른 2개여야 해요: {answers}")
+        content, key = {"sentence": data["sentence"], "chips": chips}, [chips.index(a) for a in answers]
     elif kind == "짝 맞추기":
         if len(data["meanings"]) != len(terms or []):
             raise QuizError(f"뜻이 용어 수({len(terms or [])})와 같아야 해요")
@@ -162,6 +172,29 @@ def to_quiz(kind: str, concept: str, data: dict, pair: list[str] | None = None,
     return Quiz(kind, concept, content, key, expl, guess_probability(kind, content))
 
 
+def shuffle(q: Quiz, rng: random.Random) -> Quiz:
+    """정답 위치를 섞는다 (화면에 보이는 순서만 바뀌고 정답 글자는 그대로). 정답 번호를 따라 옮긴다.
+    보기 고르기 3종류는 보기, 칩 빈칸은 칩, 사례 분류는 사례 순서. O/X·짝 맞추기는 그대로 (위 주의)."""
+    def order(n):
+        o = list(range(n))
+        rng.shuffle(o)
+        return o
+
+    c = dict(q.content)
+    if q.kind in ("용어 뜻", "헷갈리는 쌍", "틀린 설명"):
+        o = order(len(c["options"]))
+        c["options"], key = [q.content["options"][i] for i in o], o.index(q.key)
+    elif q.kind == "칩 빈칸":
+        o = order(len(c["chips"]))
+        c["chips"], key = [q.content["chips"][i] for i in o], [o.index(k) for k in q.key]
+    elif q.kind == "사례 분류":
+        o = order(len(c["cases"]))
+        c["cases"], key = [q.content["cases"][i] for i in o], [q.key[i] for i in o]
+    else:
+        return q
+    return Quiz(q.kind, q.concept, c, key, q.explanation, q.guess_p, dict(q.extra))
+
+
 def grade(quiz: Quiz, answer) -> bool:
     """사용자 답이 정답인가. 보기 고르기는 번호, 칩 빈칸은 빈칸 순서대로 칩 번호,
     짝 맞추기는 용어 순서대로 뜻 번호(원래 순서 기준), 사례 분류는 사례 순서대로 바구니 번호."""
@@ -169,8 +202,10 @@ def grade(quiz: Quiz, answer) -> bool:
 
 
 def generate(kind: str, concept: str, desc: str, pair: list[str] | None = None,
-             terms: list[str] | None = None, card_id: int | None = None, tries: int = 2) -> Quiz:
-    """Haiku 로 퀴즈를 만들고 검사한다. 모양이 틀리면 tries 번까지 다시 만든다 (이유는 넘기지 않고 새로 부른다)."""
+             terms: list[str] | None = None, card_id: int | None = None, tries: int = 2,
+             rng: random.Random | None = None) -> Quiz:
+    """Haiku 로 퀴즈를 만들고 검사한 뒤 정답 위치를 섞는다 (shuffle). 모양이 틀리면 tries 번까지 다시 만든다
+    (이유는 넘기지 않고 새로 부른다). rng 는 테스트에서 섞는 순서를 고정할 때."""
     if kind not in KINDS:
         raise QuizError(f"모르는 퀴즈 종류: {kind}")
     last = None
@@ -184,7 +219,7 @@ def generate(kind: str, concept: str, desc: str, pair: list[str] | None = None,
             last = QuizError(f"퀴즈 응답이 끝나지 않았어요: stop_reason={resp.stop_reason}")
             continue
         try:
-            return to_quiz(kind, concept, json.loads(text_of(resp)), pair, terms)
+            return shuffle(to_quiz(kind, concept, json.loads(text_of(resp)), pair, terms), rng or random.Random())
         except QuizError as e:
             last = e
     raise last

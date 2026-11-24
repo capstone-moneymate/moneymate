@@ -52,13 +52,19 @@ def test_ox_chips_match_classify():
     assert ox.content["options"] == ["O", "X"] and ox.key == 0
 
     chips = {"sentence": "회사가 ___ 를 사서 ___ 하면 주식 수가 준다", "chips": ["자사주", "소각", "배당", "증자"],
-             "answers": [0, 1], "explanation": "e"}
+             "answers": ["자사주", "소각"], "explanation": "e"}
     q = qz.to_quiz("칩 빈칸", "자사주 소각", chips)
     assert q.key == [0, 1] and qz.grade(q, [0, 1]) and not qz.grade(q, [1, 0])
     with pytest.raises(qz.QuizError, match="빈칸"):
         qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"sentence": "___ 하나뿐"})
-    with pytest.raises(qz.QuizError, match="칩 번호"):
-        qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"answers": [0, 0]})
+    with pytest.raises(qz.QuizError, match="정답 칩"):
+        qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"answers": ["자사주", "자사주"]})
+    # 1부터 센 번호나 칩에 없는 말은 받지 않는다 (#231: Haiku 가 번호를 1부터 셌다)
+    for bad in (["1", "2"], ["자사주", "합병"]):
+        with pytest.raises(qz.QuizError, match="정답 칩"):
+            qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"answers": bad})
+    assert qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"answers": ["소각", "배당"]}).key == [1, 2]
+    assert qz.to_quiz("칩 빈칸", "자사주 소각", chips | {"answers": ["자 사주", "소각 "]}).key == [0, 1]   # 띄어쓰기 무시
 
     m = qz.to_quiz("짝 맞추기", "주당순이익", {"meanings": ["가", "나", "다"], "explanation": "e"},
                    terms=["주당순이익", "순이익", "유통 주식 수"])
@@ -88,7 +94,7 @@ def _fake(monkeypatch, *payloads):
 def test_generate_retries_bad_shape_then_ok(monkeypatch):
     calls = _fake(monkeypatch, CHOICE | {"options": ["a"]}, CHOICE)
     q = qz.generate("용어 뜻", "주당순이익", "순이익 ÷ 주식 수")
-    assert q.key == 0 and len(calls) == 2 and calls[0]["module"] == "tutor_quiz"
+    assert q.content["options"][q.key] == "주당순이익" and len(calls) == 2 and calls[0]["module"] == "tutor_quiz"
     assert '"desc": "순이익 ÷ 주식 수"' in calls[0]["messages"][0]["content"]
 
 
@@ -98,3 +104,41 @@ def test_generate_gives_up(monkeypatch):
         qz.generate("용어 뜻", "주당순이익", "")
     with pytest.raises(qz.QuizError, match="모르는"):
         qz.generate("없는 종류", "주당순이익", "")
+
+
+# --- 정답 위치 섞기 (#231) ---
+
+def _chips():
+    return qz.to_quiz("칩 빈칸", "자사주 소각", {"sentence": "회사가 ___ 를 사서 ___ 하면", "explanation": "e",
+                                              "chips": ["자사주", "소각", "배당", "증자"], "answers": ["자사주", "소각"]})
+
+
+def test_shuffle_keeps_answer_text():
+    import random
+    rng = random.Random(1)
+    for _ in range(20):
+        q = qz.shuffle(qz.to_quiz("용어 뜻", "주당순이익", CHOICE), rng)
+        assert q.content["options"][q.key] == "주당순이익" and sorted(q.content["options"]) == sorted(CHOICE["options"])
+        c = qz.shuffle(_chips(), rng)
+        assert [c.content["chips"][k] for k in c.key] == ["자사주", "소각"] and c.guess_p == _chips().guess_p
+    cls = {"baskets": ["해당", "해당 안 함"], "explanation": "e",
+           "cases": [{"text": x, "basket": b} for x, b in [("가", 0), ("나", 1), ("다", 0), ("라", 1)]]}
+    s = qz.shuffle(qz.to_quiz("사례 분류", "자사주 소각", cls), random.Random(3))
+    assert dict(zip(s.content["cases"], s.key)) == {"가": 0, "나": 1, "다": 0, "라": 1}
+    ox = qz.to_quiz("O/X", "자사주 소각", {"statement": "s", "answer": False, "explanation": "e"})
+    assert qz.shuffle(ox, rng) == ox                      # O/X 는 늘 O, X
+
+
+def test_shuffle_spreads_answer_position():
+    # LLM 이 정답을 늘 0번에 두어도 섞은 뒤에는 세 자리에 고루 간다 (300번 중 자리마다 70번 넘게)
+    import random
+    rng = random.Random(0)
+    pos = [qz.shuffle(qz.to_quiz("용어 뜻", "주당순이익", CHOICE), rng).key for _ in range(300)]
+    assert all(pos.count(k) > 70 for k in range(3))
+
+
+def test_generate_shuffles(monkeypatch):
+    import random
+    _fake(monkeypatch, *[CHOICE] * 30)
+    keys = {qz.generate("용어 뜻", "주당순이익", "", rng=random.Random(i)).key for i in range(30)}
+    assert keys == {0, 1, 2}
