@@ -112,8 +112,9 @@ class ReviewQuizOut(BaseModel):
     quiz_id: int
     node_id: int
     concept: str
-    kind: str = Field(description="용어 뜻 / 틀린 설명 / O/X")
-    content: dict = Field(description="화면용. 보기 고르기는 {question, options}, O/X 는 {statement, options}. 정답 없음")
+    kind: str = Field(description="용어 뜻 / 헷갈리는 쌍 / 틀린 설명 / O/X")
+    content: dict = Field(description="화면용. 보기 고르기는 {question, options}, O/X 는 {statement, options}. "
+                                      "헷갈리는 쌍의 options 는 두 개념 이름. 정답 없음")
     guess_p: float = Field(description="찍어서 맞힐 확률 (코드 계산)")
 
 
@@ -170,11 +171,11 @@ def read_calibration(user_id: UUID) -> CalibrationOut:
         return CalibrationOut(**state.calibration_report(conn, str(user_id)))
 
 
-def make_quiz(kind: str, concept: str, desc: str):
-    """복습 문제 하나를 만든다 (LLM 호출). 테스트는 이 함수를 바꿔 끼운다."""
+def make_quiz(kind: str, concept: str, desc: str, pair: list[str] | None = None):
+    """복습 문제 하나를 만든다 (LLM 호출). pair 는 헷갈리는 쌍일 때 [개념, 이웃]. 테스트는 이 함수를 바꿔 끼운다."""
     from tutor import quiz as qz   # 여기서 불러온다: 학습자 상태만 쓰는 요청은 LLM 모듈이 필요 없게
 
-    return qz.generate(kind, concept, desc)
+    return qz.generate(kind, concept, desc, pair)
 
 
 @router.post("/review/quiz", response_model=ReviewQuizOut)
@@ -189,7 +190,7 @@ def review_quiz(req: ReviewQuizIn) -> ReviewQuizOut:
         return ReviewQuizOut(**plan["pending"])
     # LLM 을 부르는 동안에는 DB 연결을 잡고 있지 않는다
     try:
-        quiz = make_quiz(plan["kind"], plan["concept"], plan["desc"])
+        quiz = make_quiz(plan["kind"], plan["concept"], plan["desc"], plan.get("pair"))
     except Exception as e:  # 모양 검사 실패(QuizError), 월 한도(BudgetExceeded), API 오류
         log.warning("복습 문제를 만들지 못했어요 (%s, %s): %s", plan["concept"], plan["kind"], e)
         raise HTTPException(status_code=503, detail="문제를 만들지 못했어요. 잠시 뒤에 다시 해 주세요.") from None

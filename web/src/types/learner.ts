@@ -67,8 +67,11 @@ export interface Calibration {
   sureWrongConcepts: string[]
 }
 
-/** 복습 문제 종류 (worker/tutor/quiz.py 의 이름 그대로). 지금은 보기 고르기 세 가지만 낸다 */
-export type ReviewQuizKind = '용어 뜻' | '틀린 설명' | 'O/X'
+/**
+ * 복습 문제 종류 (worker/tutor/quiz.py 의 이름 그대로). 지금은 보기 고르기 네 가지만 낸다.
+ * 헷갈리는 쌍은 헷갈리기 쉬운 이웃이 있는 개념에만 나오고, 보기는 두 개념 이름이다
+ */
+export type ReviewQuizKind = '용어 뜻' | '헷갈리는 쌍' | '틀린 설명' | 'O/X'
 
 /** POST /api/learner/review/quiz. 정답과 해설은 들어 있지 않다 (답을 내면 ReviewResult 로 온다) */
 export interface ReviewQuiz {

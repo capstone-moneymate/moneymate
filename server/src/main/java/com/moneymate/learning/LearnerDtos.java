@@ -48,7 +48,7 @@ public final class LearnerDtos {
     /**
      * 복습 문제 하나 (POST /learner/review/quiz). 정답과 해설은 들어 있지 않다 (채점 서버가 보관).
      *
-     * @param kind    용어 뜻 / 틀린 설명 / O/X
+     * @param kind    용어 뜻 / 헷갈리는 쌍 / 틀린 설명 / O/X (헷갈리는 쌍의 보기는 두 개념 이름)
      * @param content 화면용. 보기 고르기는 {question, options}, O/X 는 {statement, options}
      * @param guessP  찍어서 맞힐 확률 (채점 서버가 계산)
      */

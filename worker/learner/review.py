@@ -3,8 +3,10 @@
 - 문제는 사람1의 worker/tutor/quiz.py 가 만든다 (문장은 LLM, 모양 검사·찍어서 맞힐 확률은 코드).
   여기서는 어떤 종류를 낼지 고르고, 정답을 concept_quizzes(011)에 보관하고, 답이 오면 채점해서
   알 확률(BKT)과 복습 일정(FSRS)을 고친 뒤 concept_answers 에 남긴다.
-- 종류는 화면 A(보기 고르기) 중 개념 하나로 낼 수 있는 세 가지를 돌아가며 낸다 (KINDS). 같은 개념을 복습할 때마다
+- 종류는 화면 A(보기 고르기) 네 가지를 돌아가며 낸다 (KINDS, KINDS_WITH_PAIR). 같은 개념을 복습할 때마다
   종류가 바뀌고 문장도 새로 만들어져서 문제를 외워서 맞히기 어렵다.
+- "헷갈리는 쌍"은 헷갈리기 쉬운 이웃(concept_confusable, 012. 사람1이 사람 검토를 거쳐 넣는다)이 있는 개념에만 낸다.
+  이웃이 여럿이면 유사도(sim)가 높은 것부터, 쌍 문제를 낼 때마다 다음 이웃으로 넘어간다.
 - 오늘 복습 목록에 있는 개념만 낸다. 목록이 하루 상한과 복습일을 지키므로 여기서 LLM 호출 수도 같이 묶인다.
 - 정답 보기 위치는 코드가 섞는다 (LLM 이 정답을 특정 자리에 두는 버릇이 있어도 찍어서 맞힐 확률이 1/보기 수가 되게).
 
@@ -18,9 +20,12 @@ from learner import schedule as sc
 from learner import state
 
 SOURCE = "review"
-# 화면 A(보기 고르기) 가운데 개념 하나만으로 낼 수 있는 종류. 헷갈리는 쌍(이웃 개념 필요)과 화면 B(칩)는 아직 안 낸다
+PAIR = "헷갈리는 쌍"
+# 화면 A(보기 고르기) 가운데 개념 하나만으로 낼 수 있는 종류. 화면 B(칩)는 아직 안 낸다
 KINDS = ("용어 뜻", "틀린 설명", "O/X")
-SHUFFLED = ("용어 뜻", "틀린 설명")  # 보기 순서를 섞는 종류. O/X 는 늘 O, X 순서
+# 헷갈리기 쉬운 이웃이 있는 개념은 뜻을 확인한 다음에 이웃과 구분하는 문제를 낸다
+KINDS_WITH_PAIR = ("용어 뜻", PAIR, "틀린 설명", "O/X")
+SHUFFLED = ("용어 뜻", PAIR, "틀린 설명")  # 보기 순서를 섞는 종류. O/X 는 늘 O, X 순서
 
 
 class NotDue(Exception):
@@ -35,9 +40,27 @@ class AlreadyAnswered(Exception):
     """이미 답한 문제."""
 
 
-def pick_kind(issued: int) -> str:
-    """이 개념으로 지금까지 낸 복습 문제 수 → 이번에 낼 종류. 0, 1, 2, 3 … → 용어 뜻, 틀린 설명, O/X, 용어 뜻 …"""
-    return KINDS[issued % len(KINDS)]
+def pick_kind(issued: int, has_neighbour: bool = False) -> str:
+    """이 개념으로 지금까지 낸 복습 문제 수 → 이번에 낼 종류. 0, 1, 2, 3 … → 용어 뜻, 틀린 설명, O/X, 용어 뜻 …
+    헷갈리기 쉬운 이웃이 있으면 용어 뜻, 헷갈리는 쌍, 틀린 설명, O/X, 용어 뜻 …"""
+    kinds = KINDS_WITH_PAIR if has_neighbour else KINDS
+    return kinds[issued % len(kinds)]
+
+
+def neighbours(conn, node_id: int) -> list[tuple[str, str]]:
+    """이 개념과 헷갈리기 쉬운 이웃 (이름, 설명). 유사도가 높은 것부터."""
+    rows = conn.execute(
+        """SELECT n.label, coalesce(n.description, '') FROM concept_confusable c
+             JOIN concept_nodes n ON n.id = c.other_id
+            WHERE c.node_id = %s ORDER BY c.sim DESC NULLS LAST, c.other_id""",
+        (node_id,),
+    ).fetchall()
+    return [(r[0], r[1]) for r in rows]
+
+
+def pair_desc(concept: str, desc: str, other: str, other_desc: str) -> str:
+    """헷갈리는 쌍 문제의 근거 글. 두 개념의 설명을 이름과 함께 넘겨야 LLM 이 한쪽에만 맞는 설명을 쓸 수 있다."""
+    return "\n".join(f"{name}: {d}" for name, d in ((concept, desc), (other, other_desc)) if d)
 
 
 def shuffle_options(content: dict, key: int, rng: random.Random) -> tuple[dict, int]:
@@ -49,7 +72,8 @@ def shuffle_options(content: dict, key: int, rng: random.Random) -> tuple[dict, 
 
 def prepare(conn, user_id: str, node_id: int, now: datetime | None = None) -> dict:
     """문제를 내기 전에 확인한다. 아직 안 푼 문제가 있으면 {"pending": 문제}, 없으면 새로 만들 재료
-    {"concept", "desc", "kind"} 를 돌려준다. 오늘 복습 목록에 없으면 NotDue."""
+    {"concept", "desc", "kind", "pair"} 를 돌려준다 (pair 는 헷갈리는 쌍일 때만 [개념, 이웃], 아니면 None).
+    오늘 복습 목록에 없으면 NotDue."""
     due = state.due_reviews(conn, user_id, now)
     if node_id not in [i["node_id"] for i in due["items"]]:
         raise NotDue(node_id)
@@ -64,11 +88,18 @@ def prepare(conn, user_id: str, node_id: int, now: datetime | None = None) -> di
         return {"pending": _out(row[0], node_id, row[1], row[2], row[3], row[4])}
     label, description, aliases = conn.execute(
         "SELECT label, description, aliases FROM concept_nodes WHERE id = %s", (node_id,)).fetchone()
-    (issued,) = conn.execute(
-        "SELECT count(*) FROM concept_quizzes WHERE user_id = %s::uuid AND node_id = %s AND source = %s",
-        (user_id, node_id, SOURCE),
+    issued, issued_pair = conn.execute(
+        """SELECT count(*), count(*) FILTER (WHERE quiz_kind = %s) FROM concept_quizzes
+            WHERE user_id = %s::uuid AND node_id = %s AND source = %s""",
+        (PAIR, user_id, node_id, SOURCE),
     ).fetchone()
-    return {"concept": label, "desc": description or _term_desc(conn, label, aliases), "kind": pick_kind(issued)}
+    desc = description or _term_desc(conn, label, aliases)
+    near = neighbours(conn, node_id)
+    kind = pick_kind(issued, bool(near))
+    if kind != PAIR:
+        return {"concept": label, "desc": desc, "kind": kind, "pair": None}
+    other, other_desc = near[issued_pair % len(near)]   # 쌍 문제를 낼 때마다 다음 이웃
+    return {"concept": label, "desc": pair_desc(label, desc, other, other_desc), "kind": kind, "pair": [label, other]}
 
 
 def save(conn, user_id: str, node_id: int, quiz, rng: random.Random | None = None) -> dict:

@@ -127,6 +127,7 @@ const ReviewQuestion = ({ item, last, onDone }: ReviewQuestionProps) => {
 
 const KIND_BADGE: Record<ReviewQuizKind, string> = {
   '용어 뜻': '뜻 고르기',
+  '헷갈리는 쌍': '헷갈리는 개념 구분',
   '틀린 설명': '틀린 설명 찾기',
   'O/X': 'O/X',
 }
