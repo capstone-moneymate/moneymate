@@ -94,3 +94,24 @@ class DbMastery:
             self.conn.commit()
         return p
 
+
+
+class ShortConnMastery:
+    """DbMastery 와 같은 일을 하되, 읽고 쓸 때만 DB 연결을 잠깐 연다 (튜터 API, #240).
+    튜터는 한 요청 안에서 모델(Opus)을 여러 번 부르므로 그동안 연결을 잡고 있지 않게 한다 (learner/api.py 의 복습 문제와 같은 원칙).
+    connect() 는 `with` 로 쓰는 psycopg 연결을 돌려준다 (끝까지 성공하면 커밋). 시도 번호는 세션 동안 기억한다."""
+
+    def __init__(self, connect, card_id: int | None = None):
+        self.connect, self.card_id = connect, card_id
+        self._attempt: dict[str, int | None] = {}
+
+    def get_mastery(self, user_id: str) -> dict[str, float]:
+        with self.connect() as conn:
+            return state.get_mastery(conn, user_id)
+
+    def answer(self, user_id, quiz, response, correct, confidence, *, response_ms=None, answer_changes=None) -> float:
+        with self.connect() as conn:
+            m = DbMastery(conn, self.card_id, commit=False)   # 커밋은 with 블록이 끝날 때
+            m._attempt = self._attempt
+            return m.answer(user_id, quiz, response, correct, confidence, response_ms=response_ms,
+                            answer_changes=answer_changes)
