@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard, usePastAnswers } from '@/api/cards'
+import { useGhost } from '@/api/ghost'
 import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, PastAnswer, Step } from '@/types/card'
+import type { GhostAttempt } from '@/types/ghost'
 import { BackButton } from '@/pages/tab1/CloseLink'
 import { CausalOrderView } from '@/pages/tab1/steps/CausalOrderView'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
@@ -15,6 +17,8 @@ import { ReasonView } from '@/pages/tab1/steps/ReasonView'
  * 유형 1: 개념 → 퀴즈 → 차트 → 판단 / 유형 2: 개념 → 퀴즈 → 인과 순서 → 차트 → 판단 / 유형 3: 개념 → 판단
  * AI 분석은 단계가 아니라 판단해보기 제출 후 결과 화면에 나온다
  * ?review=yyyy-MM-dd(탭3 풀었던 내용 보기)면 그날 낸 답과 채점 결과를 채운 채로 보여 주고 다시 채점하지 않는다
+ * 이전에 끝까지 푼 카드를 다시 풀면 단계마다 "지난번엔 맞혔어요"를 작게 보여 준다 (고스트 비교, 추가 구현 2-6).
+ * 자세한 비교는 결과 화면에서 한다
  */
 export const LearnPage = () => {
   const { cardId = '' } = useParams()
@@ -22,6 +26,8 @@ export const LearnPage = () => {
   const { data: card, isPending, isError } = useCard(cardId)
   const review = useReviewDate()
   const past = usePastAnswers(cardId, review)
+  // 풀기 시작할 때의 지난 기록. 못 불러와도 푸는 데는 지장이 없어서 기다리지 않는다
+  const ghost = useGhost(cardId, 'learn', !review)
   const saveResult = useLearnStore((s) => s.saveResult)
   const resetCard = useLearnStore((s) => s.resetCard)
   const [index, setIndex] = useState(0)
@@ -58,6 +64,7 @@ export const LearnPage = () => {
   const quizzes = card.steps.filter((s) => s.kind === 'quiz')
   const quizNo =
     step.kind === 'quiz' ? { no: quizzes.indexOf(step) + 1, total: quizzes.length } : null
+  const lastTime = ghostLine(ghost.data?.lastComplete ?? null, step.id)
 
   return (
     <div className="flex min-h-full flex-col">
@@ -82,6 +89,7 @@ export const LearnPage = () => {
               />
             ))}
           </div>
+          {lastTime && <p className="mt-1.5 text-xs text-slate-500">{lastTime}</p>}
         </div>
       </div>
       <div className="flex flex-1 flex-col">
@@ -106,6 +114,17 @@ const KIND_LABEL: Record<Step['kind'], string> = {
   causal_order: '인과관계',
   chart: '차트 읽기',
   judgement: '판단해보기',
+}
+
+/** 지난번 이 단계의 기록 한 줄. 사실만 말한다. 기록이 없으면 null */
+const ghostLine = (ghost: GhostAttempt | null, stepId: string): string | null => {
+  const found = ghost?.steps.find((s) => s.stepId === stepId)
+  if (!ghost || !found?.record) return null
+  const last = `지난번(${reviewLabel(ghost.date)})`
+  if (found.kind === 'judgement')
+    return found.record.score === null ? null : `${last}엔 ${found.record.score}점이었어요`
+  if (found.record.isCorrect === null) return null
+  return `${last}엔 ${found.record.isCorrect ? '맞혔어요' : '틀렸어요'}`
 }
 
 interface StepSwitchProps {
