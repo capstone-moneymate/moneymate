@@ -24,6 +24,7 @@
 import json
 import math
 import random
+from itertools import permutations
 from dataclasses import dataclass, field
 
 from generate.llm_client import HAIKU, SONNET, create, text_of
@@ -204,8 +205,8 @@ def shuffle(q: Quiz, rng: random.Random) -> Quiz:
 # --- 내용 검사 (#234): 출제와 따로 부른다 ---
 # 정의를 묻는 문제는 코드가 맞는지 계산할 수 없다. 그래서 퀴즈를 "참이라고 한 문장 / 거짓이라고 한 문장"으로 펼쳐
 # (claims), 출제와 다른 호출에게 문장마다 참·거짓·애매를 묻는다. 어느 쪽이 정답인지는 보여 주지 않는다 (보여 주면 맞장구친다).
-# 코드가 비교해서 하나라도 다르거나 애매하거나 매수·매도 권유가 있으면 버리고 다시 낸다.
-# 2026-11-24 측정 (개념 5개 × 종류마다 2개, 사람이 읽고 판정): 검사 전 칩 빈칸 10개 중 3개, 틀린 설명 9개 중 3개가 틀린 퀴즈
+# 코드가 비교해서 참이어야 할 문장이 참이 아니거나, 거짓이어야 할 문장이 참이거나, 매수·매도 권유가 있으면 버리고 다시 낸다.
+# 2026-11-24 측정 (개념 5개 × 종류마다 2개, Claude 가 읽고 판정. 사람 검토 전): 검사 전 칩 빈칸 10개 중 3개, 틀린 설명 9개 중 3개가 틀린 퀴즈
 # (용어 뜻·사례 분류는 0). 검사 뒤 틀린 설명 0 / 9. 칩 빈칸은 검사로도 모자라 출제를 Sonnet 으로 (GEN_MODEL).
 
 CHECK_KINDS = ("칩 빈칸", "용어 뜻", "틀린 설명", "사례 분류")
@@ -228,8 +229,11 @@ CHECK_SCHEMA = _obj({
 
 
 def claims(q: Quiz) -> list[tuple[str, bool]]:
-    """퀴즈를 (문장, 참이어야 하나) 목록으로 펼친다. 칩 빈칸은 정답을 채운 문장(참)과, 오답 칩을 한 칸씩 넣은 문장(거짓).
-    용어 뜻은 보기마다 "개념의 뜻: 보기", 틀린 설명은 보기 그대로 (정답 보기만 거짓), 사례 분류는 "사례 → 바구니"(모두 참)."""
+    """퀴즈를 (문장, 참이어야 하나) 목록으로 펼친다. 정답 말고 다른 답도 맞는 퀴즈를 거르려고, 정답이 아닌 답은 모두 거짓이어야 한다.
+    - 칩 빈칸: 칩 2개를 빈칸에 넣는 모든 경우(4 × 3 = 12). 정답 순서만 참, 정답 두 칩을 바꿔 넣은 것도 거짓 (#237 리뷰)
+    - 용어 뜻: 보기마다 "개념의 뜻: 보기" (정답만 참) / 틀린 설명: 보기 그대로 (정답 보기만 거짓)
+    - 사례 분류: 사례마다 두 바구니 모두 "사례 → 바구니". 고른 바구니만 참 (두 바구니에 다 들어가는 사례를 거른다, #237 리뷰)
+    - 해설이 있으면 "해설: …" 도 참이어야 한다 (보기는 맞는데 해설이 틀린 퀴즈를 거른다, #237 리뷰)"""
     c = q.content
     if q.kind == "칩 빈칸":
         def fill(words):
@@ -237,19 +241,22 @@ def claims(q: Quiz) -> list[tuple[str, bool]]:
             for w in words:
                 s = s.replace(BLANK, f"[{w}]", 1)
             return s
-        right = [c["chips"][k] for k in q.key]
-        out = [(fill(right), True)]
-        for w in (x for i, x in enumerate(c["chips"]) if i not in q.key):
-            for pos in range(len(right)):
-                out.append((fill(right[:pos] + [w] + right[pos + 1:]), False))
-        return out
-    if q.kind == "용어 뜻":
-        return [(f"'{q.concept}'의 뜻: {o}", i == q.key) for i, o in enumerate(c["options"])]
-    if q.kind == "틀린 설명":
-        return [(o, i != q.key) for i, o in enumerate(c["options"])]
-    if q.kind == "사례 분류":
-        return [(f"'{t}' → {c['baskets'][b]}", True) for t, b in zip(c["cases"], q.key)]
-    raise QuizError(f"검사하지 않는 종류: {q.kind}")
+        blanks = len(q.key)
+        out = [(fill([c["chips"][k] for k in q.key]), True)]
+        out += [(fill([c["chips"][k] for k in ks]), False)
+                for ks in permutations(range(len(c["chips"])), blanks) if list(ks) != list(q.key)]
+    elif q.kind == "용어 뜻":
+        out = [(f"'{q.concept}'의 뜻: {o}", i == q.key) for i, o in enumerate(c["options"])]
+    elif q.kind == "틀린 설명":
+        out = [(o, i != q.key) for i, o in enumerate(c["options"])]
+    elif q.kind == "사례 분류":
+        out = [(f"'{t}' → {basket}", b == k) for t, k in zip(c["cases"], q.key, strict=True)
+               for b, basket in enumerate(c["baskets"])]
+    else:
+        raise QuizError(f"검사하지 않는 종류: {q.kind}")
+    if q.explanation.strip():
+        out.append((f"해설: {q.explanation.strip()}", True))
+    return out
 
 
 def check(q: Quiz, desc: str, card_id: int | None = None) -> list[str]:
@@ -268,10 +275,13 @@ def check(q: Quiz, desc: str, card_id: int | None = None) -> list[str]:
     problems = ["매수·매도 권유나 주가 예측이 있어요"] if out["advice"] else []
     for i, (text, should) in enumerate(cl, 1):
         it = judged.get(i)
-        want = TRUE if should else FALSE
+        # 참이어야 하는 문장은 참만. 거짓이어야 하는 문장은 거짓 또는 애매: 오답 칩을 넣으면 말이 안 되는 문장이 자주 생기는데
+        # 그것도 학습자에게는 오답이다. 애매까지 탈락시키면 2026-11-24 칩 빈칸 5개 중 4번이 그 이유로만 다시 출제됐다
+        ok = {TRUE} if should else {FALSE, UNSURE}
         if it is None:
             problems.append(f"{i}번 문장을 판단하지 않았어요")
-        elif it["judge"] != want:
+        elif it["judge"] not in ok:
+            want = TRUE if should else FALSE
             problems.append(f"{i}번 '{text}' 는 {want}이어야 하는데 검사는 {it['judge']} ({it['reason']})")
     return problems
 
