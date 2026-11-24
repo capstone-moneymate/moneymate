@@ -2,6 +2,7 @@
     concept_nodes       노드 (이름 label 으로 맞춘다)
     concept_node_cards  노드가 나온 카드
     concept_prereq      선수 관계
+    concept_confusable  헷갈리는 이웃 (012, #228). 사람이 keep 한 쌍만, 한 줄 한 방향이라 쌍마다 두 줄
 
 다시 돌려도 지도와 같아진다 (중복 없음):
 - 노드: 이름이 같으면 고친다(설명·별칭). 지도에서 빠진 노드는 **지우지 않는다**. 지우면 user_concept_state 가 함께
@@ -97,6 +98,17 @@ def load(conn, result: dict) -> dict:
             cur.executemany("INSERT INTO concept_prereq (pre_id, post_id, votes, total) VALUES (%s, %s, %s, %s)",
                             prereq_rows)
 
+    conf = result.get("confusable_pairs")  # 검토 파일을 쓰지 않은 옛 결과 파일이면 None: 표를 건드리지 않는다
+    conf_rows = []
+    if conf is not None:
+        conf_rows = [row for p in conf if p["a"] in ids and p["b"] in ids
+                     for row in ((ids[p["a"]], ids[p["b"]], p["sim"]), (ids[p["b"]], ids[p["a"]], p["sim"]))]
+        conn.execute("DELETE FROM concept_confusable")   # 지도만 쓰는 표라 통째로 지도대로
+        if conf_rows:
+            with conn.cursor() as cur:
+                cur.executemany("INSERT INTO concept_confusable (node_id, other_id, sim) VALUES (%s, %s, %s)",
+                                conf_rows)
+
     linked = dict(conn.execute("SELECT label, causal_id FROM concept_nodes WHERE label = ANY(%s) AND causal_id IS NOT NULL",
                                (labels,)).fetchall())
     stale = [r[0] for r in conn.execute(
@@ -106,6 +118,7 @@ def load(conn, result: dict) -> dict:
         "cards": len(card_rows),
         "cards_missing": sorted(set(want) - have),
         "prereqs": len(prereq_rows),
+        "confusable": None if conf is None else len(conf_rows),   # 줄 수 (한 쌍 = 두 줄)
         "causal_linked": linked,             # 지도 노드 중 탭 1 단어와 짝지어진 것 (이번에 짝지은 것 + 원래 짝지어져 있던 것)
         "causal_unclear": sorted(unclear),   # 여러 개념·여러 노드에 걸려 안 이음
         "causal_taken": sorted(taken),       # 그 개념을 이미 다른 노드가 가져서 안 이음
@@ -124,7 +137,8 @@ def main() -> None:
     with get_conn() as conn:  # 끝까지 성공하면 커밋, 중간에 실패하면 전부 취소
         s = load(conn, result)
     print(f"개념 지도 DB 넣기: 노드 {s['nodes']}개, 카드 연결 {s['cards']}개 (DB 에 없는 카드 {len(s['cards_missing'])}개), "
-          f"선수 관계 {s['prereqs']}개")
+          f"선수 관계 {s['prereqs']}개, 헷갈리는 이웃 "
+          f"{'(검토 파일 없는 결과라 안 건드림)' if s['confusable'] is None else str(s['confusable']) + '줄'}")
     print(f"   탭 1 단어 짝짓기 (이름만, 인과 화살표 안 씀) {len(s['causal_linked'])}개: {s['causal_linked']}")
     if s["causal_unclear"] or s["causal_taken"]:
         print(f"   안 짝지음: 애매 {s['causal_unclear']}, 다른 노드가 가짐 {s['causal_taken']}")

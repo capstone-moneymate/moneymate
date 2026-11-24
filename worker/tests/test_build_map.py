@@ -5,6 +5,7 @@ import numpy as np
 
 from concepts import build_map as bm
 from concepts import prereq_votes as pv
+from concepts import term_groups as tg_mod
 from concepts.concept_map import Materials, Term
 
 # 2차원 길이 1 벡터. 순이익·당기순이익 유사도 0.96, EPS·주당순이익 0.98, 나머지는 멀다
@@ -163,6 +164,8 @@ def test_main_with_prereq_and_one_node_still_saves(monkeypatch, tmp_path):
     monkeypatch.setattr(bm, "load_review", lambda: [])
     monkeypatch.setattr(pv, "load_prereq_review", lambda: [])
     monkeypatch.setattr(pv, "save_prereq_review", lambda rows: None)
+    monkeypatch.setattr(bm.tg, "load_confusable_review", lambda: [])
+    monkeypatch.setattr(bm.tg, "save_confusable_review", lambda rows: None)
     monkeypatch.setattr(bm, "OUT_DIR", tmp_path)
     saved = {}
     monkeypatch.setattr(bm, "save", lambda result: saved.setdefault("r", result) and (tmp_path / "a", tmp_path / "b"))
@@ -195,3 +198,19 @@ def test_alias_rows_merge_to_highest_llm_votes_and_skip_same_node():
             pv.PrereqRow("순이익", "당기순이익", "", "4/4")]   # 같은 노드끼리는 연결이 아니다
     r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
     assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": 4, "total": 4}]
+
+
+def test_confusable_review_keeps_only_human_kept_pairs():
+    # 기준 0.97 이면 순이익·당기순이익(0.96)이 따로 남아 후보 쌍. 검토 파일이 비었으면 빈칸 줄만 생기고 지도에는 안 들어간다
+    rows = []
+    r = bm.run(materials(), encode, threshold=0.97, confusable_review=rows)
+    assert rows == [tg_mod.ConfusableRow("순이익", "당기순이익", "0.960")] and r["confusable_review_new"] == 1
+    assert r["confusable"] == {} and r["confusable_pairs"] == [] and r["counts"]["confusable_nodes"] == 0
+    rows[0].decision = "keep"
+    r = bm.run(materials(), encode, threshold=0.97, confusable_review=rows)
+    assert r["confusable"] == {"순이익": ["당기순이익"], "당기순이익": ["순이익"]} and r["confusable_review_new"] == 0
+    assert r["confusable_pairs"] == [{"a": "순이익", "b": "당기순이익", "sim": 0.96}]
+
+
+def test_without_confusable_review_pairs_is_none():
+    assert bm.run(materials(), encode, threshold=0.97)["confusable_pairs"] is None

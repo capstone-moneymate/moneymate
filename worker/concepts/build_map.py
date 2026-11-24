@@ -1,7 +1,8 @@
 """개념 지도 한 번에 만들기 (사람1, #198). ① 재료 → ② 용어 뽑기 → ③ 같은 뜻 묶기 → ④ 선수 관계 다수결 → ⑤ 저장.
 각 단계 코드는 concept_map.py (①②), term_groups.py (③), prereq_votes.py (④) 에 있고, 여기서는 잇기만 한다.
 
-사람 검토 파일 (Git 에 올림. 지도의 정답지): concepts/term_review.csv (②), concepts/prereq_review.csv (④).
+사람 검토 파일 (Git 에 올림. 지도의 정답지): concepts/term_review.csv (②), concepts/prereq_review.csv (④),
+concepts/confusable_review.csv (헷갈리는 이웃, keep 한 쌍만 지도에).
 LLM 을 다시 돌리면 새 결과만 빈칸 줄로 더해지고, 사람이 decision 을 채운다 (#203).
 
 ⑤ 저장: 파일로 남긴다 (logs/ 라 Git 에 안 올라감). DB(009 테이블)에는 python -m concepts.load_map 이 넣는다.
@@ -48,10 +49,13 @@ def review_rows(terms, groups: list[list[int]], sim: np.ndarray) -> list[dict]:
 
 def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRESHOLD, prereq: bool = False,
         max_pairs: int = pv.MAX_PAIRS, top_k: int = pv.TOP_K,
-        prereq_review: list[pv.PrereqRow] | None = None) -> dict:
+        prereq_review: list[pv.PrereqRow] | None = None,
+        confusable_review: list[tg.ConfusableRow] | None = None) -> dict:
     """③④ 를 돌려 저장할 결과를 만든다 (①② 는 m 에 이미 들어 있다). DB·파일을 건드리지 않는다.
     prereq_review 를 주면 선수 관계는 그 검토 줄에서 만든다 (drop 만 뺌). prereq=True 면 새 LLM 연결을 빈칸 줄로 더한다
-    (prereq_review 를 바꾼다. 저장은 부른 쪽이). 주지 않으면 LLM 결과를 그대로 쓴다."""
+    (prereq_review 를 바꾼다. 저장은 부른 쪽이). 주지 않으면 LLM 결과를 그대로 쓴다.
+    confusable_review 를 주면 헷갈리는 이웃은 사람이 keep 한 쌍만 쓰고, 새 후보 쌍을 빈칸 줄로 더한다 (#228).
+    주지 않으면 임베딩 이웃을 그대로 쓴다 (검토 전 시험용)."""
     terms = m.terms
     if terms:
         term_sim = tg.similarity(encode([t.term for t in terms]))
@@ -60,6 +64,14 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
         term_sim, groups = np.zeros((0, 0)), []
     nodes = tg.make_nodes(terms, groups)
     confusable = tg.confusable_pairs(nodes, groups, term_sim) if terms else {}
+    conf_pairs, conf_missing, conf_new = None, [], 0
+    if confusable_review is not None:
+        cands = tg.confusable_candidates(nodes, groups, term_sim) if terms else []
+        conf_new = tg.merge_confusable(confusable_review, nodes, cands)
+        kept, missing_rows = tg.reviewed_confusable(confusable_review, nodes)
+        confusable = tg.confusable_map(nodes, kept)
+        conf_pairs = [{"a": nodes[a].label, "b": nodes[b].label, "sim": v} for a, b, v in kept]
+        conf_missing = [{"a": r.a, "b": r.b} for r in missing_rows]
 
     edges, stats, removed, missing, conflicts = [], None, [], [], []
     if prereq and len(nodes) > 1:
@@ -98,6 +110,10 @@ def run(m: Materials, encode: tg.Encoder, *, threshold: float = tg.DEFAULT_THRES
         "prereq_review_missing": missing,  # 검토 파일에 있지만 지금 지도에 없는 이름 (용어가 바뀌었을 때 확인)
         "prereq_review_conflicts": [{"pre": a, "post": b} for a, b in conflicts],  # 같은 쌍에 drop 과 keep/add (뺐음)
         "confusable": confusable,  # 튜터의 "헷갈리는 쌍" 퀴즈 재료 (대표 이름 → 가까운 대표 이름들)
+        # 사람이 keep 한 헷갈리는 쌍 (유사도 포함). load_map 이 concept_confusable 에 넣는다. 검토 파일을 안 썼으면 None
+        "confusable_pairs": conf_pairs,
+        "confusable_review_new": conf_new,
+        "confusable_review_missing": conf_missing,
         "review": review_rows(terms, groups, term_sim),
     }
 
@@ -158,9 +174,14 @@ def main() -> None:
               f"{s['dropped_by_review']}개, 코드가 버림 {s['dropped']}개")
         print(f"   → {REVIEW_PATH} 의 decision 칸을 채워 주세요 (keep / drop / same)")
     prereq_review = pv.load_prereq_review()
+    confusable_review = tg.load_confusable_review()
     result = run(m, encode, threshold=args.threshold, prereq=args.prereq, max_pairs=args.max_pairs,
-                 prereq_review=prereq_review)
+                 prereq_review=prereq_review, confusable_review=confusable_review)
     result["settings"]["model"] = args.model
+    tg.save_confusable_review(confusable_review)
+    undecided = sum(1 for r in confusable_review if not r.decision)
+    print(f"헷갈리는 이웃 검토 반영: keep 쌍 {len(result['confusable_pairs'])}개, "
+          f"새 후보 {result['confusable_review_new']}개, 아직 안 본 줄 {undecided}개 ({tg.CONFUSABLE_REVIEW_PATH.name})")
     if args.prereq:
         pv.save_prereq_review(prereq_review)
         new_rows = (result["prereq_stats"] or {}).get("new_review_rows", 0)  # 노드가 2개 미만이면 ④ 를 안 돌려 None

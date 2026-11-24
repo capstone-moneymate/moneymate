@@ -8,8 +8,10 @@
 
 임베딩은 LLM 이 아니라 로컬 모델이라 비용이 없고, 같은 입력이면 같은 결과가 나온다.
 """
-from dataclasses import dataclass, field
+import csv
+from dataclasses import asdict, dataclass, field
 from itertools import combinations
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -136,6 +138,115 @@ def confusable_pairs(nodes: list[ConceptNode], groups: list[list[int]], sim: np.
             out.setdefault(nodes[a].label, []).append((v, nodes[b].label))
             out.setdefault(nodes[b].label, []).append((v, nodes[a].label))
     return {k: [n for _, n in sorted(vs, key=lambda x: (-x[0], x[1]))[:top]] for k, vs in out.items()}
+
+
+def confusable_candidates(nodes: list[ConceptNode], groups: list[list[int]], sim: np.ndarray,
+                          low: float = CONFUSABLE_LOW, top: int = 3) -> list[tuple[int, int, float]]:
+    """헷갈리는 이웃 후보 쌍 (a, b, 유사도), a < b, 유사도 높은 순. confusable_pairs 와 같은 기준으로
+    어느 한쪽의 가까운 top 개에 드는 쌍만. 사람 검토(confusable_review.csv)를 거쳐 지도에 들어간다 (#228)."""
+    near: dict[int, list[tuple[float, int]]] = {}
+    score = {}
+    for a, b in combinations(range(len(groups)), 2):
+        v = max(float(sim[i, j]) for i in groups[a] for j in groups[b])
+        if v >= low:
+            score[(a, b)] = v
+            near.setdefault(a, []).append((v, b))
+            near.setdefault(b, []).append((v, a))
+    keep = set()
+    for k, vs in near.items():
+        for _, other in sorted(vs, key=lambda x: (-x[0], nodes[x[1]].label))[:top]:
+            keep.add((min(k, other), max(k, other)))
+    return sorted(((a, b, round(score[(a, b)], 3)) for a, b in keep), key=lambda x: (-x[2], x[0], x[1]))
+
+
+def name_index(nodes: list[ConceptNode]) -> dict[str, int]:
+    """검토 파일의 이름 → 노드 번호. 대표 이름을 먼저, 그다음 별칭 (묶음의 대표 이름이 바뀌어도 예전 이름으로 찾게)."""
+    idx = {n.label: k for k, n in enumerate(nodes)}
+    for k, n in enumerate(nodes):
+        for a in n.aliases:
+            idx.setdefault(a, k)
+    return idx
+
+
+# --- 헷갈리는 이웃 사람 검토 (#228) ---
+# 임베딩만으로는 글자 모양이 비슷한 엉뚱한 쌍(매출액 ↔ 시가총액, 거래량 ↔ 매출액)이 섞인다. 복습 문제·튜터의 "헷갈리는 쌍"
+# 퀴즈에 그대로 쓰면 이상한 문제가 나와서, 사람이 keep 한 쌍만 지도에 넣는다. 빈칸(아직 안 봄)은 넣지 않는다
+# (선수 관계와 다르다: 선수 관계는 다수결을 거쳤지만 이웃은 임베딩 하나뿐이다).
+# 쌍은 순서 없이 한 줄이고, keep 이면 양쪽 방향 모두 헷갈리는 이웃이 된다.
+
+CONFUSABLE_REVIEW_PATH = Path(__file__).with_name("confusable_review.csv")
+CONFUSABLE_REVIEW_FIELDS = ["a", "b", "sim", "decision", "note"]
+
+
+@dataclass
+class ConfusableRow:
+    a: str
+    b: str
+    sim: str = ""        # 임베딩 유사도. 사람이 직접 더한 줄은 빈칸이어도 된다
+    decision: str = ""   # keep / drop / 빈칸: 아직 안 봄 (지도에 안 넣음)
+    note: str = ""
+
+
+def load_confusable_review(path: Path = CONFUSABLE_REVIEW_PATH) -> list[ConfusableRow]:
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        return [ConfusableRow(**{k: (r.get(k) or "").strip() for k in CONFUSABLE_REVIEW_FIELDS})
+                for r in csv.DictReader(f)]
+
+
+def save_confusable_review(rows: list[ConfusableRow], path: Path = CONFUSABLE_REVIEW_PATH) -> Path:
+    with open(path, "w", encoding="utf-8-sig", newline="") as f:  # 엑셀에서 한글이 안 깨지게 BOM
+        w = csv.DictWriter(f, fieldnames=CONFUSABLE_REVIEW_FIELDS)
+        w.writeheader()
+        w.writerows(asdict(r) for r in rows)
+    return path
+
+
+def merge_confusable(rows: list[ConfusableRow], nodes: list[ConceptNode],
+                     cands: list[tuple[int, int, float]]) -> int:
+    """파일에 없는 후보 쌍을 빈칸 줄로 더한다 (rows 를 바꾼다). 더한 줄 수. 이미 있는 줄(drop 포함)은 그대로 둔다."""
+    idx = name_index(nodes)
+    have = {frozenset((idx.get(r.a, r.a), idx.get(r.b, r.b))) for r in rows}
+    added = 0
+    for a, b, v in cands:
+        if frozenset((a, b)) not in have:
+            rows.append(ConfusableRow(nodes[a].label, nodes[b].label, f"{v:.3f}"))
+            have.add(frozenset((a, b)))
+            added += 1
+    return added
+
+
+def reviewed_confusable(rows: list[ConfusableRow], nodes: list[ConceptNode]
+                        ) -> tuple[list[tuple[int, int, float | None]], list[ConfusableRow]]:
+    """keep 한 쌍 (a, b, 유사도) 와 지도에 없는 이름이 있는 keep 줄. 같은 쌍이 여러 줄이면 drop 이 하나라도 있으면 뺀다."""
+    idx = name_index(nodes)
+    by_pair: dict[frozenset, list[ConfusableRow]] = {}
+    missing = []
+    for r in rows:
+        if r.a not in idx or r.b not in idx:
+            if r.decision == "keep":
+                missing.append(r)
+            continue
+        if idx[r.a] != idx[r.b]:
+            by_pair.setdefault(frozenset((idx[r.a], idx[r.b])), []).append(r)
+    out = []
+    for pair, rs in by_pair.items():
+        decided = {r.decision for r in rs}
+        if "keep" in decided and "drop" not in decided:
+            a, b = sorted(pair)
+            sims = [float(r.sim) for r in rs if r.sim]
+            out.append((a, b, max(sims) if sims else None))
+    return sorted(out, key=lambda x: (-(x[2] or 0), x[0], x[1])), missing
+
+
+def confusable_map(nodes: list[ConceptNode], pairs: list[tuple[int, int, float | None]]) -> dict[str, list[str]]:
+    """쌍 → 튜터가 읽는 모양 {대표 이름: 헷갈리는 이웃들 (유사도 높은 순)}. 양쪽 방향."""
+    out: dict[str, list[tuple[float, str]]] = {}
+    for a, b, v in pairs:
+        out.setdefault(nodes[a].label, []).append((v or 0, nodes[b].label))
+        out.setdefault(nodes[b].label, []).append((v or 0, nodes[a].label))
+    return {k: [n for _, n in sorted(vs, key=lambda x: (-x[0], x[1]))] for k, vs in out.items()}
 
 
 def group_terms(terms: list[Term], encode: Encoder, threshold: float = DEFAULT_THRESHOLD) -> list[ConceptNode]:

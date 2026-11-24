@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from concepts.term_groups import ConceptNode
+from concepts.term_groups import ConceptNode, name_index
 from generate.llm_client import HAIKU, create, text_of
 
 VOTES = 4          # 짝수여야 순서 바꾼 호출이 반반이 된다
@@ -199,15 +199,6 @@ def save_prereq_review(rows: list[PrereqRow], path: Path = PREREQ_REVIEW_PATH) -
         w.writeheader()
         w.writerows(asdict(r) for r in rows)
     return path
-
-
-def name_index(nodes: list[ConceptNode]) -> dict[str, int]:
-    """검토 줄의 이름 → 노드 번호. 대표 이름을 먼저, 그다음 별칭 (묶음의 대표 이름이 바뀌어도 예전 이름으로 찾게)."""
-    idx = {n.label: k for k, n in enumerate(nodes)}
-    for k, n in enumerate(nodes):
-        for a in n.aliases:
-            idx.setdefault(a, k)
-    return idx
 
 
 def merge_llm_edges(rows: list[PrereqRow], nodes: list[ConceptNode], edges: list[Prereq]) -> int:
