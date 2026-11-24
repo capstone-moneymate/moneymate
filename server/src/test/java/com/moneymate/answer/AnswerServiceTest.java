@@ -243,6 +243,8 @@ class AnswerServiceTest {
         assertThat(service.submit(req).isCorrect()).isTrue();   // 채점에는 영향이 없다
         verify(repo).insertAnswer(USER.toString(), 3L, 10L, "{\"kind\":\"quiz\",\"option_index\":2}", true,
                 2, 5300, 1);
+        // 복습 일정의 자동 평가에 쓰도록 채점 서버에도 넘긴다
+        verify(learner).recordAnswer(USER.toString(), new String[] {"rate_hold"}, true, "quiz", 4, 2, 5300, 1);
     }
 
     // --- 알 확률 갱신 요청 (추가 구현 2-3, 채점 서버 /learner/answer) ---
@@ -251,7 +253,8 @@ class AnswerServiceTest {
     void quizSendsOptionCountToLearner() {
         service.submit(pick(10L, "quiz", 1));   // 보기 4개 중 오답
 
-        verify(learner).recordAnswer(USER.toString(), new String[] {"rate_hold"}, false, "quiz", 4);
+        verify(learner).recordAnswer(USER.toString(), new String[] {"rate_hold"}, false, "quiz", 4,
+                null, null, null);
     }
 
     @Test
@@ -259,13 +262,15 @@ class AnswerServiceTest {
         service.submit(order(12L, List.of("rate_hold", "loan_spread", "bank_profit")));
 
         verify(learner).recordAnswer(USER.toString(),
-                new String[] {"rate_hold", "loan_spread", "bank_profit"}, true, "causal_order", 3);
+                new String[] {"rate_hold", "loan_spread", "bank_profit"}, true, "causal_order", 3,
+                null, null, null);
     }
 
     @Test
     void badAnswerDoesNotReachLearner() {
         assertThatThrownBy(() -> service.submit(pick(10L, "quiz", 9)))
                 .isInstanceOf(AnswerExceptions.BadAnswer.class);
-        verify(learner, never()).recordAnswer(anyString(), any(), anyBoolean(), anyString(), anyInt());
+        verify(learner, never()).recordAnswer(anyString(), any(), anyBoolean(), anyString(), anyInt(),
+                any(), any(), any());
     }
 }

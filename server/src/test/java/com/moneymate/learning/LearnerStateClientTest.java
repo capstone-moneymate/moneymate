@@ -35,11 +35,13 @@ class LearnerStateClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().json("""
                         {"user_id":"11111111-2222-3333-4444-555555555555","concept_ids":["rate_hold","bank_profit"],
-                         "correct":true,"kind":"quiz","count":4}"""))
+                         "correct":true,"kind":"quiz","count":4,
+                         "confidence":2,"response_ms":5300,"answer_changes":1}"""))
                 .andRespond(withSuccess("{\"guess_p\":0.25,\"mastery\":{\"rate_hold\":0.65}}",
                         MediaType.APPLICATION_JSON));
 
-        assertThat(client.recordAnswer(USER, new String[] {"rate_hold", "bank_profit"}, true, "quiz", 4)).isTrue();
+        assertThat(client.recordAnswer(USER, new String[] {"rate_hold", "bank_profit"}, true, "quiz", 4,
+                2, 5300, 1)).isTrue();
         server.verify();
     }
 
@@ -47,16 +49,17 @@ class LearnerStateClientTest {
     void serverErrorIsSwallowed() {
         server.expect(requestTo("http://judge/learner/answer")).andRespond(withServerError());
 
-        assertThat(client.recordAnswer(USER, new String[] {"rate_hold"}, false, "causal_order", 3)).isFalse();
+        assertThat(client.recordAnswer(USER, new String[] {"rate_hold"}, false, "causal_order", 3,
+                null, null, null)).isFalse();
         server.verify();
     }
 
     @Test
     void noConceptsMeansNoCall() {
         // 기대한 요청이 없으니, 부르면 MockRestServiceServer 가 실패시킨다
-        assertThat(client.recordAnswer(USER, new String[] {}, true, "quiz", 4)).isFalse();
-        assertThat(client.recordAnswer(USER, null, true, "quiz", 4)).isFalse();
-        assertThat(client.recordAnswer(USER, new String[] {"rate_hold"}, true, "quiz", 0)).isFalse();
+        assertThat(client.recordAnswer(USER, new String[] {}, true, "quiz", 4, 2, 1000, 0)).isFalse();
+        assertThat(client.recordAnswer(USER, null, true, "quiz", 4, 2, 1000, 0)).isFalse();
+        assertThat(client.recordAnswer(USER, new String[] {"rate_hold"}, true, "quiz", 0, 2, 1000, 0)).isFalse();
         server.verify();
     }
 }

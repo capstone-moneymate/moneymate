@@ -20,17 +20,25 @@ class FakeConn:
 def calls(monkeypatch):
     seen = {}
 
-    def update_causal(conn, user_id, concept_ids, correct, guess_p):
+    def update_causal(conn, user_id, concept_ids, correct, guess_p, **extra):
         seen["update"] = (user_id, concept_ids, correct, guess_p)
+        seen["extra"] = extra
         return {c: 0.65 for c in concept_ids if c != "없는_id"}
 
     def get_mastery(conn, user_id):
         seen["get"] = user_id
         return {"EPS": 0.3, "순이익": 0.88}
 
+    def due_reviews(conn, user_id):
+        seen["reviews"] = user_id
+        return {"limit": 5, "done_today": 1, "due_total": 7, "items": [
+            {"node_id": 3, "concept": "EPS", "p_know": 0.4, "retrievability": 0.81, "reason": "sure_wrong",
+             "due_at": "2026-11-24T00:00:00+00:00"}]}
+
     monkeypatch.setattr(api, "_conn", FakeConn)
     monkeypatch.setattr(api.state, "update_causal", update_causal)
     monkeypatch.setattr(api.state, "get_mastery", get_mastery)
+    monkeypatch.setattr(api.state, "due_reviews", due_reviews)
     return seen
 
 
@@ -56,6 +64,16 @@ def test_answer_passes_guess_and_returns_mastery(client, calls):
     assert r.status_code == 200
     assert r.json() == {"guess_p": 0.25, "mastery": {"rate_hold": 0.65}}
     assert calls["update"] == (USER, ["rate_hold", "없는_id"], True, 0.25)
+    # 확신·시간을 안 보낸 요청(예전 화면)도 받는다
+    assert calls["extra"] == {"confidence": None, "response_ms": None, "answer_changes": None, "kind": "quiz"}
+
+
+def test_answer_passes_confidence_and_timing(client, calls):
+    r = client.post("/learner/answer", json={"user_id": USER, "concept_ids": ["rate_hold"], "correct": True,
+                                             "kind": "chart", "count": 3, "confidence": 2, "response_ms": 5300,
+                                             "answer_changes": 1})
+    assert r.status_code == 200
+    assert calls["extra"] == {"confidence": 2, "response_ms": 5300, "answer_changes": 1, "kind": "chart"}
 
 
 def test_causal_order_guess(client, calls):
@@ -66,7 +84,8 @@ def test_causal_order_guess(client, calls):
     assert calls["update"][3] == pytest.approx(1 / 6)
 
 
-@pytest.mark.parametrize("patch", [{"user_id": "abc"}, {"kind": "judgement"}, {"count": 0}, {"correct": None}])
+@pytest.mark.parametrize("patch", [{"user_id": "abc"}, {"kind": "judgement"}, {"count": 0}, {"correct": None},
+                                   {"confidence": 3}, {"response_ms": -1}, {"answer_changes": -1}])
 def test_bad_request_rejected(client, calls, patch):
     body = {"user_id": USER, "concept_ids": ["rate_hold"], "correct": True, "kind": "quiz", "count": 4, **patch}
     assert client.post("/learner/answer", json=body).status_code == 422
@@ -79,3 +98,31 @@ def test_mastery(client, calls):
     assert r.json() == {"mastery": {"EPS": 0.3, "순이익": 0.88}}
     assert calls["get"] == USER
     assert client.get("/learner/mastery/not-a-uuid").status_code == 422
+
+
+def test_reviews(client, calls):
+    r = client.get(f"/learner/reviews/{USER}")
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["limit"], body["done_today"], body["due_total"]) == (5, 1, 7)
+    assert body["items"][0]["concept"] == "EPS" and body["items"][0]["reason"] == "sure_wrong"
+    assert calls["reviews"] == USER
+
+
+def test_calibration(client, calls, monkeypatch):
+    from learner import calibration as cal
+
+    full = cal.summarize(cal.Table(sure_right=9, sure_wrong=3, unsure_right=3, unsure_wrong=5))
+    empty = cal.summarize(cal.Table())
+
+    def report(conn, user_id):
+        calls["calibration"] = user_id
+        return {"all": full, "recent": full, "earlier": empty, "recent_days": 30, "sure_wrong_concepts": ["EPS"]}
+
+    monkeypatch.setattr(api.state, "calibration_report", report)
+    r = client.get(f"/learner/calibration/{USER}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["all"]["sure_wrong"] == 3 and body["all"]["illusion"] == pytest.approx(0.375)
+    assert body["earlier"]["total"] == 0 and body["earlier"]["gamma"] is None      # 분모 0 은 null 로 간다
+    assert body["sure_wrong_concepts"] == ["EPS"] and calls["calibration"] == USER

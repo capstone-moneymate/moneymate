@@ -13,7 +13,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * 학습자 상태(BKT 알 확률) 갱신 요청 (사람2, docs/추가구현_계획.md 2-3).
+ * 학습자 상태(BKT 알 확률, FSRS 복습 일정) 갱신 요청 (사람2, docs/추가구현_계획.md 2-3·2-4).
  * 계산과 저장은 채점 서버의 POST /learner/answer (worker/learner/api.py)가 한다. 여기서는 채점 결과를 넘기기만 한다.
  * 주소는 판단 채점과 같은 서버라 moneymate.judge.url 을 같이 쓴다.
  *
@@ -41,14 +41,18 @@ public class LearnerStateClient {
     }
 
     /**
-     * 본 문제 답 하나를 그 단계의 개념마다 알 확률에 반영한다.
+     * 본 문제 답 하나를 그 단계의 개념마다 알 확률과 복습 일정에 반영한다.
      *
      * @param conceptIds 그 단계의 인과 사전 개념 id (steps.content.concept_ids). 비어 있으면 부르지 않는다
      * @param kind       quiz / chart / causal_order
      * @param count      찍어서 맞힐 확률 계산용: quiz·chart 는 보기 수, causal_order 는 놓을 개념 수
+     * @param confidence    1 헷갈려요, 2 확실해요. 복습 일정의 자동 평가에 쓴다. 없으면 null
+     * @param responseMs    응답 시간(ms). 없으면 null
+     * @param answerChanges 답을 바꾼 횟수. 없으면 null
      * @return 반영했으면 true. 개념이 없거나 채점 서버가 실패하면 false
      */
-    public boolean recordAnswer(String userId, String[] conceptIds, boolean correct, String kind, int count) {
+    public boolean recordAnswer(String userId, String[] conceptIds, boolean correct, String kind, int count,
+                                Integer confidence, Integer responseMs, Integer answerChanges) {
         if (conceptIds == null || conceptIds.length == 0 || count < 1) {
             return false;
         }
@@ -56,7 +60,7 @@ public class LearnerStateClient {
             restClient.post()
                     .uri("/learner/answer")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new Body(userId, conceptIds, correct, kind, count))
+                    .body(new Body(userId, conceptIds, correct, kind, count, confidence, responseMs, answerChanges))
                     .retrieve()
                     .toBodilessEntity();
             return true;
@@ -72,6 +76,9 @@ public class LearnerStateClient {
             @JsonProperty("concept_ids") String[] conceptIds,
             boolean correct,
             String kind,
-            int count) {
+            int count,
+            Integer confidence,
+            @JsonProperty("response_ms") Integer responseMs,
+            @JsonProperty("answer_changes") Integer answerChanges) {
     }
 }
