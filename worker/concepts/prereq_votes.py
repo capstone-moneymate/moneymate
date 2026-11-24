@@ -201,24 +201,33 @@ def save_prereq_review(rows: list[PrereqRow], path: Path = PREREQ_REVIEW_PATH) -
     return path
 
 
+def name_index(nodes: list[ConceptNode]) -> dict[str, int]:
+    """검토 줄의 이름 → 노드 번호. 대표 이름을 먼저, 그다음 별칭 (묶음의 대표 이름이 바뀌어도 예전 이름으로 찾게)."""
+    idx = {n.label: k for k, n in enumerate(nodes)}
+    for k, n in enumerate(nodes):
+        for a in n.aliases:
+            idx.setdefault(a, k)
+    return idx
+
+
 def merge_llm_edges(rows: list[PrereqRow], nodes: list[ConceptNode], edges: list[Prereq]) -> int:
     """새로 나온 LLM 연결 중 파일에 없는 것을 빈칸(아직 안 봄) 줄로 더한다 (rows 를 바꾼다). 더한 줄 수.
     이미 있는 줄(사람이 drop 한 것 포함)은 건드리지 않는다: 다시 돌려도 사람이 뺀 연결은 계속 빠진다."""
-    have = {(r.pre, r.post) for r in rows}
+    idx = name_index(nodes)
+    have = {(idx.get(r.pre, r.pre), idx.get(r.post, r.post)) for r in rows}  # 예전 이름(별칭)으로 적힌 줄도 같은 연결
     added = 0
     for e in edges:
-        key = (nodes[e.pre].label, nodes[e.post].label)
-        if key not in have:
-            rows.append(PrereqRow(*key, votes=f"{e.votes}/{e.total}"))
-            have.add(key)
+        if (e.pre, e.post) not in have:
+            rows.append(PrereqRow(nodes[e.pre].label, nodes[e.post].label, votes=f"{e.votes}/{e.total}"))
+            have.add((e.pre, e.post))
             added += 1
     return added
 
 
 def reviewed_edges(rows: list[PrereqRow], nodes: list[ConceptNode]) -> tuple[list[Prereq], list[PrereqRow]]:
-    """검토 파일에서 지도에 넣을 연결 (drop 만 뺀다). 지도에 없는 이름이 있는 줄은 따로 돌려준다.
+    """검토 파일에서 지도에 넣을 연결 (drop 만 뺀다). 이름은 대표 이름 → 별칭 순으로 찾고, 지도에 없는 이름이 있는 줄은 따로 돌려준다.
     표: LLM 줄은 적힌 표, 사람이 keep / add 한 줄은 HUMAN_VOTES."""
-    idx = {n.label: k for k, n in enumerate(nodes)}
+    idx = name_index(nodes)
     out, missing = [], []
     for r in rows:
         if r.decision == DROP:

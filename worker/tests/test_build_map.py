@@ -140,3 +140,32 @@ def test_prereq_review_file_roundtrip(tmp_path):
     pv.save_prereq_review(rows, p)
     assert pv.load_prereq_review(p) == rows
     assert pv.load_prereq_review(tmp_path / "없음.csv") == []
+
+
+def test_review_row_with_old_name_found_by_alias(monkeypatch):
+    # 기준 0.9 에서 '당기순이익'은 '순이익' 노드의 별칭. 예전 이름으로 적힌 줄도 같은 연결이고, 같은 LLM 연결을 또 더하지 않는다
+    rows = [pv.PrereqRow("당기순이익", "EPS", "keep", "4/4")]
+    r = bm.run(materials(), encode, threshold=0.9, prereq_review=rows)
+    assert r["prereqs"] == [{"pre_id": "c001", "post_id": "c002", "votes": pv.HUMAN_VOTES, "total": 4}]
+    assert r["prereq_review_missing"] == []
+    monkeypatch.setattr(pv, "ask_once", lambda x, y: "first" if x.label == "순이익" else "second")
+    r = bm.run(materials(), encode, threshold=0.9, prereq=True, prereq_review=rows)
+    assert r["prereq_stats"]["new_review_rows"] == 0 and len(rows) == 1
+
+
+def test_main_with_prereq_and_one_node_still_saves(monkeypatch, tmp_path):
+    # 노드가 1개면 ④ 를 안 돌려 prereq_stats 가 None. 그래도 지도 파일은 저장한다 (#219 리뷰)
+    import db
+    from contextlib import nullcontext
+    monkeypatch.setattr(db, "get_conn", lambda: nullcontext(None))
+    monkeypatch.setattr(bm, "gather", lambda conn: Materials([Term("순이익", "", [1])], {}))
+    monkeypatch.setattr(bm.tg, "load_encoder", lambda model: encode)
+    monkeypatch.setattr(bm, "load_review", lambda: [])
+    monkeypatch.setattr(pv, "load_prereq_review", lambda: [])
+    monkeypatch.setattr(pv, "save_prereq_review", lambda rows: None)
+    monkeypatch.setattr(bm, "OUT_DIR", tmp_path)
+    saved = {}
+    monkeypatch.setattr(bm, "save", lambda result: saved.setdefault("r", result) and (tmp_path / "a", tmp_path / "b"))
+    monkeypatch.setattr("sys.argv", ["build_map", "--prereq"])
+    bm.main()
+    assert saved["r"]["counts"]["nodes"] == 1 and saved["r"]["prereq_stats"] is None

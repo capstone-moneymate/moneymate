@@ -142,7 +142,7 @@ def test_check_same_as_outside_map_is_cleared_and_dup_is_dropped():
     kept, dropped = cm.check_extracted(items, ["자기주식 취득 결정"], {cm.term_key("자사주 취득")}, ["자사주 취득"])
     # 첫째: 지도 밖 이름이라 same_as 를 비우고 새 용어로 / 둘째: 같은 뜻이라고 한 용어가 이 카드에 이미 있어서 뺀다
     assert kept == [{"term": "자기주식 취득", "same_as": "", "desc": ""}]
-    assert dropped == ["자기주식: 이미 있음"]
+    assert dropped == ["자기주식: 이미 있음 (같은 뜻)"]
 
 
 def test_extract_skips_cards_without_text(monkeypatch):
@@ -230,3 +230,24 @@ def test_extract_with_review_same_rejected_stays_blank(monkeypatch):
     s = cm.extract_terms(m, same_check=lambda a, b: False, review=review)
     assert s["same_rejected"] == 1 and [(r.term, r.decision) for r in review] == [("자기주식", "")]
     assert m.terms[0].variants == []
+
+
+def test_check_same_as_on_card_needs_same_check_to_drop():
+    # 카드에 '자사주 취득'이 이미 있고 LLM 이 '자기주식 = 자사주 취득'이라고 하면:
+    # same_check 가 거절하면 다른 용어라 후보로 남기고, 받아들이면 같은 뜻 중복이라 뺀다 (#219 리뷰)
+    items = [{"term": "자기주식", "same_as": "자사주 취득", "desc": "가진 주식"}]
+    texts, known, names = ["자기주식을 자사주 취득으로 늘렸다"], {term_key("자사주 취득")}, ["자사주 취득"]
+    kept, dropped = cm.check_extracted(items, texts, known, names, same_check=lambda a, b: False)
+    assert [k["term"] for k in kept] == ["자기주식"] and dropped == []
+    kept, dropped = cm.check_extracted(items, texts, known, names, same_check=lambda a, b: True)
+    assert kept == [] and dropped == ["자기주식: 이미 있음 (같은 뜻)"]
+    kept, dropped = cm.check_extracted(items, texts, known, names)   # same_check 없으면 전처럼 뺀다
+    assert kept == [] and dropped == ["자기주식: 이미 있음 (같은 뜻)"]
+
+
+def test_apply_review_same_before_its_keep_row():
+    # same 줄이 그 대상 keep 줄보다 앞에 있어도 한 번에 별칭과 카드가 들어간다 (#219 리뷰)
+    m = Materials([], {}, texts={1: ["금융통화위원회"], 2: ["금통위 회의"]})
+    rows = [ReviewRow("금통위", "same", "금융통화위원회"), ReviewRow("금융통화위원회", "keep")]
+    assert apply_review(m, rows) == {"keep": 1, "same": 1, "missing_target": 0}
+    assert m.terms[0].variants == ["금통위"] and m.terms[0].card_ids == [1, 2]

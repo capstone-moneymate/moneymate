@@ -162,7 +162,8 @@ def main() -> None:
     result["settings"]["model"] = args.model
     if args.prereq:
         pv.save_prereq_review(prereq_review)
-        print(f"④ 새 연결 {result['prereq_stats']['new_review_rows']}개를 {pv.PREREQ_REVIEW_PATH.name} 에 빈칸으로 더함 "
+        new_rows = (result["prereq_stats"] or {}).get("new_review_rows", 0)  # 노드가 2개 미만이면 ④ 를 안 돌려 None
+        print(f"④ 새 연결 {new_rows}개를 {pv.PREREQ_REVIEW_PATH.name} 에 빈칸으로 더함 "
               f"(keep / drop 을 적어 주세요)")
     decided = sum(1 for r in prereq_review if r.decision)
     print(f"④ 검토 반영: {len(prereq_review)}줄 중 사람이 정한 것 {decided}개, "

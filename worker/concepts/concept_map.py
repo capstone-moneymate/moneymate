@@ -192,11 +192,14 @@ def extract_once(card_id: int, texts: list[str], this_card: list[str], map_names
 
 
 def check_extracted(items: list[dict], texts: list[str], known_keys: set[str],
-                    map_names: list[str] | None = None) -> tuple[list[dict], list[str]]:
+                    map_names: list[str] | None = None,
+                    same_check: Callable[[str, str], bool] | None = None) -> tuple[list[dict], list[str]]:
     """LLM 이 뽑은 용어를 코드가 거른다. (남긴 것, 버린 이유) 를 돌려준다.
     남기는 조건: 비어 있지 않음, MAX_TERM_LEN 이하, 숫자만은 아님, 글에 글자 그대로 있음(띄어쓰기·대소문자 무시),
     이 카드에 이미 있는 용어가 아님(같은 뜻이라고 한 지도 용어가 이 카드에 이미 있어도 뺀다), 금지 표현 없음. 상한 MAX_EXTRACT 개.
-    same_as 가 지도에 없는 이름이면 비운다 (스키마 enum 이 막지만 한 번 더)."""
+    same_as 가 지도에 없는 이름이면 비운다 (스키마 enum 이 막지만 한 번 더).
+    same_as 가 이 카드의 용어를 가리켜도 same_check 가 거절하면 다른 용어라 남긴다 (LLM 의 잘못된 같은 뜻이
+    후보까지 지우지 않게. 같은 뜻 거절 개수는 extract_terms 가 다시 확인하며 센다)."""
     text_keys = [squash(t) for t in texts]  # 괄호 안 글자도 글의 일부라 squash (term_key 는 괄호를 뺀다)
     names = set(map_names or [])
     kept, dropped, seen = [], [], set(known_keys)
@@ -214,8 +217,10 @@ def check_extracted(items: list[dict], texts: list[str], known_keys: set[str],
             reason = "숫자"
         elif not any(squash(name) in tk for tk in text_keys):
             reason = "글에 없음"
-        elif key in seen or (same and term_key(same) in seen):
+        elif key in seen:
             reason = "이미 있음"
+        elif same and term_key(same) in seen and (same_check is None or same_check(name, same)):
+            reason = "이미 있음 (같은 뜻)"
         elif find_banned([name, desc]):
             reason = "금지 표현"
         elif len(kept) >= MAX_EXTRACT:
@@ -272,10 +277,11 @@ def cards_with(m: Materials, word: str) -> list[int]:
 
 def apply_review(m: Materials, rows: list[ReviewRow]) -> dict[str, int]:
     """사람이 keep / same 으로 정한 ② 용어를 지도에 넣는다 (m 을 바꾼다). 여러 번 불러도 결과가 같다.
-    keep: 새 용어 (이미 있으면 카드만 더함). same: same_as 용어에 표기를 별칭으로 더함 (same_as 가 지도에 없으면 건너뜀)."""
+    keep: 새 용어 (이미 있으면 카드만 더함). same: same_as 용어에 표기를 별칭으로 더함 (same_as 가 지도에 없으면 건너뜀).
+    keep 줄을 모두 먼저 넣고 same 줄을 본다: 파일에서 same 줄이 그 대상 keep 줄보다 앞에 있어도 결과가 같게."""
     by_key = {term_key(t.term): t for t in m.terms}
     stats = {"keep": 0, "same": 0, "missing_target": 0}
-    for r in rows:
+    for r in sorted(rows, key=lambda r: r.decision != KEEP):  # 안정 정렬이라 같은 종류 안에서는 파일 순서
         if r.decision == KEEP:
             t = by_key.get(term_key(r.term))
             if t is None:
@@ -320,7 +326,7 @@ def extract_terms(m: Materials, card_ids: list[int] | None = None,
         own = {term_key(t.term) for t in mine} | {term_key(v) for t in mine for v in t.variants}
         map_names = [t.term for t in m.terms]
         kept, dropped = check_extracted(extract_once(card_id, texts, [t.term for t in mine], map_names),
-                                        texts, own, map_names)
+                                        texts, own, map_names, same_check)
         stats["cards"] += 1
         stats["dropped"] += len(dropped)
         for d in dropped:
