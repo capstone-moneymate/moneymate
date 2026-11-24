@@ -30,6 +30,37 @@ def test_candidates_cooccur_first_then_neighbors():
     assert candidate_pairs(NODES, None) == [(0, 1), (1, 2)]                       # 임베딩 없으면 같은 카드 쌍만
 
 
+# 실제 카드 설명에서 본 경우들 (2026-11-24 비교)
+DEF_NODES = [
+    ConceptNode("매출액", "물건과 서비스를 팔아 번 전체 돈", [], [1]),           # 0
+    ConceptNode("영업이익", "매출에서 본업 비용을 뺀 이익", [], [2]),             # 1  '매출액' 의 '액'을 떼고 찾는다
+    ConceptNode("수익률", "투자한 돈이 늘거나 준 비율", [], [3]),               # 2
+    ConceptNode("적자", "수익보다 비용이 더 커서 손실이 난 상태", [], [4]),      # 3  '수익률' 의 '률'은 떼지 않는다
+    ConceptNode("계약금액", "계약 때 정한 총 금액", [], [5]),                   # 4
+    ConceptNode("매출액 대비", "계약금액이 최근 1년 매출의 몇 %인지", [], [6]),  # 5  계약금액·매출 둘 다
+    ConceptNode("주가", "", [], [7]),                                     # 6
+]
+
+
+def test_definition_pairs_by_hand():
+    assert pv.definition_pairs(DEF_NODES) == [(0, 1), (0, 5), (4, 5)]
+
+
+def test_mention_keys():
+    assert pv.mention_keys(DEF_NODES[0]) == {"매출액", "매출"}
+    assert pv.mention_keys(DEF_NODES[5]) == {"매출액대비"}
+    assert pv.mention_keys(ConceptNode("%p", "", ["주"], [])) == {"%p"}   # 한 글자 이름은 아무 데나 걸려서 뺀다
+
+
+def test_candidates_put_definition_pairs_before_neighbors():
+    # 카드가 다 달라 같은 카드 쌍은 없다. 이웃 top1 은 (2,3) 하나만 가깝게 둔다
+    sim = np.eye(7)
+    sim[2, 3] = sim[3, 2] = 0.9
+    got = candidate_pairs(DEF_NODES, sim, top_k=1)
+    assert got[:4] == [(0, 1), (0, 5), (4, 5), (2, 3)]
+    assert candidate_pairs(DEF_NODES, sim, top_k=1, max_pairs=3) == [(0, 1), (0, 5), (4, 5)]
+
+
 def test_decide_majority_by_hand():
     assert decide(0, 1, {"i_first": 2, "j_first": 0, "none": 1}) == Prereq(0, 1, 2, 3)
     assert decide(0, 1, {"i_first": 0, "j_first": 3, "none": 0}) == Prereq(1, 0, 3, 3)   # 뒤가 먼저면 방향을 뒤집어 저장
