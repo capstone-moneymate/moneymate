@@ -8,6 +8,7 @@
 - 노드: 이름이 같으면 고친다(설명·별칭). 지도에서 빠진 노드는 **지우지 않는다**. 지우면 user_concept_state 가 함께
   지워져 학습 기록이 사라진다 (ON DELETE CASCADE). 개수만 알려 준다.
   사람2의 update_causal 은 본 문제 답에서 탭 1 개념 노드를 스스로 만든다 (이름 = concepts.name). 그 노드도 같은 표에 있다.
+  예외: 이름을 바꾸거나 합친 옛 노드(이름이 지도 노드의 별칭)는 학습 기록을 새 노드로 옮긴 뒤 지운다 (absorb_renamed, #262).
 - 카드 연결: 지도 노드의 카드 연결은 지도대로 바꾼다. DB 에 없는 카드는 건너뛴다.
 - 선수 관계: concept_prereq 는 지도만 쓰는 표라 통째로 지도대로 바꾼다.
   사람이 keep / add 한 연결은 지도에서 5표(prereq_votes.HUMAN_VOTES, 순환을 끊을 때만 쓰는 값)라서,
@@ -55,6 +56,42 @@ def causal_links(nodes: list[dict], concepts: list[tuple[str, str, list[str]]]) 
     return links, unclear
 
 
+def absorb_renamed(conn, nodes: list[dict], ids: dict[str, int]) -> dict[str, str]:
+    """지도에서 이름을 바꾸거나 합친 옛 노드를 새 노드로 옮기고 지운다 (#262). {옛 이름: 새 이름} 을 돌려준다.
+    옛 노드 = DB 에만 있고, 이름이 지도 노드의 별칭과 같은 노드 (build_map 의 same 합치기가 옛 이름을 별칭으로 남긴다).
+    그대로 두면 튜터가 카드 용어를 맞출 때 옛 노드를 먼저 잡아 합친 의미가 없어진다 (tutor.agent.card_targets).
+    학습 기록은 옮긴다: 답·퀴즈는 새 노드로, 사용자 상태는 새 노드에 그 사용자 줄이 없을 때만 옮기고 둘 다 있으면
+    더 최근에 고친 줄을 남긴다. 탭 1 단어 짝(causal_id)이 있는 옛 노드는 건드리지 않는다 (본 문제 답이 그 노드를 쓴다)."""
+    alias_owner = {}
+    for n in nodes:
+        for a in n.get("aliases") or []:
+            if term_key(a) != term_key(n["label"]):
+                alias_owner.setdefault(term_key(a), n["label"])
+    labels = [n["label"] for n in nodes]
+    moved = {}
+    for old_id, old_label in conn.execute(
+            "SELECT id, label FROM concept_nodes WHERE label <> ALL(%s) AND causal_id IS NULL ORDER BY id",
+            (labels,)).fetchall():
+        new_label = alias_owner.get(term_key(old_label))
+        if new_label is None:
+            continue
+        new_id = ids[new_label]
+        conn.execute("UPDATE concept_answers SET node_id = %s WHERE node_id = %s", (new_id, old_id))
+        conn.execute("UPDATE concept_quizzes SET node_id = %s WHERE node_id = %s", (new_id, old_id))
+        conn.execute(  # 둘 다 있으면 오래된 쪽을 지운다
+            """DELETE FROM user_concept_state o USING user_concept_state n
+                WHERE o.node_id = %(old)s AND n.node_id = %(new)s AND n.user_id = o.user_id AND n.updated_at >= o.updated_at""",
+            {"old": old_id, "new": new_id})
+        conn.execute(
+            """DELETE FROM user_concept_state n USING user_concept_state o
+                WHERE n.node_id = %(new)s AND o.node_id = %(old)s AND n.user_id = o.user_id""",
+            {"old": old_id, "new": new_id})
+        conn.execute("UPDATE user_concept_state SET node_id = %s WHERE node_id = %s", (new_id, old_id))
+        conn.execute("DELETE FROM concept_nodes WHERE id = %s", (old_id,))  # 카드 연결·선수 관계·이웃은 CASCADE
+        moved[old_label] = new_label
+    return moved
+
+
 def load(conn, result: dict) -> dict:
     """result = concept_map.json 내용. 커밋하지 않는다 (부르는 쪽이 with get_conn() 으로 묶는다). 개수 요약을 돌려준다."""
     nodes = result["nodes"]
@@ -80,8 +117,10 @@ def load(conn, result: dict) -> dict:
             (n["label"], n.get("desc") or None, n.get("aliases") or [], links.get(n["label"])),
         ).fetchone()[0]
 
+    absorbed = absorb_renamed(conn, nodes, ids)
+
     node_ids = list(ids.values())
-    want = sorted({c for n in nodes for c in n.get("card_ids") or []})
+    want =sorted({c for n in nodes for c in n.get("card_ids") or []})
     have = {r[0] for r in conn.execute("SELECT id FROM cards WHERE id = ANY(%s)", (want,)).fetchall()}
     conn.execute("DELETE FROM concept_node_cards WHERE node_id = ANY(%s)", (node_ids,))
     card_rows = [(ids[n["label"]], c) for n in nodes for c in sorted(set(n.get("card_ids") or [])) if c in have]
@@ -123,6 +162,7 @@ def load(conn, result: dict) -> dict:
         "causal_unclear": sorted(unclear),   # 여러 개념·여러 노드에 걸려 안 이음
         "causal_taken": sorted(taken),       # 그 개념을 이미 다른 노드가 가져서 안 이음
         "stale_nodes": stale,                # DB 에만 있고 지도에 없는 노드 (지우지 않음). 탭 1 개념 노드는 뺀 수
+        "absorbed": absorbed,                # 이름을 바꾸거나 합쳐 새 노드로 기록을 옮기고 지운 옛 노드 {옛: 새}
     }
 
 
@@ -142,6 +182,8 @@ def main() -> None:
     print(f"   탭 1 단어 짝짓기 (이름만, 인과 화살표 안 씀) {len(s['causal_linked'])}개: {s['causal_linked']}")
     if s["causal_unclear"] or s["causal_taken"]:
         print(f"   안 짝지음: 애매 {s['causal_unclear']}, 다른 노드가 가짐 {s['causal_taken']}")
+    if s["absorbed"]:
+        print(f"   이름을 바꾸거나 합친 옛 노드 {len(s['absorbed'])}개 (학습 기록을 옮기고 지움): {s['absorbed']}")
     if s["stale_nodes"]:
         print(f"   지도에 없는 DB 노드 {len(s['stale_nodes'])}개 (학습 기록 보호로 지우지 않음): {s['stale_nodes']}")
 

@@ -278,9 +278,12 @@ def cards_with(m: Materials, word: str) -> list[int]:
 def apply_review(m: Materials, rows: list[ReviewRow]) -> dict[str, int]:
     """사람이 keep / same 으로 정한 ② 용어를 지도에 넣는다 (m 을 바꾼다). 여러 번 불러도 결과가 같다.
     keep: 새 용어 (이미 있으면 카드만 더함). same: same_as 용어에 표기를 별칭으로 더함 (same_as 가 지도에 없으면 건너뜀).
-    keep 줄을 모두 먼저 넣고 same 줄을 본다: 파일에서 same 줄이 그 대상 keep 줄보다 앞에 있어도 결과가 같게."""
+    keep 줄을 모두 먼저 넣고 same 줄을 본다: 파일에서 same 줄이 그 대상 keep 줄보다 앞에 있어도 결과가 같게.
+    same 의 term 이 이미 지도에 있는 용어(카드 concept 단계 용어 등)면 그 용어를 same_as 쪽에 합친다: 따로 있던 용어는
+    없어지고, 표기·다른 표기는 별칭으로, 카드는 합친다 (#262. "%p" → "지수 기여도(%p)").
+    이름 바꾸기는 새 이름을 keep 하고 옛 용어를 same 으로 합친다 ("매출액 대비" → "매출액 대비 계약 비율")."""
     by_key = {term_key(t.term): t for t in m.terms}
-    stats = {"keep": 0, "same": 0, "missing_target": 0}
+    stats = {"keep": 0, "same": 0, "merged": 0, "missing_target": 0}
     for r in sorted(rows, key=lambda r: r.decision != KEEP):  # 안정 정렬이라 같은 종류 안에서는 파일 순서
         if r.decision == KEEP:
             t = by_key.get(term_key(r.term))
@@ -293,7 +296,16 @@ def apply_review(m: Materials, rows: list[ReviewRow]) -> dict[str, int]:
             if t is None:
                 stats["missing_target"] += 1
                 continue
-            if r.term not in t.variants and term_key(r.term) != term_key(t.term):
+            src = by_key.get(term_key(r.term))
+            if src is not None and src is not t:   # 지도에 따로 있던 용어: 합친다
+                m.terms.remove(src)
+                by_key[term_key(r.term)] = t
+                t.card_ids = sorted(set(t.card_ids) | set(src.card_ids))
+                for v in (src.term, *src.variants):
+                    if v not in t.variants and term_key(v) != term_key(t.term):
+                        t.variants.append(v)
+                stats["merged"] += 1
+            elif r.term not in t.variants and term_key(r.term) != term_key(t.term):
                 t.variants.append(r.term)
             stats["same"] += 1
         else:
