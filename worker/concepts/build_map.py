@@ -165,7 +165,8 @@ def main() -> None:
     review = load_review()
     a = apply_review(m, review)  # 사람이 keep / same 으로 정한 ② 용어 (LLM 없음)
     pending = sum(1 for r in review if not r.decision)
-    print(f"② 검토 반영: keep {a['keep']}개, same {a['same']}개 (아직 안 본 후보 {pending}개, {REVIEW_PATH.name})")
+    print(f"② 검토 반영: keep {a['keep']}개, same {a['same']}개 (그중 따로 있던 용어를 합침 {a['merged']}개), "
+          f"아직 안 본 후보 {pending}개 ({REVIEW_PATH.name})")
     if args.extract:
         s = extract_terms(m, same_check=lambda x, y: tg.same_meaning(encode, x, y), review=review)
         save_review(review)

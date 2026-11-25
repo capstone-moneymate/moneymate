@@ -158,3 +158,55 @@ def test_load_confusable_both_directions_and_replace(conn):
     assert conn.execute("SELECT count(*) FROM concept_confusable").fetchone()[0] == 0
     m.pop("confusable_pairs")                        # 검토 파일 전의 옛 결과 파일: 표를 건드리지 않는다
     assert load(conn, m)["confusable"] is None
+
+
+def test_renamed_node_moves_learner_records_and_is_deleted(conn):
+    # #262: 지도에서 이름을 바꾸거나 합친 옛 노드(이름이 새 노드의 별칭)는 기록을 새 노드로 옮기고 지운다
+    tag = uuid.uuid4().hex[:8]
+    card = _card(conn)
+    old, new, other = f"옛{tag}", f"새 이름{tag}", f"다른{tag}"
+    load(conn, {"nodes": [{"id": "c1", "label": old, "desc": "", "aliases": [], "card_ids": [card]},
+                          {"id": "c2", "label": new, "desc": "", "aliases": [], "card_ids": []},
+                          {"id": "c3", "label": other, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    u1, u2 = str(uuid.uuid4()), str(uuid.uuid4())
+    for u in (u1, u2):
+        conn.execute("INSERT INTO users (id) VALUES (%s::uuid)", (u,))
+    state.update(conn, u1, old, True, 0.25)                    # u1: 옛 노드에만 기록
+    state.update(conn, u2, new, False, 0.25)                   # u2: 새 노드 기록이 먼저, 옛 노드 기록이 더 최근
+    state.update(conn, u2, old, True, 0.25)
+    old_id = conn.execute("SELECT id FROM concept_nodes WHERE label = %s", (old,)).fetchone()[0]
+    conn.execute("""UPDATE user_concept_state SET updated_at = now() + interval '1 minute'
+                     WHERE user_id = %s::uuid AND node_id = %s""", (u2, old_id))   # 한 트랜잭션이라 now() 가 같아서
+    p_u1, p_u2 = state.get_mastery(conn, u1)[old], state.get_mastery(conn, u2)[old]
+    s = load(conn, {"nodes": [{"id": "c2", "label": new, "desc": "", "aliases": [old], "card_ids": [card]},
+                              {"id": "c3", "label": other, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    assert s["absorbed"] == {old: new} and old not in s["stale_nodes"]
+    assert conn.execute("SELECT count(*) FROM concept_nodes WHERE id = %s", (old_id,)).fetchone()[0] == 0
+    m1, m2 = state.get_mastery(conn, u1), state.get_mastery(conn, u2)
+    assert old not in m1 and m1[new] == pytest.approx(p_u1)    # 옮겨졌다
+    assert m2[new] == pytest.approx(p_u2)                      # 둘 다 있으면 더 최근 것
+    assert conn.execute("SELECT count(*) FROM user_concept_state WHERE node_id = %s", (old_id,)).fetchone()[0] == 0
+    s = load(conn, {"nodes": [{"id": "c2", "label": new, "desc": "", "aliases": [old], "card_ids": [card]}],
+                    "prereqs": []})
+    assert s["absorbed"] == {} and other in s["stale_nodes"]    # 별칭이 아닌 노드는 지금처럼 지우지 않는다
+
+
+def test_renamed_node_not_absorbed_when_alias_is_ambiguous(conn):
+    # #263 리뷰: 같은 별칭이 지도 노드 둘에 걸리면 옛 노드와 기록을 그대로 둔다
+    tag = uuid.uuid4().hex[:8]
+    old, a, b = f"옛{tag}", f"가{tag}", f"나{tag}"
+    load(conn, {"nodes": [{"id": "c1", "label": old, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    s = load(conn, {"nodes": [{"id": "c2", "label": a, "desc": "", "aliases": [old], "card_ids": []},
+                              {"id": "c3", "label": b, "desc": "", "aliases": [old], "card_ids": []}], "prereqs": []})
+    assert s["absorbed"] == {} and old in s["stale_nodes"]
+
+
+def test_shared_names_warns_when_alias_stays_on_old_node(conn):
+    # #263 리뷰: 별칭은 더하기만 해서, 다른 노드로 옮긴 별칭이 옛 노드에 남으면 알려 준다 (지우지는 않음)
+    tag = uuid.uuid4().hex[:8]
+    a, b, alias = f"가{tag}", f"나{tag}", f"별{tag}"
+    load(conn, {"nodes": [{"id": "c1", "label": a, "desc": "", "aliases": [alias], "card_ids": []},
+                          {"id": "c2", "label": b, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    s = load(conn, {"nodes": [{"id": "c1", "label": a, "desc": "", "aliases": [], "card_ids": []},
+                              {"id": "c2", "label": b, "desc": "", "aliases": [alias], "card_ids": []}], "prereqs": []})
+    assert s["shared_names"].get(alias.lower()) == sorted([a, b])
