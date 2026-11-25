@@ -60,6 +60,8 @@ services:
     volumes:
       - ./db/seeds:/db/seeds:ro
       - ./logs:/app/logs
+      # worker/concepts 의 일부 모듈은 저장소 루트 기준 logs/ 에 쓴다 (예: concept_requests.jsonl → /logs)
+      - ./logs:/logs
     depends_on:
       db:
         condition: service_healthy
