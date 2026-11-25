@@ -133,3 +133,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-25 | C | worker/learner/bkt.py, tests/test_bkt.py·test_learner_state.py, docs/modules/learner_bkt.md | BKT 기본값을 처음 0.3·배움 0.1 에서 처음 0.25·배움 0.2 로 변경 (B 제안, Cen et al. 2007 표 1 의 Cognitive Tutor 값 세트). 손계산 테스트 숫자 고치고 테스트 2개 추가, 값별 민감도 계산, 문헌 5편 원문 확인 (Papoušek 2014, Slater & Baker, pyBKT 2021, Yudelson 2013, Pardos 2013) | - |
 | 2026-11-25 | B | docs/modules/eval_learner.md | 가상 학습자 숫자 근거를 원문 확인한 출처로 바꿈: 배울 확률 0.3(pyBKT 각주 5)·범위 0.1~0.5(문헌값), 튜터 BKT 0.2 와 다른 이유, Haiku 학습자 제외 이유에 Fukuhara & Domingue 2026 425쪽 숫자. 원문 확인 (Fukuhara PDF 본문, Lu & Wang 2024 arXiv 본문) | - |
 | 2026-11-25 | B | docs/modules/eval_run.md | 앱 BKT 기본값 변경(#245, 0.25/0.2/0.1) 뒤 1-5 비용 0 조건(고정·규칙)을 다시 돌려 결과 줄을 새 숫자로 고침. 예전 값(0.3/0.1/0.1) 결과와 칸별 비교 | - |
+| 2026-11-25 | A | docs/design/index.html, docs/design/app.html | 새 UI 시안(랜딩·앱 화면) HTML 작성: 흰 바탕에 파란 포인트 색 하나, 모바일 폭 기준 | - |
