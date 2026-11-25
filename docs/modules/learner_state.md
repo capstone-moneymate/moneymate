@@ -5,7 +5,7 @@
 - **한 줄 설명**: 사용자 × 개념의 알 확률을 `user_concept_state`(009)에 읽고 쓴다 (계획 2-3). 계산은 `learner/bkt.py`가 하고, 사람1 튜터의 가짜 `FakeMastery`(`tutor/mastery.py`) 자리에 들어간다.
 - **입력**: DB 연결 `conn`, 사용자 UUID 문자열, 개념(노드 이름 또는 인과 사전 id), 정답 여부, 추측 확률.
 - **하는 일**:
-  - `get_mastery(conn, user_id)`: 개념 지도의 모든 노드에 대해 `{이름: 알 확률}`. 아직 안 풀어 본 개념은 처음 값 0.3.
+  - `get_mastery(conn, user_id)`: 개념 지도의 모든 노드에 대해 `{이름: 알 확률}`. 아직 안 풀어 본 개념은 처음 값 0.25 (`bkt.DEFAULT.p_init`).
   - `update(conn, user_id, concept, correct, guess_p)`: 개념 퀴즈(튜터·복습) 답 하나를 반영. `concept`은 노드 이름(label)이고, 없는 이름이면 `UnknownConcept`.
   - `update_causal(conn, user_id, causal_ids, correct, guess_p)`: 본 문제(퀴즈·차트 읽기·인과 순서) 답 하나를 그 단계의 인과 사전 개념(`steps.content.concept_ids`)마다 반영. 그 개념의 노드가 없으면 `concepts`의 이름으로 만들고(`causal_id`로 이음), 이름이 같은 노드가 이미 있으면 그 노드에 잇는다. 그래서 개념 퀴즈와 본 문제의 답이 같은 알 확률에 쌓인다.
 - **출력**: `get_mastery`는 dict, `update`는 새 알 확률, `update_causal`은 `{인과 사전 id: 새 알 확률}`.
