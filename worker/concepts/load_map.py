@@ -101,6 +101,17 @@ def absorb_renamed(conn, nodes: list[dict], ids: dict[str, int]) -> dict[str, st
     return moved
 
 
+def shared_names(conn) -> dict[str, list[str]]:
+    """이름·별칭 하나(term_key)가 노드 둘 이상에 걸린 것 {이름: [노드 label]}. 별칭은 더하기만 해서(사람2 노드의 탭 1
+    별칭 보호) 지도에서 다른 노드로 옮긴 별칭이 옛 노드에 남을 수 있다. 지우지 않고 알려만 준다 (#263 리뷰)."""
+    owners: dict[str, set[str]] = defaultdict(set)
+    for label, aliases in conn.execute("SELECT label, aliases FROM concept_nodes").fetchall():
+        for k in {term_key(label), *(term_key(a) for a in aliases or [])}:
+            if k:
+                owners[k].add(label)
+    return {k: sorted(v) for k, v in sorted(owners.items()) if len(v) > 1}
+
+
 def load(conn, result: dict) -> dict:
     """result = concept_map.json 내용. 커밋하지 않는다 (부르는 쪽이 with get_conn() 으로 묶는다). 개수 요약을 돌려준다."""
     nodes = result["nodes"]
@@ -172,6 +183,7 @@ def load(conn, result: dict) -> dict:
         "causal_taken": sorted(taken),       # 그 개념을 이미 다른 노드가 가져서 안 이음
         "stale_nodes": stale,                # DB 에만 있고 지도에 없는 노드 (지우지 않음). 탭 1 개념 노드는 뺀 수
         "absorbed": absorbed,                # 이름을 바꾸거나 합쳐 새 노드로 기록을 옮기고 지운 옛 노드 {옛: 새}
+        "shared_names": shared_names(conn),  # 이름·별칭 하나가 노드 둘 이상에 걸림 (튜터가 번호 작은 노드를 잡는다)
     }
 
 
@@ -193,6 +205,9 @@ def main() -> None:
         print(f"   안 짝지음: 애매 {s['causal_unclear']}, 다른 노드가 가짐 {s['causal_taken']}")
     if s["absorbed"]:
         print(f"   이름을 바꾸거나 합친 옛 노드 {len(s['absorbed'])}개 (학습 기록을 옮기고 지움): {s['absorbed']}")
+    if s["shared_names"]:
+        print(f"   ⚠ 이름·별칭이 노드 둘 이상에 걸림 {len(s['shared_names'])}개 (튜터는 번호 작은 노드를 잡음, "
+              f"검토 파일이나 DB 별칭을 확인): {s['shared_names']}")
     if s["stale_nodes"]:
         print(f"   지도에 없는 DB 노드 {len(s['stale_nodes'])}개 (학습 기록 보호로 지우지 않음): {s['stale_nodes']}")
 

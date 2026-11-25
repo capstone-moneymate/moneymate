@@ -199,3 +199,14 @@ def test_renamed_node_not_absorbed_when_alias_is_ambiguous(conn):
     s = load(conn, {"nodes": [{"id": "c2", "label": a, "desc": "", "aliases": [old], "card_ids": []},
                               {"id": "c3", "label": b, "desc": "", "aliases": [old], "card_ids": []}], "prereqs": []})
     assert s["absorbed"] == {} and old in s["stale_nodes"]
+
+
+def test_shared_names_warns_when_alias_stays_on_old_node(conn):
+    # #263 리뷰: 별칭은 더하기만 해서, 다른 노드로 옮긴 별칭이 옛 노드에 남으면 알려 준다 (지우지는 않음)
+    tag = uuid.uuid4().hex[:8]
+    a, b, alias = f"가{tag}", f"나{tag}", f"별{tag}"
+    load(conn, {"nodes": [{"id": "c1", "label": a, "desc": "", "aliases": [alias], "card_ids": []},
+                          {"id": "c2", "label": b, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    s = load(conn, {"nodes": [{"id": "c1", "label": a, "desc": "", "aliases": [], "card_ids": []},
+                              {"id": "c2", "label": b, "desc": "", "aliases": [alias], "card_ids": []}], "prereqs": []})
+    assert s["shared_names"].get(alias.lower()) == sorted([a, b])
