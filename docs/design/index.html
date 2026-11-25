@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<title>MONEYMATE | 뉴스 하나로 배우는 하루 5분 투자 공부</title>
+<meta name="description" content="매일 그날의 뉴스 한 건으로 경제·투자 개념을 카드와 퀴즈로 배우는 학습 앱, 머니메이트.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root{
+  --ink:#2B3344;
+  --cobalt:#2F3BFF;
+  --cobalt-deep:#2430D9;
+  --lemon:#FFC94D;
+  --tomato:#F0506A;
+  --mint:#3FE0A8;
+  --sky:#BFD0FF;
+  --pink:#FFB3D6;
+  --paper:#FFFFFF;
+  --mist:#EEF0FA;
+  --display:"Bagel Fat One","Pretendard Variable",Pretendard,system-ui,sans-serif;
+  --body:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --pad:22px;
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#D9DDF3;-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--body);color:var(--ink);font-size:16px;line-height:1.6;
+  word-break:keep-all;-webkit-font-smoothing:antialiased;
+}
+body.locked{overflow:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:3px solid var(--tomato);outline-offset:3px;border-radius:8px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+.app{max-width:430px;margin:0 auto;background:var(--paper);min-height:100svh;position:relative;overflow:hidden}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:flex;align-items:center;justify-content:center;width:100%;height:58px;
+  border-radius:20px;font-weight:800;font-size:17px;letter-spacing:-.01em;
+  border:2.5px solid var(--ink);box-shadow:0 5px 0 var(--ink);
+  transition:transform .12s var(--ease-out),box-shadow .12s var(--ease-out);
+}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
+.btn-lemon{background:var(--lemon);color:var(--ink)}
+.btn-cobalt{background:var(--cobalt);color:#fff}
+
+/* ---------- splash ---------- */
+.splash{
+  position:fixed;z-index:50;top:0;bottom:0;left:50%;width:min(100vw,430px);
+  transform:translateX(-50%);background:var(--ink);overflow:hidden;
+  display:grid;place-items:center;
+}
+.splash-icons{position:absolute;inset:0}
+.splash-icons svg{
+  position:absolute;width:var(--s,30px);height:var(--s,30px);left:var(--x);top:var(--y);
+  stroke:#fff;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;
+  transform:scale(0) rotate(var(--r,0deg));
+  animation:pop .5s var(--ease-spring) var(--d,0s) forwards;
+}
+@keyframes pop{to{transform:scale(1) rotate(var(--r,0deg))}}
+.splash-core{position:relative;text-align:center;animation:coreOut .35s ease-in 1.75s forwards}
+@keyframes coreOut{to{opacity:0;transform:scale(.94)}}
+.splash-face{width:92px;height:92px;margin:0 auto 14px;transform:scale(0);animation:pop .6s var(--ease-spring) .15s forwards}
+.wordmark{font-family:var(--display);font-weight:400;letter-spacing:.01em;line-height:1}
+.splash .wordmark{font-size:40px;color:#fff;display:flex;justify-content:center}
+.splash .wordmark span{display:inline-block;transform:translateY(120%);opacity:0;animation:rise .5s var(--ease-out) forwards;animation-delay:calc(.3s + var(--i)*.045s)}
+@keyframes rise{to{transform:none;opacity:1}}
+.splash-tag{margin-top:12px;color:#fff;opacity:0;font-weight:600;font-size:15px;animation:fade .4s ease-out .9s forwards}
+@keyframes fade{to{opacity:.72}}
+.ribbons{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.ribbons path{fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1}
+.rb-lemon{stroke:var(--lemon);stroke-width:54;animation:draw .7s var(--ease-out) 1.45s forwards}
+.rb-cobalt{stroke:var(--cobalt);stroke-width:120;animation:draw .65s var(--ease-out) 1.6s forwards,flood .55s cubic-bezier(.6,0,.4,1) 2.1s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes flood{to{stroke-width:1700}}
+.splash.done{display:none}
+.skip{position:absolute;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));color:#fff;opacity:.55;font-size:13px;font-weight:600;padding:8px 10px}
+
+/* ---------- hero ---------- */
+.hero{background:var(--cobalt);color:#fff;padding:0 var(--pad) 0;position:relative;overflow:hidden}
+.bar{display:flex;align-items:center;justify-content:space-between;height:60px}
+.bar .wordmark{font-size:21px}
+.bar a{font-weight:700;font-size:14px;padding:8px 14px;border-radius:99px;background:rgba(255,255,255,.16)}
+.hero h1{
+  font-family:var(--display);font-weight:400;font-size:clamp(38px,11.4vw,46px);
+  line-height:1.14;letter-spacing:-.01em;margin-top:18px;
+}
+.hero h1 span{display:block}
+.hero .lede{margin-top:14px;font-size:16.5px;line-height:1.55;font-weight:500;color:rgba(255,255,255,.9);max-width:19em}
+.hero .cta{margin-top:24px}
+.hero .sub-link{display:block;text-align:center;margin-top:16px;font-size:14.5px;font-weight:600;color:rgba(255,255,255,.85);text-decoration:underline;text-underline-offset:4px}
+
+.stage{position:relative;margin-top:26px;height:318px}
+.mate{position:absolute;left:50%;top:0;width:190px;margin-left:-95px}
+.mate svg{display:block;width:100%;height:auto;overflow:visible}
+.eye-lid{transform-box:fill-box;transform-origin:center;animation:blink 4.6s infinite}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}96.5%{transform:scaleY(.08)}}
+.newscard{
+  position:absolute;left:8px;right:8px;top:108px;background:#fff;color:var(--ink);
+  border:2.5px solid var(--ink);border-radius:26px 26px 0 0;border-bottom:0;
+  padding:20px 20px 0;height:230px;transform:rotate(-2.5deg);transform-origin:50% 100%;
+}
+.hand{position:absolute;top:-13px;width:26px;height:22px;border-radius:12px;background:var(--lemon);border:2.5px solid var(--ink)}
+.hand.l{left:38px}.hand.r{right:38px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:99px;font-size:12.5px;font-weight:800;background:var(--ink);color:#fff}
+.chip i{width:7px;height:7px;border-radius:50%;background:var(--tomato)}
+.newscard h2{margin-top:12px;font-size:19px;line-height:1.35;font-weight:800;letter-spacing:-.02em}
+.spark{display:block;width:100%;height:58px;margin-top:10px}
+.newscard p{font-size:13px;font-weight:600;color:#5b5f7a;margin-top:2px}
+
+/* hero entrance: one orchestrated moment, starts when splash hands off */
+.hero h1 span,.hero .lede,.hero .cta,.hero .sub-link{opacity:0;transform:translateY(22px)}
+.mate{transform:translateY(120px)}
+.newscard{transform:translateY(260px) rotate(6deg)}
+.ready .hero h1 span,.ready .hero .lede,.ready .hero .cta,.ready .hero .sub-link{
+  opacity:1;transform:none;transition:opacity .5s ease-out,transform .7s var(--ease-out);transition-delay:calc(var(--n)*70ms)}
+.ready .newscard{transform:rotate(-2.5deg);transition:transform .9s var(--ease-spring) .25s}
+.ready .mate{transform:none;transition:transform .8s var(--ease-spring) .55s}
+
+/* ---------- sections ---------- */
+.sec{padding:64px var(--pad) 0}
+.sec h2.t{font-family:var(--display);font-weight:400;font-size:31px;line-height:1.22;letter-spacing:-.01em}
+.sec .d{margin-top:10px;color:#4a4e6a;font-size:16px;font-weight:500}
+
+/* loop: horizontal snap */
+.loop{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;margin:24px calc(var(--pad)*-1) 0;padding:4px var(--pad) 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.loop::-webkit-scrollbar{display:none}
+.step{
+  flex:0 0 244px;scroll-snap-align:center;border:2.5px solid var(--ink);border-radius:26px;
+  padding:18px 18px 20px;min-height:292px;display:flex;flex-direction:column;background:var(--c);
+}
+.step .no{font-family:var(--display);font-size:44px;line-height:1}
+.step h3{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:6px}
+.step p{font-size:14.5px;font-weight:500;line-height:1.5;margin-top:6px;color:rgba(18,20,43,.8)}
+.mini{margin-top:auto;background:#fff;border:2px solid var(--ink);border-radius:16px;padding:12px;font-size:13px;font-weight:700;line-height:1.4}
+.mini .row{display:flex;gap:6px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:99px;border:2px solid var(--ink);font-size:12.5px;font-weight:800;background:#fff}
+.pill.on{background:var(--ink);color:#fff}
+.mini small{display:block;font-size:12px;font-weight:600;color:#5b5f7a;margin-top:4px}
+.bars{display:flex;gap:5px;align-items:flex-end;height:38px}
+.bars b{flex:1;border-radius:5px 5px 0 0;background:var(--ink)}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:6px}
+.dots i{width:7px;height:7px;border-radius:99px;background:#cfd3e6;transition:width .25s var(--ease-out),background .25s}
+.dots i.on{width:22px;background:var(--ink)}
+
+/* quiz */
+.quiz{margin-top:24px;background:var(--mist);border-radius:28px;padding:22px 18px 18px}
+.quiz .q{font-size:19px;font-weight:800;line-height:1.4;letter-spacing:-.02em}
+.opts{display:grid;gap:10px;margin-top:16px}
+.opt{
+  display:flex;align-items:center;gap:12px;text-align:left;width:100%;min-height:56px;padding:10px 16px;
+  background:#fff;border:2.5px solid var(--ink);border-radius:18px;font-weight:700;font-size:16px;
+  box-shadow:0 4px 0 var(--ink);transition:transform .12s var(--ease-out),box-shadow .12s var(--ease-out),background .2s;
+}
+.opt:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.opt .k{flex:0 0 30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--mist);font-weight:800;font-size:14px}
+.opt[disabled]{cursor:default;box-shadow:none;transform:translateY(4px)}
+.opt.right{background:var(--mint)}
+.opt.right .k{background:var(--ink);color:#fff}
+.opt.wrong{background:#FFD9D1;animation:shake .35s}
+.opt.dim{opacity:.5}
+@keyframes shake{25%{transform:translate(-5px,4px)}50%{transform:translate(5px,4px)}75%{transform:translate(-3px,4px)}}
+.explain{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--ease-out)}
+.explain.open{grid-template-rows:1fr}
+.explain > div{overflow:hidden}
+.explain .box{margin-top:14px;background:var(--ink);color:#fff;border-radius:18px;padding:16px;font-size:15px;line-height:1.55;font-weight:500}
+.explain strong{display:block;font-family:var(--display);font-weight:400;font-size:20px;margin-bottom:4px;color:var(--lemon)}
+.retry{margin-top:12px;font-size:14px;font-weight:700;text-decoration:underline;text-underline-offset:4px;padding:6px 2px}
+
+/* records */
+.me{display:flex;gap:10px;margin-top:22px}
+.stat{flex:1;border:2.5px solid var(--ink);border-radius:20px;padding:12px 14px;background:var(--c)}
+.stat b{display:block;font-family:var(--display);font-weight:400;font-size:30px;line-height:1.1}
+.stat span{font-size:13px;font-weight:700}
+.seg{display:flex;margin-top:14px;padding:4px;border-radius:16px;background:var(--mist)}
+.seg button{flex:1;height:42px;border-radius:12px;font-weight:800;font-size:15px;color:#5b5f7a;transition:background .2s,color .2s}
+.seg button[aria-selected="true"]{background:var(--ink);color:#fff}
+.panel{margin-top:12px;border:2.5px solid var(--ink);border-radius:24px;padding:18px 16px;min-height:330px}
+.panel[hidden]{display:none}
+.cal-h{display:flex;justify-content:space-between;align-items:baseline;font-weight:800;font-size:17px}
+.cal-h small{font-size:12.5px;font-weight:600;color:#5b5f7a}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px 4px;margin-top:14px;text-align:center}
+.cal span{font-size:12px;font-weight:700;color:#8a8ea8}
+.cal em{font-style:normal;aspect-ratio:1;display:grid;place-items:center;border-radius:50%;font-size:14px;font-weight:700}
+.cal em.done{background:var(--cobalt);color:#fff}
+.cal em.today{background:var(--lemon);color:var(--ink);box-shadow:0 0 0 2.5px var(--ink)}
+.chain{list-style:none;position:relative}
+.chain li{position:relative;padding:0 0 18px 30px}
+.chain li::before{content:"";position:absolute;left:5px;top:6px;width:14px;height:14px;border-radius:50%;background:#fff;border:2.5px solid var(--ink)}
+.chain li::after{content:"";position:absolute;left:11px;top:22px;bottom:-4px;width:2.5px;background:var(--ink)}
+.chain li:last-child{padding-bottom:0}
+.chain li:last-child::after{display:none}
+.chain li:last-child::before{background:var(--ink)}
+.chain b{font-size:15.5px;font-weight:800;letter-spacing:-.01em;display:block;line-height:1.35}
+.tag{display:inline-block;margin-top:5px;font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px}
+.tag.up{background:#FFD9D1;color:#B32A10}
+.tag.down{background:var(--sky);color:#1A2499}
+.tag.re{background:var(--lemon);color:var(--ink)}
+.theme{display:inline-flex;height:30px;align-items:center;padding:0 13px;border-radius:99px;background:var(--cobalt);color:#fff;font-weight:800;font-size:13.5px;margin-bottom:14px}
+.note{margin-top:10px;font-size:12.5px;font-weight:600;color:#8a8ea8;text-align:center}
+
+/* final */
+.final{margin-top:72px;background:var(--ink);color:#fff;border-radius:36px 36px 0 0;padding:44px var(--pad) calc(56px + env(safe-area-inset-bottom));text-align:center}
+.final .mate2{width:150px;margin:0 auto 8px}
+.final .mate2 svg{width:100%;height:auto;overflow:visible;display:block}
+.wave{transform-box:fill-box;transform-origin:0% 100%;animation:wave 2.4s ease-in-out infinite}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-16deg)}80%{transform:rotate(8deg)}90%{transform:rotate(-10deg)}}
+.final h2{font-family:var(--display);font-weight:400;font-size:33px;line-height:1.22}
+.final p{margin-top:10px;font-size:16px;font-weight:500;color:rgba(255,255,255,.8)}
+.final .btn{margin-top:24px;border-color:#fff;box-shadow:0 5px 0 #fff}
+.final .btn:active{box-shadow:0 1px 0 #fff}
+.final .legal{margin-top:36px;font-size:12.5px;line-height:1.6;color:rgba(255,255,255,.55);font-weight:500}
+
+/* sticky cta */
+.dock{
+  position:fixed;z-index:20;left:50%;bottom:0;width:min(100vw,430px);
+  padding:12px var(--pad) calc(12px + env(safe-area-inset-bottom));
+  background:linear-gradient(to top,#fff 62%,rgba(255,255,255,0));
+  transform:translate(-50%,110%);transition:transform .45s var(--ease-out);
+}
+.dock.show{transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .splash{display:none}
+  .hero h1 span,.hero .lede,.hero .cta,.hero .sub-link{opacity:1;transform:none}
+  .mate{transform:none}.newscard{transform:rotate(-2.5deg)}
+}
+
+/* ---------- v2 palette: white ground, one blue point colour ---------- */
+:root{--ink:#2B3344;--cobalt:#3B8DFF;--cobalt-deep:#2A6FD6;--lemon:#FFC94D;--tomato:#F0506A;--mint:#EAF3FF;--sky:#F3F6FA;--pink:#FFF4D1;--mist:#F3F6FA;--line:#E3E8EF;--blue-ink:#1F5FC4;--sub2:#6B7688}
+html{background:#EEF2F7}
+:focus-visible{outline-color:var(--lemon)}
+.btn{border:0;border-radius:16px;height:56px;background:var(--cobalt);color:#fff;box-shadow:0 4px 0 var(--cobalt-deep)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--cobalt-deep)}
+.btn-lemon,.btn-cobalt{background:var(--cobalt);color:#fff}
+.splash{background:var(--cobalt)}
+.rb-lemon{stroke:var(--lemon)}
+.rb-cobalt{stroke:#fff}
+.hero{background:#fff;color:var(--ink)}
+.bar .wordmark{color:var(--cobalt)}
+.bar a{background:var(--mist);color:var(--ink)}
+.hero .lede,.hero .sub-link,.sec .d{color:var(--sub2)}
+.stage::before{content:"";position:absolute;left:50%;top:26px;width:360px;height:360px;margin-left:-180px;border-radius:50%;background:#EAF3FF}
+.newscard{border:2px solid var(--line);border-bottom:0}
+.newscard p{color:var(--sub2)}
+.chip{background:var(--cobalt)}
+.chip i{background:var(--lemon)}
+.step{border:2px solid var(--line);border-bottom-width:4px;background:#fff}
+.step .no{color:var(--cobalt)}
+.step p{color:var(--sub2)}
+.mini{border:0;background:var(--mist)}
+.mini small{color:var(--sub2)}
+.pill{border:2px solid var(--line)}
+.pill.on{background:var(--cobalt);border-color:var(--cobalt);color:#fff}
+.bars b{background:#C9DFFF}
+.dots i{background:var(--line)}
+.dots i.on{background:var(--cobalt)}
+.quiz{background:#fff;border:2px solid var(--line);border-bottom-width:4px}
+.opt{border:2px solid var(--line);border-bottom-width:4px;box-shadow:none}
+.opt:active{transform:none;box-shadow:none}
+.opt[disabled]{transform:none}
+.opt.right{background:var(--cobalt);border-color:var(--cobalt-deep);color:#fff}
+.opt.right .k{background:var(--lemon);color:var(--ink)}
+.opt.wrong{background:#FFE6EA;border-color:#F7BFC8}
+.explain .box{background:#E2F6EA;color:var(--ink)}
+.explain strong{color:#1B7A48;font-family:var(--body);font-weight:800;font-size:18px}
+.stat{border:2px solid var(--line);border-bottom-width:4px;background:#fff}
+.stat b{color:var(--cobalt)}
+.seg button{color:var(--sub2)}
+.seg button[aria-selected="true"]{background:var(--cobalt)}
+.panel{border:2px solid var(--line);border-bottom-width:4px}
+.cal-h small,.cal span,.note{color:#9AA4B5}
+.cal em.done{background:var(--cobalt)}
+.cal em.today{background:#fff;box-shadow:0 0 0 2.5px var(--ink)}
+.chain li::before{border-color:var(--cobalt)}
+.chain li::after{background:#C9DFFF}
+.chain li:last-child::before{background:var(--cobalt)}
+.tag.up{background:#FFE6EA;color:#C22F49}.tag.down{background:#E6E9FB;color:#3A4BB5}.tag.re{background:#FFF4D1;color:#8A5A00}
+.theme{background:var(--cobalt)}
+.final{background:var(--cobalt);color:#fff}
+.final .btn{background:#fff;color:var(--blue-ink);box-shadow:0 4px 0 #C9DFFF}
+.final .btn:active{box-shadow:0 1px 0 #C9DFFF}
+.dock{background:linear-gradient(to top,#fff 62%,rgba(255,255,255,0))}
+.btn-ghost{margin-top:12px;background:#fff;color:var(--blue-ink);border:2px solid var(--line);box-shadow:0 4px 0 var(--line)}
+.btn-ghost:active{box-shadow:0 1px 0 var(--line)}
+.stage{margin-top:22px}
+/* ---------- iPhone 16 (393 wide): full width on the phone, a 393px column on wider screens ---------- */
+.app{max-width:none}
+.splash,.dock{width:100vw}
+.hero{padding-top:env(safe-area-inset-top)}
+@media (min-width:600px){.app{max-width:393px}.splash,.dock{width:393px}}
+</style>
+</head>
+<body class="locked">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-candle" viewBox="0 0 32 32"><path d="M11 3v5M11 22v7M21 6v6M21 20v6"/><rect x="7" y="8" width="8" height="14" rx="2"/><rect x="17" y="12" width="8" height="8" rx="2"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><path d="M10.5 12l2.6 8 2.9-7 2.9 7 2.6-8M10 15.5h12"/></symbol>
+    <symbol id="i-up" viewBox="0 0 32 32"><path d="M4 23l8-8 5 5 10-11M20 9h7v7"/></symbol>
+    <symbol id="i-card" viewBox="0 0 32 32"><rect x="6" y="4" width="20" height="24" rx="4"/><path d="M11 11h10M11 16h10M11 21h6"/></symbol>
+    <symbol id="i-q" viewBox="0 0 32 32"><path d="M11 12a5 5 0 1 1 7.5 4.3c-1.6 1-2.500 2-2.500 3.700"/><circle cx="16" cy="25" r=".6"/></symbol>
+  </defs>
+</svg>
+
+<!-- splash: plays once on entry, then the cobalt ribbon floods into the hero -->
+<div class="splash" id="splash" aria-hidden="true">
+  <div class="splash-icons">
+    <svg style="--x:9%;--y:9%;--r:-14deg;--d:.05s"><use href="#i-candle"/></svg>
+    <svg style="--x:74%;--y:7%;--r:12deg;--d:.22s;--s:34px"><use href="#i-coin"/></svg>
+    <svg style="--x:44%;--y:16%;--r:8deg;--d:.36s;--s:24px"><use href="#i-q"/></svg>
+    <svg style="--x:84%;--y:26%;--r:-10deg;--d:.12s"><use href="#i-up"/></svg>
+    <svg style="--x:16%;--y:29%;--r:16deg;--d:.4s;--s:26px"><use href="#i-card"/></svg>
+    <svg style="--x:6%;--y:66%;--r:10deg;--d:.28s;--s:32px"><use href="#i-up"/></svg>
+    <svg style="--x:82%;--y:68%;--r:-18deg;--d:.44s;--s:26px"><use href="#i-card"/></svg>
+    <svg style="--x:26%;--y:77%;--r:-8deg;--d:.16s;--s:34px"><use href="#i-coin"/></svg>
+    <svg style="--x:62%;--y:80%;--r:14deg;--d:.32s"><use href="#i-candle"/></svg>
+    <svg style="--x:10%;--y:90%;--r:6deg;--d:.5s;--s:24px"><use href="#i-q"/></svg>
+    <svg style="--x:82%;--y:90%;--r:-12deg;--d:.08s;--s:28px"><use href="#i-up"/></svg>
+    <svg style="--x:46%;--y:93%;--r:20deg;--d:.38s;--s:26px"><use href="#i-card"/></svg>
+  </div>
+  <div class="splash-core">
+    <svg class="splash-face" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="88" fill="#FFC94D" stroke="#fff" stroke-width="6"/>
+      <g class="eye-lid"><ellipse cx="74" cy="92" rx="19" ry="23" fill="#fff" stroke="#2B3344" stroke-width="5"/><ellipse cx="126" cy="92" rx="19" ry="23" fill="#fff" stroke="#2B3344" stroke-width="5"/><circle cx="79" cy="97" r="9" fill="#2B3344"/><circle cx="131" cy="97" r="9" fill="#2B3344"/></g>
+      <path d="M82 134q18 16 36 0" fill="none" stroke="#2B3344" stroke-width="6" stroke-linecap="round"/>
+    </svg>
+    <div class="wordmark">
+      <span style="--i:0">M</span><span style="--i:1">O</span><span style="--i:2">N</span><span style="--i:3">E</span><span style="--i:4">Y</span><span style="--i:5">M</span><span style="--i:6">A</span><span style="--i:7">T</span><span style="--i:8">E</span>
+    </div>
+    <p class="splash-tag">하루 5분, 뉴스로 배우는 투자</p>
+  </div>
+  <svg class="ribbons" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
+    <path class="rb-lemon" pathLength="1" d="M-70 760 C 120 700, 300 640, 250 470 S 60 300, 200 190 S 400 80, 470 -40"/>
+    <path class="rb-cobalt" pathLength="1" d="M-90 900 C 160 820, 60 560, 215 430 S 320 150, 480 -70"/>
+  </svg>
+  <button class="skip" id="skip" tabindex="-1">건너뛰기</button>
+</div>
+
+<div class="app">
+
+  <header class="hero">
+    <div class="bar">
+      <span class="wordmark">MONEYMATE</span>
+      <a href="app.html#login">로그인</a>
+    </div>
+
+    <h1>
+      <span style="--n:0">뉴스 하나로</span>
+      <span style="--n:1">오늘의 투자 공부</span>
+      <span style="--n:2">끝.</span>
+    </h1>
+    <p class="lede" style="--n:3">매일 그날의 뉴스 한 건을 골라드려요. 카드로 배우고 퀴즈로 확인하면 5분이면 돼요.</p>
+    <div class="cta" style="--n:4"><a class="btn btn-lemon" href="app.html#signup" id="heroCta">무료로 시작하기</a><a class="btn btn-ghost" href="app.html#guest">로그인 없이 둘러보기</a></div>
+    <a class="sub-link" href="app.html#login" style="--n:5">이미 계정이 있어요</a>
+
+    <div class="stage" aria-hidden="true">
+      <div class="mate">
+        <svg viewBox="0 0 200 200">
+          <path d="M26 110 C -6 120, -10 160, 0 196" fill="none" stroke="#2B3344" stroke-width="6" stroke-linecap="round"/>
+          <path d="M174 110 C 206 120, 210 160, 200 196" fill="none" stroke="#2B3344" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="100" cy="100" r="86" fill="#FFC94D" stroke="#2B3344" stroke-width="6"/>
+          <circle cx="100" cy="100" r="70" fill="none" stroke="#2B3344" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round" opacity=".35"/>
+          <g class="eye-lid"><ellipse cx="76" cy="80" rx="18" ry="22" fill="#fff" stroke="#2B3344" stroke-width="5"/><ellipse cx="124" cy="80" rx="18" ry="22" fill="#fff" stroke="#2B3344" stroke-width="5"/><circle cx="80" cy="87" r="8.500" fill="#2B3344"/><circle cx="128" cy="87" r="8.500" fill="#2B3344"/></g>
+        </svg>
+      </div>
+      <div class="newscard">
+        <i class="hand l"></i><i class="hand r"></i>
+        <span class="chip"><i></i>오늘의 주요뉴스</span>
+        <h2>연준, 기준금리 동결… 인하는 서두르지 않는다</h2>
+        <svg class="spark" viewBox="0 0 300 58" preserveAspectRatio="none">
+          <path d="M0 44 L30 40 L58 46 L86 30 L112 34 L140 20 L170 26 L198 14 L228 22 L258 9 L300 12" fill="none" stroke="#F0506A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <p>개념 4개, 퀴즈 2문제, 5분</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="sec" aria-labelledby="loop-t">
+      <h2 class="t" id="loop-t">읽고, 배우고,<br>내 생각까지 적어요</h2>
+      <p class="d">뉴스 하나가 다섯 단계를 거쳐 내 지식이 돼요. 옆으로 넘겨보세요.</p>
+
+      <div class="loop" id="loop">
+        <article class="step" style="--c:var(--lemon)">
+          <span class="no">1</span><h3>뉴스를 본다</h3>
+          <p>오늘 꼭 알아야 할 뉴스 한 건을 카드 3장으로 읽어요.</p>
+          <div class="mini">금리는 그대로인데 주가는 왜 움직였을까요?<small>오늘의 뉴스, 1 / 3</small></div>
+        </article>
+        <article class="step" style="--c:var(--mint)">
+          <span class="no">2</span><h3>개념을 배운다</h3>
+          <p>뉴스에 나온 경제 개념을 키워드와 한 줄 정의로 정리해요.</p>
+          <div class="mini"><span class="pill on">기준금리</span><small style="margin-top:8px">중앙은행이 정하는, 모든 금리의 기준이 되는 금리</small></div>
+        </article>
+        <article class="step" style="--c:var(--sky)">
+          <span class="no">3</span><h3>퀴즈로 확인한다</h3>
+          <p>골라 맞히기, 원인부터 결과까지 순서 맞추기, 차트 고르기까지.</p>
+          <div class="mini"><div class="bars"><b style="height:40%"></b><b style="height:62%"></b><b style="height:48%"></b><b style="height:80%"></b><b style="height:100%;background:var(--tomato)"></b></div><small>어느 쪽 차트일까요?</small></div>
+        </article>
+        <article class="step" style="--c:var(--pink)">
+          <span class="no">4</span><h3>내 판단을 적는다</h3>
+          <p>나라면 어떻게 할지 고르고, 그 이유를 직접 써봐요.</p>
+          <div class="mini"><div class="row"><span class="pill">추가매수</span><span class="pill on">관망</span><span class="pill">차익실현</span></div><small style="margin-top:8px">근거를 쓰면 피드백과 점수를 받아요</small></div>
+        </article>
+        <article class="step" style="--c:#fff">
+          <span class="no">5</span><h3>기록이 쌓인다</h3>
+          <p>배운 날은 달력에, 배운 개념은 인과 지도에 남아요.</p>
+          <div class="mini" style="background:var(--mist)">6일 연속 학습 중<small>배운 카드뉴스 13개</small></div>
+        </article>
+      </div>
+      <div class="dots" id="dots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    </section>
+
+    <section class="sec" aria-labelledby="quiz-t">
+      <h2 class="t" id="quiz-t">한 문제만<br>먼저 풀어볼까요</h2>
+      <p class="d">앱에서는 이런 퀴즈가 매일 뉴스와 함께 나와요.</p>
+
+      <div class="quiz">
+        <p class="q">금리를 “동결”하면, 대출·예금 금리는 어떻게 될까요?</p>
+        <div class="opts" id="opts">
+          <button class="opt" data-ok="0"><span class="k">A</span>바로 크게 오른다</button>
+          <button class="opt" data-ok="1"><span class="k">B</span>당분간 크게 안 움직인다</button>
+          <button class="opt" data-ok="0"><span class="k">C</span>바로 크게 내린다</button>
+        </div>
+        <div class="explain" id="explain" aria-live="polite">
+          <div>
+            <div class="box">
+              <strong id="verdict">정답이에요</strong>
+              동결은 금리를 그대로 두는 거라, 대출·예금 금리도 당분간 크게 변하지 않아요.
+            </div>
+            <button class="retry" id="retry">다시 풀기</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" aria-labelledby="rec-t">
+      <h2 class="t" id="rec-t">배운 건<br>사라지지 않아요</h2>
+      <p class="d">마이페이지에서 얼마나 꾸준했는지, 개념이 어떻게 이어지는지 볼 수 있어요.</p>
+
+      <div class="me">
+        <div class="stat" style="--c:var(--lemon)"><b>6일</b><span>연속 학습</span></div>
+        <div class="stat" style="--c:var(--mint)"><b>13개</b><span>배운 카드뉴스</span></div>
+      </div>
+
+      <div class="seg" role="tablist" aria-label="기록 보기 전환">
+        <button role="tab" id="tab-cal" aria-selected="true" aria-controls="p-cal">달력</button>
+        <button role="tab" id="tab-map" aria-selected="false" aria-controls="p-map" tabindex="-1">인과 지도</button>
+      </div>
+
+      <div class="panel" id="p-cal" role="tabpanel" aria-labelledby="tab-cal">
+        <div class="cal-h">2026년 11월 <small>파란 날이 배운 날</small></div>
+        <div class="cal" id="cal"></div>
+      </div>
+
+      <div class="panel" id="p-map" role="tabpanel" aria-labelledby="tab-map" hidden>
+        <span class="theme">테마: 금리</span>
+        <ol class="chain">
+          <li><b>의장 “인하를 서두르지 않겠다”</b></li>
+          <li><b>금리 인하 기대가 줄어든다</b><span class="tag down">누르는 힘</span></li>
+          <li><b>금리가 오래 높게 유지된다</b><span class="tag down">누르는 힘</span> <span class="tag re">복습 필요</span></li>
+          <li><b>실적이 좋으면 버티는 종목도 있다</b><span class="tag up">올리는 힘</span></li>
+          <li><b>결과: 성장주에 부담</b></li>
+        </ol>
+      </div>
+      <p class="note">화면 속 날짜와 수치는 예시예요.</p>
+    </section>
+  </main>
+
+  <footer class="final" id="final">
+    <div class="mate2" aria-hidden="true">
+      <svg viewBox="-30 0 260 250">
+        <path d="M78 178 L72 236 M72 236 h-14" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+        <path d="M122 178 L128 236 M128 236 h14" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+        <path d="M22 118 C -8 130, -14 150, -6 168" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+        <path class="wave" d="M176 112 C 206 96, 216 66, 210 44" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+        <circle cx="100" cy="100" r="86" fill="#FFC94D" stroke="#fff" stroke-width="6"/>
+        <circle cx="100" cy="100" r="70" fill="none" stroke="#2B3344" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round" opacity=".35"/>
+        <g class="eye-lid"><ellipse cx="76" cy="86" rx="18" ry="22" fill="#fff" stroke="#2B3344" stroke-width="5"/><ellipse cx="124" cy="86" rx="18" ry="22" fill="#fff" stroke="#2B3344" stroke-width="5"/><circle cx="81" cy="90" r="8.500" fill="#2B3344"/><circle cx="129" cy="90" r="8.500" fill="#2B3344"/></g>
+        <path d="M82 128q18 18 36 0" fill="none" stroke="#2B3344" stroke-width="6" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <h2>오늘 뉴스부터<br>같이 볼까요</h2>
+    <p>가입은 아이디와 비밀번호만 있으면 돼요.</p>
+    <a class="btn btn-lemon" href="app.html#signup" id="finalCta">무료로 시작하기</a>
+    <p class="legal">머니메이트는 투자 권유가 아닌 학습용 서비스예요.<br>앱에 나오는 종목과 수치는 예시 데이터일 수 있어요.</p>
+  </footer>
+</div>
+
+<div class="dock" id="dock"><a class="btn btn-cobalt" href="app.html#signup" tabindex="-1">무료로 시작하기</a></div>
+
+<script>
+(function(){
+  var body=document.body, splash=document.getElementById('splash');
+  var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  var skipIntro=reduce||/[?&]nointro\b/.test(location.search);
+  var ended=false;
+  function endSplash(){
+    if(ended)return; ended=true;
+    splash.classList.add('done'); body.classList.remove('locked'); body.classList.add('ready');
+  }
+  if(skipIntro){endSplash();}
+  else{
+    // hero starts its entrance while the cobalt flood finishes, so the two read as one move
+    setTimeout(endSplash,2680);
+    splash.addEventListener('click',endSplash);
+  }
+
+  /* 랜딩에서 들어가면 항상 가입이나 로그인부터 시작해요 */
+  [].slice.call(document.querySelectorAll('a[href^="app.html"]')).forEach(function(a){
+    a.addEventListener('click',function(){
+      try{var s=JSON.parse(localStorage.getItem('moneymate.v1'));if(s&&s.session){s.session=null;localStorage.setItem('moneymate.v1',JSON.stringify(s))}}catch(e){}
+    });
+  });
+
+  /* loop dots */
+  var loop=document.getElementById('loop'), dots=document.getElementById('dots').children;
+  var steps=loop.children, raf=0;
+  loop.addEventListener('scroll',function(){
+    cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(function(){
+      var mid=loop.scrollLeft+loop.clientWidth/2, best=0, bd=1e9;
+      for(var i=0;i<steps.length;i++){
+        var d=Math.abs(steps[i].offsetLeft+steps[i].offsetWidth/2-mid);
+        if(d<bd){bd=d;best=i;}
+      }
+      for(var j=0;j<dots.length;j++)dots[j].classList.toggle('on',j===best);
+    });
+  },{passive:true});
+
+  /* quiz */
+  var opts=[].slice.call(document.querySelectorAll('.opt'));
+  var explain=document.getElementById('explain'), verdict=document.getElementById('verdict');
+  opts.forEach(function(o){
+    o.addEventListener('click',function(){
+      var ok=o.dataset.ok==='1';
+      opts.forEach(function(x){
+        x.disabled=true;
+        if(x.dataset.ok==='1')x.classList.add('right');
+        else if(x===o)x.classList.add('wrong');
+        else x.classList.add('dim');
+      });
+      verdict.textContent=ok?'정답이에요':'아쉬워요, 정답은 B예요';
+      explain.classList.add('open');
+    });
+  });
+  document.getElementById('retry').addEventListener('click',function(){
+    opts.forEach(function(x){x.disabled=false;x.classList.remove('right','wrong','dim');});
+    explain.classList.remove('open');
+    opts[0].focus();
+  });
+
+  /* calendar: November 2026 starts on a Sunday */
+  var cal=document.getElementById('cal'), done=[3,4,5,9,10,11,12,16,17,18,19,20], today=21, html='';
+  ['일','월','화','수','목','금','토'].forEach(function(d){html+='<span>'+d+'</span>';});
+  for(var d=1;d<=30;d++){
+    var c=d===today?'today':(done.indexOf(d)>-1?'done':'');
+    html+='<em'+(c?' class="'+c+'"':'')+'>'+d+'</em>';
+  }
+  cal.innerHTML=html;
+
+  /* tabs */
+  var tabs=[document.getElementById('tab-cal'),document.getElementById('tab-map')];
+  function pick(t){
+    tabs.forEach(function(x){
+      var on=x===t;
+      x.setAttribute('aria-selected',on); x.tabIndex=on?0:-1;
+      document.getElementById(x.getAttribute('aria-controls')).hidden=!on;
+    });
+  }
+  tabs.forEach(function(t,i){
+    t.addEventListener('click',function(){pick(t);});
+    t.addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){var n=tabs[(i+1)%2];pick(n);n.focus();}
+    });
+  });
+
+  /* sticky cta: visible only between the hero button and the final button */
+  var dock=document.getElementById('dock'), dockLink=dock.querySelector('a');
+  var seen={hero:true,final:false};
+  function sync(){
+    var show=!seen.hero&&!seen.final;
+    dock.classList.toggle('show',show); dockLink.tabIndex=show?0:-1;
+  }
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){seen[e.target.id==='heroCta'?'hero':'final']=e.isIntersecting;});
+      sync();
+    });
+    io.observe(document.getElementById('heroCta'));
+    io.observe(document.getElementById('finalCta'));
+  }
+})();
+</script>
+</body>
+</html>
