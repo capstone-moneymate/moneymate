@@ -49,13 +49,13 @@ def test_new_user_starts_at_init(conn):
 def test_update_follows_bkt_and_is_per_concept(conn):
     user, eps, profit, _ = _names()
     _node(conn, eps), _node(conn, profit)
-    assert state.update(conn, user, eps, True, 0.25) == pytest.approx(0.6461, abs=1e-4)   # 손계산 (test_bkt)
-    assert state.update(conn, user, eps, True, 0.25) == pytest.approx(0.8811, abs=1e-4)   # 0.30 → 0.65 → 0.88
-    assert state.update(conn, user, profit, False, 0.25) == pytest.approx(0.1486, abs=1e-4)
+    assert state.update(conn, user, eps, True, 0.25) == pytest.approx(0.6364, abs=1e-4)   # 손계산 (test_bkt)
+    assert state.update(conn, user, eps, True, 0.25) == pytest.approx(0.8904, abs=1e-4)   # 0.25 → 0.64 → 0.89
+    assert state.update(conn, user, profit, False, 0.25) == pytest.approx(0.2340, abs=1e-4)
     m = state.get_mastery(conn, user)
-    assert m[eps] == pytest.approx(0.8811, abs=1e-4) and m[profit] == pytest.approx(0.1486, abs=1e-4)
+    assert m[eps] == pytest.approx(0.8904, abs=1e-4) and m[profit] == pytest.approx(0.2340, abs=1e-4)
     # 다른 사용자는 그대로 처음 값
-    assert state.get_mastery(conn, str(uuid.uuid4()))[eps] == pytest.approx(0.3)
+    assert state.get_mastery(conn, str(uuid.uuid4()))[eps] == pytest.approx(0.25)
 
 
 def test_unknown_concept_raises(conn):
@@ -69,20 +69,20 @@ def test_update_causal_creates_node_once(conn):
                  (cid, f"이름 {cid}", ["다른 말"]))
     out = state.update_causal(conn, user, [cid, cid, "", "없는_id_" + uuid.uuid4().hex], True, 0.5)
     assert list(out) == [cid]                                   # 중복·빈 값·사전에 없는 id 는 빠진다
-    assert out[cid] == pytest.approx(0.4919, abs=1e-4)          # O/X 손계산
+    assert out[cid] == pytest.approx(0.5)                       # O/X 손계산 (0.375 → 0.5)
     state.update_causal(conn, user, [cid], True, 0.5)
     rows = conn.execute("SELECT label, aliases FROM concept_nodes WHERE causal_id = %s", (cid,)).fetchall()
     assert rows == [(f"이름 {cid}", ["다른 말"])]                 # 노드는 하나만
-    assert state.get_mastery(conn, user)[f"이름 {cid}"] == pytest.approx(0.6719, abs=1e-4)
+    assert state.get_mastery(conn, user)[f"이름 {cid}"] == pytest.approx(0.7143, abs=1e-4)   # 0.45 / 0.70 = 0.643 → 0.714
 
 
 def test_update_causal_links_same_label_node(conn):
     user, eps, _, cid = _names()
     node_id = _node(conn, eps)                                  # 개념 단계 용어로 먼저 생긴 노드
     conn.execute("INSERT INTO concepts (id, name, theme) VALUES (%s, %s, '테스트')", (cid, eps))
-    state.update(conn, user, eps, True, 0.25)                   # 개념 퀴즈로 0.65
-    out = state.update_causal(conn, user, [cid], True, 0.25)    # 본 문제도 같은 노드에 쌓인다 → 0.88
-    assert out[cid] == pytest.approx(0.8811, abs=1e-4)
+    state.update(conn, user, eps, True, 0.25)                   # 개념 퀴즈로 0.64
+    out = state.update_causal(conn, user, [cid], True, 0.25)    # 본 문제도 같은 노드에 쌓인다 → 0.89
+    assert out[cid] == pytest.approx(0.8904, abs=1e-4)
     assert conn.execute("SELECT id FROM concept_nodes WHERE causal_id = %s", (cid,)).fetchall() == [(node_id,)]
 
 

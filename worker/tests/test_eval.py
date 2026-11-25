@@ -7,6 +7,7 @@ import pytest
 from eval import bank as bk
 from eval import run as rn
 from eval import teachers as te
+from learner import bkt
 from eval.learner import Learner, prereq_of, profiles, random_answer
 from tutor import agent as ag
 from tutor.quiz import Quiz
@@ -89,10 +90,10 @@ def test_profiles():
 
 def test_mem_mastery_blind():
     m = te.MemMastery(SCOPE)
-    assert m.answer("u", choice("가"), 0, True, None) > 0.3
+    assert m.answer("u", choice("가"), 0, True, None) > bkt.DEFAULT.p_init
     blind = te.MemMastery(SCOPE, blind=True)
-    assert blind.answer("u", choice("가"), 0, True, None) == pytest.approx(0.3)
-    assert blind.get_mastery()["가"] == pytest.approx(0.3) and blind.p["가"] > 0.3   # 갱신은 하지만 보여 주지 않는다
+    assert blind.answer("u", choice("가"), 0, True, None) == pytest.approx(bkt.DEFAULT.p_init)
+    assert blind.get_mastery()["가"] == pytest.approx(bkt.DEFAULT.p_init) and blind.p["가"] > bkt.DEFAULT.p_init   # 갱신은 하지만 보여 주지 않는다
 
 
 def test_fixed_goes_in_map_order_and_explains_on_wrong():
@@ -170,7 +171,7 @@ def test_run_one_same_seed_same_learner_across_conditions():
     a = rn.run_one(cmap, CARD_BANK, 1, "처음 배움", 0, c)
     b = rn.run_one(cmap, CARD_BANK, 1, "처음 배움", 0, c)
     assert a["history"] == b["history"] and a["test_right"] == b["test_right"]   # 다시 돌려도 같다 (재현)
-    assert a["n_targets"] == 1 and a["test_total"] == 2 and a["quizzes"] == 6 and a["bkt"] == "0.3/0.1/0.1"
+    assert a["n_targets"] == 1 and a["test_total"] == 2 and a["quizzes"] == 6 and a["bkt"] == rn.bkt_tag(bkt.DEFAULT)
 
 
 def test_run_one_bkt_params_and_learner_slip():
@@ -279,5 +280,5 @@ def test_run_one_prior_start_p():
     cmap = ag.ConceptMap(SCOPE, {}, EDGES)
     warm = rn.run_one(cmap, CARD_BANK, 1, "거의 앎", 0, rn.cell("main", "fixed", 0.5, prior=True))
     cold = rn.run_one(cmap, CARD_BANK, 1, "거의 앎", 0, rn.cell("main", "fixed", 0.5, prior=False))
-    assert cold["start_p"] == {c: 0.3 for c in SCOPE} and "prior_record" not in cold
-    assert warm["start_p"]["가"] > 0.3 and len(warm["prior_record"]) == 3   # 은행에 개념마다 용어 뜻 1개뿐
+    assert cold["start_p"] == {c: bkt.DEFAULT.p_init for c in SCOPE} and "prior_record" not in cold
+    assert warm["start_p"]["가"] > bkt.DEFAULT.p_init and len(warm["prior_record"]) == 3   # 은행에 개념마다 용어 뜻 1개뿐

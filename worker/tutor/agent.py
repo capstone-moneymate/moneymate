@@ -312,7 +312,9 @@ def answer(s: Session, response, confidence, response_ms: int | None = None,
     p = s.mastery.answer(s.user, q, response, correct, confidence, response_ms=response_ms,
                          answer_changes=answer_changes)
     s.log[-1]["result"] = {"correct": correct, "confidence": confidence}
-    s.events.append({"type": "graded", "concept": q.concept, "correct": correct, "explanation": q.explanation})
+    # 채점 뒤에는 정답을 보여 줘도 된다 (화면이 어느 보기가 맞는지 표시). 퀴즈 이벤트에는 정답이 없다
+    s.events.append({"type": "graded", "concept": q.concept, "kind": q.kind, "correct": correct, "key": q.key,
+                     "explanation": q.explanation})
     s.pending, s.status = None, "running"
     s.messages.append({"role": "user", "content": [_result(tool_use_id, {
         "concept": q.concept, "kind": q.kind, "correct": correct, "confidence": confidence,

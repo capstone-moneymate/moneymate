@@ -162,7 +162,7 @@ PRIOR_KIND, PRIOR_PER = "용어 뜻", 2
 def prior_record(card_bank: dict, scope, learner: Learner, mastery, rng: random.Random, per: int = PRIOR_PER) -> list[dict]:
     """과거 기록: 세션 전에 학습자가 범위의 개념마다 은행의 용어 뜻 퀴즈 앞 per 개를 혼자 푼다 (교사 없음).
     실제 서비스에서는 BKT 가 카드를 넘어 쌓여서, 기초를 아는 학습자는 앞선 카드에서 이미 맞힌 기록이 있다. 기록이 없으면
-    아는 선수 개념도 0.3 에서 시작해 퀴즈 6개를 확인에만 쓴다 (2026-11-24 기록 없이 돌린 규칙 조건에서 확인).
+    아는 선수 개념도 처음 값(p_init)에서 시작해 퀴즈 6개를 확인에만 쓴다 (2026-11-24 기록 없이 돌린 규칙 조건에서 확인).
     답은 세션과 같은 respond / grade 로 숨긴 상태대로 (아는 개념도 실수, 모르는 개념은 찍기). 배우지 않는다 (지난 일).
     교사에게 숨긴 상태가 아니라 잡음 섞인 답 기록만 BKT 로 넘긴다. 세션 퀴즈 수에 세지 않는다. 씨앗이 따로라 세 조건이 같다."""
     saved, learner.rng = learner.rng, rng
