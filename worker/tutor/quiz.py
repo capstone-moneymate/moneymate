@@ -86,6 +86,10 @@ def _obj(props: dict) -> dict:
 S, I = {"type": "string"}, {"type": "integer"}
 SCHEMAS = {
     "choice": _obj({"question": S, "options": {"type": "array", "items": S}, "answer_index": I, "explanation": S}),
+    # 3지선다는 보기를 목록 대신 칸 3개로 받는다. 구조화 출력이 목록 길이 제약을 지원하지 않아 보기를 4개 내기도 했고,
+    # 정답 번호도 모델이 세지 않는다 (칸 이름이 정답을 말한다, #231 과 같은 생각) (#246)
+    "용어 뜻": _obj({"question": S, "correct": S, "wrong_1": S, "wrong_2": S, "explanation": S}),
+    "틀린 설명": _obj({"question": S, "true_1": S, "true_2": S, "wrong": S, "explanation": S}),
     "O/X": _obj({"statement": S, "answer": {"type": "boolean"}, "explanation": S}),
     "칩 빈칸": _obj({"sentence": S, "chips": {"type": "array", "items": S},
                    "answers": {"type": "array", "items": S}, "explanation": S}),   # 번호가 아니라 칩 글자 (#231)
@@ -95,9 +99,9 @@ SCHEMAS = {
 }
 
 HOW = {
-    "용어 뜻": "개념의 뜻을 묻는 3지선다. 보기 3개 중 정답 1개, 나머지는 그럴듯하지만 틀린 뜻.",
+    "용어 뜻": "개념의 뜻을 묻는 3지선다. correct 는 맞는 뜻, wrong_1·wrong_2 는 그럴듯하지만 틀린 뜻.",
     "헷갈리는 쌍": "<pair> 의 두 개념 중 어느 쪽에 맞는 설명인지 묻는다. options 는 두 개념 이름 그대로 2개.",
-    "틀린 설명": "개념에 대한 설명 3개 중 틀린 것 하나를 고르게 한다. answer_index 는 틀린 설명의 번호. 흔한 오개념을 틀린 설명으로 쓴다.",
+    "틀린 설명": "개념에 대한 설명 3개 중 틀린 것 하나를 고르게 한다. true_1·true_2 는 맞는 설명, wrong 은 틀린 설명. 흔한 오개념을 틀린 설명으로 쓴다. 틀린 설명에도 주가가 오른다·내린다 같은 예측은 쓰지 말고, 개념의 뜻이나 계산을 잘못 아는 오개념을 쓴다.",
     "O/X": "개념에 대한 한 문장이 맞는지(O) 틀렸는지(X) 묻는다.",
     "칩 빈칸": f"개념이 쓰이는 짧은 문장에 빈칸 {BLANK} 를 2개 두고, 칩 4개 중 빈칸에 들어갈 것을 순서대로 고르게 한다. answers 는 빈칸 순서대로 들어갈 칩의 글자 그대로 (번호가 아니다).",
     "짝 맞추기": "<terms> 의 용어마다 짧은 뜻을 같은 순서로 하나씩 쓴다. 화면이 뜻을 섞어서 보여 준다.",
@@ -106,7 +110,7 @@ HOW = {
 
 
 def _schema_for(kind: str) -> dict:
-    return SCHEMAS["choice"] if kind in ("용어 뜻", "헷갈리는 쌍", "틀린 설명") else SCHEMAS[kind]
+    return SCHEMAS["choice"] if kind == "헷갈리는 쌍" else SCHEMAS[kind]
 
 
 def build_user(kind: str, concept: str, desc: str, pair: list[str] | None, terms: list[str] | None) -> str:
@@ -137,10 +141,17 @@ def to_quiz(kind: str, concept: str, data: dict, pair: list[str] | None = None,
         raise QuizError(f"금지 표현: {', '.join(find_banned(texts))}")
     expl = data["explanation"]
     if kind in ("용어 뜻", "헷갈리는 쌍", "틀린 설명"):
-        opts, ans = data["options"], data["answer_index"]
-        want = 2 if kind == "헷갈리는 쌍" else 3
-        if len(opts) != want:
-            raise QuizError(f"보기가 {want}개여야 해요 (지금 {len(opts)}개)")
+        if kind == "용어 뜻":       # 정답을 앞에 두고 아래 shuffle 이 섞는다
+            opts, ans = [data["correct"], data["wrong_1"], data["wrong_2"]], 0
+        elif kind == "틀린 설명":   # 정답(틀린 설명)을 뒤에
+            opts, ans = [data["true_1"], data["true_2"], data["wrong"]], 2
+        else:
+            opts, ans = data["options"], data["answer_index"]
+            if len(opts) != 2:
+                raise QuizError(f"보기가 2개여야 해요 (지금 {len(opts)}개)")
+        opts = [o.strip() for o in opts]
+        if not all(opts):
+            raise QuizError("빈 보기가 있어요")
         if len(set(opts)) != len(opts):
             raise QuizError("같은 보기가 있어요")
         if not 0 <= ans < len(opts):

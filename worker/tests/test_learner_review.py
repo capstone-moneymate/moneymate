@@ -12,8 +12,10 @@ from tutor import quiz as qz
 
 T0 = datetime(2026, 11, 24, 9, 0, tzinfo=timezone.utc)   # KST 11/24 18:00
 
-CHOICE = {"question": "EPS 의 뜻은?", "options": ["주당순이익", "주가수익비율", "자기자본"], "answer_index": 0,
+# 용어 뜻 출제 응답 (보기는 칸 3개, #246). to_quiz 가 options = [correct, wrong_1, wrong_2], 정답 0 으로 만든다
+CHOICE = {"question": "EPS 의 뜻은?", "correct": "주당순이익", "wrong_1": "주가수익비율", "wrong_2": "자기자본",
           "explanation": "순이익을 주식 수로 나눈 값"}
+OPTIONS = ["주당순이익", "주가수익비율", "자기자본"]
 
 
 def test_kind_rotates_by_issued_count():
@@ -106,7 +108,7 @@ def test_save_keeps_key_on_server_and_reuses_unanswered_quiz(conn):
     out = review.save(conn, user, node, _quiz(label), random.Random(1))
     assert set(out) == {"quiz_id", "node_id", "concept", "kind", "content", "guess_p"}   # 정답·해설은 안 나간다
     assert out["concept"] == label and out["guess_p"] == 0.3333
-    assert sorted(out["content"]["options"]) == sorted(CHOICE["options"])
+    assert sorted(out["content"]["options"]) == sorted(OPTIONS)
     key, = conn.execute("SELECT answer_key FROM concept_quizzes WHERE id = %s", (out["quiz_id"],)).fetchone()
     assert out["content"]["options"][key] == "주당순이익"            # 섞은 뒤에도 보관한 정답이 맞는 보기를 가리킨다
     # 아직 안 풀었으면 다시 들어와도 같은 문제 (LLM 을 다시 부르지 않는다)
