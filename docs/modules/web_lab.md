@@ -1,4 +1,4 @@
-> 초안입니다. 담당자가 읽고 직접 고쳐서 확정해 주세요. (Claude 작성, 2026-11-26)
+> 초안입니다. 담당자가 읽고 직접 고쳐서 확정해 주세요.
 
 # 분석 자료 탭 (web/src/pages/lab: LabPage.tsx · LabQuizPage.tsx · labData.ts · labProgress.ts)
 

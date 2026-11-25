@@ -200,7 +200,7 @@ def test_apply_review_keep_same_and_grounding():
             ReviewRow("자기주식 취득", "same", "자사주 취득"),
             ReviewRow("마감", "drop"), ReviewRow("공시", ""), ReviewRow("주주가치", "same", "지도에 없는 이름")]
     stats = apply_review(m, rows)
-    assert stats == {"keep": 1, "same": 1, "missing_target": 1}
+    assert stats == {"keep": 1, "same": 1, "merged": 0, "missing_target": 1}
     by = {t.term: t for t in m.terms}
     assert by["금융통화위원회"].card_ids == [3] and by["금융통화위원회"].origin == "source"   # 글에 나온 카드에 코드가 잇는다
     assert by["자사주 취득"].variants == ["자기주식 취득"] and by["자사주 취득"].card_ids == [1, 2]
@@ -249,5 +249,32 @@ def test_apply_review_same_before_its_keep_row():
     # same 줄이 그 대상 keep 줄보다 앞에 있어도 한 번에 별칭과 카드가 들어간다 (#219 리뷰)
     m = Materials([], {}, texts={1: ["금융통화위원회"], 2: ["금통위 회의"]})
     rows = [ReviewRow("금통위", "same", "금융통화위원회"), ReviewRow("금융통화위원회", "keep")]
-    assert apply_review(m, rows) == {"keep": 1, "same": 1, "missing_target": 0}
+    assert apply_review(m, rows) == {"keep": 1, "same": 1, "merged": 0, "missing_target": 0}
     assert m.terms[0].variants == ["금통위"] and m.terms[0].card_ids == [1, 2]
+
+
+def test_apply_review_same_merges_term_already_on_map():
+    # #262: 카드 concept 단계에서 온 용어끼리도 same 으로 합친다 (%p → 지수 기여도(%p)).
+    # 이름 바꾸기는 새 이름 keep + 옛 용어 same (매출액 대비 → 매출액 대비 계약 비율)
+    m = Materials([Term("%p", "기여도", [6, 26], variants=["%p(퍼센트포인트)"]), Term("지수 기여도(%p)", "비중×등락률", [8]),
+                   Term("매출액 대비", "계약금액 ÷ 매출", [9, 27])], {}, texts={})
+    rows = [ReviewRow("%p", "same", "지수 기여도(%p)"),
+            ReviewRow("매출액 대비", "same", "매출액 대비 계약 비율"),
+            ReviewRow("매출액 대비 계약 비율", "keep", desc="계약금액이 매출액의 몇 %인지")]
+    assert apply_review(m, rows) == {"keep": 1, "same": 2, "merged": 2, "missing_target": 0}
+    by = {t.term: t for t in m.terms}
+    assert sorted(by) == ["매출액 대비 계약 비율", "지수 기여도(%p)"]                  # 따로 있던 용어는 없어진다
+    assert by["지수 기여도(%p)"].variants == ["%p", "%p(퍼센트포인트)"] and by["지수 기여도(%p)"].card_ids == [6, 8, 26]
+    assert by["매출액 대비 계약 비율"].variants == ["매출액 대비"] and by["매출액 대비 계약 비율"].card_ids == [9, 27]
+    assert by["매출액 대비 계약 비율"].desc == "계약금액이 매출액의 몇 %인지"
+    apply_review(m, rows)   # 두 번 불러도 같다
+    assert len(m.terms) == 2 and by["지수 기여도(%p)"].variants == ["%p", "%p(퍼센트포인트)"]
+
+
+def test_apply_review_chained_same_merges_keep_cards():
+    # #263 리뷰: A→B, B→C 뒤 D→A 를 합쳐도 D 의 카드가 남은 용어(C)로 간다
+    m = Materials([Term("가", "", [1]), Term("나", "", [2]), Term("다", "", [3]), Term("라", "", [4])], {}, texts={})
+    rows = [ReviewRow("가", "same", "나"), ReviewRow("나", "same", "다"), ReviewRow("라", "same", "가")]
+    assert apply_review(m, rows)["merged"] == 3
+    assert [t.term for t in m.terms] == ["다"]
+    assert m.terms[0].card_ids == [1, 2, 3, 4] and sorted(m.terms[0].variants) == ["가", "나", "라"]

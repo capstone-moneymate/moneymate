@@ -21,6 +21,14 @@
         </constructor>
     </resultMap>
 
+    <resultMap id="conceptMap" type="com.moneymate.answer.GhostRepository$GhostConcept">
+        <constructor>
+            <arg column="attempt_no" javaType="_int"/>
+            <arg column="quizzes" javaType="_int"/>
+            <arg column="correct" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
     <!-- 답 단계: 개념 단계는 답안이 없어서 뺀다 (시도 번호 규칙 #215 와 같은 기준) -->
     <select id="findSteps" resultMap="stepMap">
         SELECT s.id AS step_id, s.kind
@@ -41,5 +49,18 @@
            AND ua.card_id = #{cardId}
            AND s.kind &lt;&gt; 'concept'
          ORDER BY ua.attempt_no, ua.step_id, ua.created_at DESC, ua.id DESC
+    </select>
+
+    <!-- 개념 단계: 튜터가 낸 퀴즈를 시도마다 센다. 복습 문제(source = review)는 카드에 묶이지 않아 들어오지 않는다 -->
+    <select id="findConceptRows" resultMap="conceptMap">
+        SELECT ca.attempt_no, count(*)::int AS quizzes,
+               (count(*) FILTER (WHERE ca.is_correct))::int AS correct
+          FROM concept_answers ca
+         WHERE ca.user_id = CAST(#{userId} AS uuid)
+           AND ca.card_id = #{cardId}
+           AND ca.source = 'tutor'
+           AND ca.attempt_no IS NOT NULL
+         GROUP BY ca.attempt_no
+         ORDER BY ca.attempt_no
     </select>
 </mapper>

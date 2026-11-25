@@ -1,4 +1,4 @@
-> 초안입니다. 담당자가 읽고 직접 고쳐서 확정해 주세요. (Claude 작성, 2026-11-26)
+> 초안입니다. 담당자가 읽고 직접 고쳐서 확정해 주세요.
 
 # 화면 공통 모양 (web/src/styles/design.css · landing.css, components/Mate.tsx, pages/tab1/LessonTop.tsx · Cheer.tsx)
 

@@ -342,6 +342,19 @@ def debate_cards(card_ids: list[int]) -> str:
     return f"published {sum(r.status == 'published' for r in results)}/{len(results)}"
 
 
+def request_new_concepts(card_ids: list[int]) -> str:
+    """오늘 카드의 개념 단계 용어 중 개념 지도에 없는 것을 logs/concept_requests.jsonl 에 요청으로 쌓는다 (사람1, #266).
+    지도는 고치지 않는다 (사람이 검토 파일에서 정한 뒤 build_map → load_map). 요청이 없어도 성공."""
+    from concepts.concept_requests import run
+    from db import get_conn
+
+    with get_conn() as conn:
+        out = run(conn, card_ids)
+    for r in out:
+        print(f"  card_id={r['card_id']} 새 용어 {r['term']} ({'제안 있음' if r['suggestion'] else '두 답이 달라 제안 없음'})")
+    return f"요청 {len(out)}개"
+
+
 # ------------------------------------------------------------------
 # 실행
 # ------------------------------------------------------------------
@@ -417,6 +430,7 @@ def run(target: date, card_date: date, collect: bool = True, llm: bool = True) -
         report.card_ids += run_step(report, "차트 카드 표시", ensure_chart_card, picked, target, card_date) or []
         if report.card_ids:
             run_step(report, "토론", debate_cards, report.card_ids)
+            run_step(report, "개념 지도 새 용어 요청", request_new_concepts, report.card_ids)
     if llm:  # --no-llm 이면 문장 없는 카드 ③으로 덮어쓰지 않게 건너뛴다
         run_step(report, "탭2 지금은", refresh_now_views, card_date)
     write_log(report)

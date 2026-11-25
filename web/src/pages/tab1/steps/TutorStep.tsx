@@ -171,7 +171,7 @@ interface QuizScreenProps {
 /** 종류에 따라 화면 A·B. key={here} 로 문제마다 고른 답·시간을 새로 시작한다 */
 const QuizScreen = ({ event, shared, submit }: QuizScreenProps) => {
   if (event.kind === '칩 빈칸' || event.kind === '짝 맞추기' || event.kind === '사례 분류') {
-    const chipProps = { ...shared, onSubmit: submit }
+    const chipProps = { ...shared, concept: event.concept, onSubmit: submit }
     if (event.kind === '칩 빈칸')
       return <TutorChipQuiz {...chipProps} kind={event.kind} content={event.content} />
     if (event.kind === '짝 맞추기')
