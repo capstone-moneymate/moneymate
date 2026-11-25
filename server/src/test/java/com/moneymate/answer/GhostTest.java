@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.moneymate.answer.GhostDtos.Cell;
 import com.moneymate.answer.GhostDtos.Comparison;
+import com.moneymate.answer.GhostDtos.ConceptCell;
+import com.moneymate.answer.GhostDtos.ConceptRow;
 import com.moneymate.answer.GhostDtos.Report;
 import com.moneymate.answer.GhostDtos.Row;
+import com.moneymate.answer.GhostRepository.GhostConcept;
 import com.moneymate.answer.GhostRepository.GhostStep;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -41,6 +44,46 @@ class GhostTest {
 
     Row row(Comparison c, long step) {
         return c.rows().stream().filter(r -> r.stepId().equals(String.valueOf(step))).findFirst().orElseThrow();
+    }
+
+    // ---------- 개념 단계 줄 (튜터 퀴즈 수) ----------
+
+    @Test
+    void conceptRowComparesTutorQuizCountsOfTheTwoAttempts() {
+        full(1, NOV20, true, 12, true, 25, false, 40, 52);
+        full(2, NOV24, true, 12, true, 25, false, 40, 52);
+        // 지난번 5문제 중 3개 맞힘 → 이번 2문제 중 2개 맞힘: 퀴즈를 적게 풀고 넘어갔으니 좋아졌다
+        List<GhostConcept> concepts = List.of(new GhostConcept(1, 5, 3), new GhostConcept(2, 2, 2));
+
+        Comparison c = Ghost.report(STEPS, rows, concepts).comparison();
+
+        assertThat(c.concept()).isEqualTo(new ConceptRow(new ConceptCell(5, 3), new ConceptCell(2, 2), true));
+        assertThat(c.improvedSteps()).isZero();          // 답 단계는 그대로라 0. 개념 단계는 따로 센다
+    }
+
+    @Test
+    void conceptRowIsNotImprovedWhenQuizCountIsSameOrMore() {
+        assertThat(Ghost.concept(List.of(new GhostConcept(1, 3, 1), new GhostConcept(2, 3, 3)), 1, 2).improved())
+                .isFalse();                              // 문제 수가 같으면 맞힌 수가 늘어도 좋아졌다고 하지 않는다
+        assertThat(Ghost.concept(List.of(new GhostConcept(1, 2, 2), new GhostConcept(2, 4, 3)), 1, 2).improved())
+                .isFalse();
+    }
+
+    @Test
+    void conceptRowKeepsOneSideEmptyWhenOnlyOneAttemptHasTutorRecords() {
+        // 지난번은 튜터가 없던 때 풀었다: 지난번 칸은 비고 좋아졌다고 하지 않는다
+        assertThat(Ghost.concept(List.of(new GhostConcept(2, 3, 2)), 1, 2))
+                .isEqualTo(new ConceptRow(null, new ConceptCell(3, 2), false));
+        // 다른 시도(3)의 기록은 지난번(1)·이번(2) 비교에 섞이지 않는다
+        assertThat(Ghost.concept(List.of(new GhostConcept(3, 6, 1)), 1, 2)).isNull();
+    }
+
+    @Test
+    void noTutorRecordsMeansNoConceptRow() {
+        full(1, NOV20, true, 12, true, 25, false, 40, 52);
+        full(2, NOV24, true, 12, true, 25, false, 40, 52);
+
+        assertThat(Ghost.report(STEPS, rows).comparison().concept()).isNull();
     }
 
     @Test

@@ -29,6 +29,7 @@ public class GhostController {
                                   @RequestParam long cardId,
                                   @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
         String id = guard.check(userId, sessionUserId);
-        return Ghost.report(repository.findSteps(cardId), repository.findRows(id, cardId));
+        return Ghost.report(repository.findSteps(cardId), repository.findRows(id, cardId),
+                repository.findConceptRows(id, cardId));
     }
 }
