@@ -137,3 +137,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-25 | B | worker/tutor/agent.py, eval/run.py, tests/test_tutor_agent.py·test_tutor_api.py, docs/modules/tutor_agent.md | 튜터가 목표 개념이 기준 미만이고 퀴즈가 남았는데 go_main 으로 끝내면 코드가 거절하고 지금 상태를 돌려줌(2번까지), 프롬프트 한 줄. 전체 연결 테스트(카드 23)와 1-5 평가 결과에서 발견. 테스트 2개 추가, 기존 테스트 5개는 이 검사를 끔 | - |
 | 2026-11-25 | A | docs/design/index.html, docs/design/app.html | 새 UI 시안(랜딩·앱 화면) HTML 작성: 흰 바탕에 파란 포인트 색 하나, 모바일 폭 기준 | - |
 | 2026-11-26 | B | worker/concepts/concept_map.py·build_map.py·load_map.py·term_review.csv·prereq_review.csv·confusable_review.csv, tests/test_concept_map.py·test_load_map.py, docs/modules/build_map.md·load_map.md | 배포 덤프(카드 1~40)로 개념 지도 다시 만들기: ② 후보 38개·④ 새 연결 13개·헷갈리는 이웃 5개 검토 제안, same 으로 이미 있는 용어끼리 합치기, load_map 에서 이름 바꾼 옛 노드의 학습 기록 옮기고 지우기 | - |
+| 2026-11-26 | B | docs/modules/eval_run.md, docs/추가구현_계획.md | 1-5 에이전트 조건 결과(본 비교·상한 10·제거 실험·확신)와 해석·한계를 문서로 정리, 계획 1-5 체크 | - |
