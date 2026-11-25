@@ -11,12 +11,14 @@ import { CausalOrderView } from '@/pages/tab1/steps/CausalOrderView'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
 import { QuizView } from '@/pages/tab1/steps/QuizView'
 import { ReasonView } from '@/pages/tab1/steps/ReasonView'
+import { TutorStep } from '@/pages/tab1/steps/TutorStep'
 
 /**
  * 단계형 학습. 카드 유형에 따라 단계 구성이 다르다 (서비스흐름 2.2)
  * 유형 1: 개념 → 퀴즈 → 차트 → 판단 / 유형 2: 개념 → 퀴즈 → 인과 순서 → 차트 → 판단 / 유형 3: 개념 → 판단
  * AI 분석은 단계가 아니라 판단해보기 제출 후 결과 화면에 나온다
  * ?review=yyyy-MM-dd(탭3 풀었던 내용 보기)면 그날 낸 답과 채점 결과를 채운 채로 보여 주고 다시 채점하지 않는다
+ * 개념 단계는 튜터 에이전트가 고른 설명·퀴즈로 진행한다 (추가구현_계획 1-3). 튜터를 못 쓰거나 풀었던 내용 보기면 기존 개념 설명.
  * 이전에 끝까지 푼 카드를 다시 풀면 단계마다 "지난번엔 맞혔어요"를 작게 보여 준다 (고스트 비교, 추가 구현 2-6).
  * 자세한 비교는 결과 화면에서 한다
  */
@@ -96,6 +98,7 @@ export const LearnPage = () => {
         {/* key: 단계가 바뀌면 고른 답·입력을 새로 시작 */}
         <StepSwitch
           key={step.id}
+          cardId={card.id}
           step={step}
           onNext={next}
           nextLabel={nextStep ? KIND_LABEL[nextStep.kind] : null}
@@ -128,6 +131,7 @@ const ghostLine = (ghost: GhostAttempt | null, stepId: string): string | null =>
 }
 
 interface StepSwitchProps {
+  cardId: string
   step: Step
   onNext: (result?: AnswerResult) => void
   /** 다음 단계 이름. 마지막이면 null */
@@ -137,10 +141,13 @@ interface StepSwitchProps {
   past: PastAnswer | null | undefined
 }
 
-const StepSwitch = ({ step, onNext, nextLabel, quizNo, past }: StepSwitchProps) => {
+const StepSwitch = ({ cardId, step, onNext, nextLabel, quizNo, past }: StepSwitchProps) => {
   switch (step.kind) {
     case 'concept':
-      return <ConceptView step={step} onNext={onNext} nextLabel={nextLabel} />
+      // 풀었던 내용 보기에서는 튜터를 새로 열지 않는다 (그날의 튜터 세션은 남아 있지 않다)
+      if (past !== undefined)
+        return <ConceptView step={step} onNext={onNext} nextLabel={nextLabel} />
+      return <TutorStep cardId={cardId} step={step} onNext={onNext} nextLabel={nextLabel} />
     case 'quiz':
     case 'chart':
       return <QuizView step={step} onNext={onNext} quizNo={quizNo} past={past} />
