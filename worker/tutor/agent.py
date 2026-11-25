@@ -31,7 +31,7 @@ from validate.validators import find_banned
 MODEL = OPUS
 EFFORT = "low"     # 2026-11-23 측정: low 가 medium 보다 빠르고 일관됐다 (scripts/measure_tutor_latency.py)
 MAX_QUIZZES = 6   # 2026-11-24 유지: 개념 단계는 본 문제 전 준비라 2~3분. 못 올린 개념은 DB 알 확률로 다음 카드·복습에 이어진다.
-                  # 진짜 BKT 에서 앎(0.95)까지 연속 정답: O/X 6, 4지선다·짝 맞추기 3, 칩 빈칸·사례 분류 2. 6 과 10 비교는 1-5 평가에서
+                  # 진짜 BKT 에서 앎(0.95)까지 연속 정답: O/X 5 (#245 전 6), 4지선다·짝 맞추기 3, 칩 빈칸·사례 분류 2. 6 과 10 비교는 1-5 평가에서
 MAX_CALLS = 16
 STYLES = ["예시 위주", "정의 위주"]
 
