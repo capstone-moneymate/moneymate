@@ -122,7 +122,8 @@ const SCRIPT: { quiz: TutorQuizEvent; key: number | number[]; explanation: strin
   },
 ]
 
-const sessions = new Map<string, number>()
+/** 세션마다 몇 번째 퀴즈까지 왔는지와 지금까지의 이벤트 전부 (GET 이 돌려준다) */
+const sessions = new Map<string, { at: number; events: TutorEvent[] }>()
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -139,8 +140,7 @@ const state = (sessionId: string, at: number, events: TutorEvent[]): TutorState 
 export const mockTutorStart = async (cardId: string): Promise<TutorState> => {
   await wait(600)
   const sessionId = `mock-${cardId}-${Date.now()}`
-  sessions.set(sessionId, 0)
-  return state(sessionId, 0, [
+  const events: TutorEvent[] = [
     {
       type: 'explain',
       concept: '자사주 소각',
@@ -148,7 +148,9 @@ export const mockTutorStart = async (cardId: string): Promise<TutorState> => {
       text: '회사가 시장에서 자기 회사 주식을 사들인 뒤 아예 없애 버리는 것을 자사주 소각이라고 해요. 피자를 8조각에서 6조각으로 다시 자르면 한 조각이 커지는 것과 비슷해요.',
     },
     SCRIPT[0].quiz,
-  ])
+  ]
+  sessions.set(sessionId, { at: 0, events })
+  return state(sessionId, 0, events)
 }
 
 export const mockTutorAnswer = async (
@@ -156,8 +158,9 @@ export const mockTutorAnswer = async (
   answer: TutorAnswer,
 ): Promise<TutorState> => {
   await wait(600)
-  const at = sessions.get(sessionId)
-  if (at === undefined || at >= SCRIPT.length) throw new Error('기다리는 퀴즈가 없어요')
+  const saved = sessions.get(sessionId)
+  if (saved === undefined || saved.at >= SCRIPT.length) throw new Error('기다리는 퀴즈가 없어요')
+  const { at } = saved
   const { quiz, key, explanation } = SCRIPT[at]
   const graded: TutorEvent = {
     type: 'graded',
@@ -167,8 +170,16 @@ export const mockTutorAnswer = async (
     key,
     explanation,
   }
-  sessions.set(sessionId, at + 1)
   const next: TutorEvent =
     at + 1 < SCRIPT.length ? SCRIPT[at + 1].quiz : { type: 'done', by: 'go_main' }
+  sessions.set(sessionId, { at: at + 1, events: [...saved.events, graded, next] })
   return state(sessionId, at + 1, [graded, next])
+}
+
+/** GET: 지금까지의 이벤트 전부 */
+export const mockTutorGet = async (sessionId: string): Promise<TutorState> => {
+  await wait(300)
+  const saved = sessions.get(sessionId)
+  if (saved === undefined) throw new Error('없는 세션이에요')
+  return state(sessionId, saved.at, saved.events)
 }

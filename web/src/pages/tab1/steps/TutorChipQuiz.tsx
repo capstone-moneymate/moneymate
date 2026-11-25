@@ -81,11 +81,13 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
   const tapChip = (value: number) => {
     if (locked || active === null) return
     const next = [...filled]
-    if (!reusable) {
-      const was = next.indexOf(value)
-      if (was !== -1) next[was] = null // 다른 칸에 있던 칩은 옮긴다
-    }
-    if (next[active] !== null && next[active] !== value) meter.changed()
+    // 답 바꾸기로 센다: 다른 칸에 있던 칩을 옮기거나(칩을 한 번만 쓰는 종류), 이미 찬 칸을 다른 칩으로 바꿀 때.
+    // 둘이 한 번에 일어나도 한 번만 센다. 빈칸에 처음 넣는 것은 세지 않는다 (#243 리뷰)
+    const was = reusable ? -1 : next.indexOf(value)
+    const moved = was !== -1 && was !== active
+    const replaced = next[active] !== null && next[active] !== value
+    if (moved || replaced) meter.changed()
+    if (was !== -1) next[was] = null // 다른 칸에 있던 칩은 옮긴다
     next[active] = value
     setFilled(next)
     const after = [...next.keys()].find((i) => i > active && next[i] === null)
