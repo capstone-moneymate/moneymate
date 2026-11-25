@@ -13,6 +13,8 @@ import { TutorFeedback } from '@/pages/tab1/steps/TutorFeedback'
 
 type ChipQuizProps = {
   badge: string
+  /** 이 퀴즈의 개념. 사례 분류는 제목에 보여 준다 (바구니가 "이 개념에 해당"이라 무엇이 기준인지 안 보여서, #258) */
+  concept: string
   graded?: TutorGradedEvent
   pending: boolean
   error: string | null
@@ -55,7 +57,10 @@ const shuffled = <T,>(xs: T[]): T[] => {
  * 칸을 다 채우면 [헷갈려요]/[확실해요]로 낸다. 답은 칸 순서대로 칩 번호
  */
 export const TutorChipQuiz = (props: ChipQuizProps) => {
-  const { kind, badge, graded, pending, error, onSubmit, onNext } = props
+  const { kind, badge, concept, graded, pending, error, onSubmit, onNext } = props
+  // 바구니는 모델이 정해서 "이 개념에 해당 / 안 함"일 때도, "주식 수가 줄어든다 / 그대로다"일 때도 있다. 둘 다 맞게 이름만 붙인다
+  const heading =
+    kind === '사례 분류' ? `'${concept}' 사례를 알맞은 쪽에 넣어 주세요` : HEADING[kind]
   const [chips] = useState<Chip[]>(() => {
     if (props.kind === '칩 빈칸') return props.content.chips.map((text, value) => ({ text, value }))
     if (props.kind === '짝 맞추기')
@@ -125,7 +130,7 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
   return (
     <StepFrame
       badge={badge}
-      heading={HEADING[kind]}
+      heading={heading}
       buttonLabel="다음 ›"
       onButton={onNext}
       confidence={
