@@ -74,7 +74,10 @@ def absorb_renamed(conn, nodes: list[dict], ids: dict[str, int]) -> dict[str, st
     moved = {}
     olds = conn.execute(
         "SELECT id, label FROM concept_nodes WHERE label <> ALL(%s) AND causal_id IS NULL ORDER BY id", (labels,)).fetchall()
-    if any(term_key(lb) in alias_owner for _, lb in olds):
+    absorb_ids = [i for i, lb in olds if term_key(lb) in alias_owner]
+    if absorb_ids:
+        # 잠금 순서를 복습 답(learner.review.answer: 퀴즈 줄 FOR UPDATE → user_concept_state)과 같게: 퀴즈 줄 먼저 (#263 리뷰)
+        conn.execute("SELECT 1 FROM concept_quizzes WHERE node_id = ANY(%s) FOR UPDATE", (absorb_ids,))
         # 옮기는 사이에 학습 기록이 써지면(다른 연결의 답) 최신 기록을 지울 수 있어 커밋까지 쓰기를 막는다. 읽기는 된다
         conn.execute("LOCK TABLE user_concept_state IN SHARE ROW EXCLUSIVE MODE")
     for old_id, old_label in olds:
