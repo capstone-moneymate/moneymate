@@ -50,6 +50,12 @@ def fake_quiz(monkeypatch):
     monkeypatch.setattr(ag, "make_quiz", make)
 
 
+@pytest.fixture
+def no_guard(monkeypatch):
+    """끝내기 검사(#254)를 끈다. 다른 것을 보는 테스트가 목표를 남긴 채 go_main 한 번으로 끝나게"""
+    monkeypatch.setattr(ag, "GO_MAIN_REFUSALS", 0)
+
+
 def session(p=None):
     return ag.Session("u1", CMAP, TARGETS, FakeMastery({"u1": p or {}}), card="자사주 소각 카드")
 
@@ -77,7 +83,7 @@ def test_ready_tool_by_hand():
     assert [r["concept"] for r in out["ready"]] == ["자사주 소각"]
 
 
-def test_flow_pauses_on_quiz_and_resumes(monkeypatch):
+def test_flow_pauses_on_quiz_and_resumes(monkeypatch, no_guard):
     fake_quiz(monkeypatch)
     calls = script(monkeypatch,
                    ("tool_use", [tool_use("ready_concepts")]),
@@ -104,7 +110,7 @@ def test_flow_pauses_on_quiz_and_resumes(monkeypatch):
     assert calls[0]["system"] == calls[3]["system"] and calls[0]["tools"] == calls[3]["tools"]  # 캐시 앞부분이 그대로
 
 
-def test_quiz_error_goes_back_to_agent(monkeypatch):
+def test_quiz_error_goes_back_to_agent(monkeypatch, no_guard):
     fake_quiz(monkeypatch)
     calls = script(monkeypatch,
                    ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="사례 분류")]),
@@ -114,7 +120,7 @@ def test_quiz_error_goes_back_to_agent(monkeypatch):
     assert res["is_error"] and res["content"] == "만들기 실패" and s.finished_by == "go_main" and s.quizzes == 0
 
 
-def test_explain_banned_is_rejected(monkeypatch):
+def test_explain_banned_is_rejected(monkeypatch, no_guard):
     calls = script(monkeypatch,
                    ("tool_use", [tool_use("explain", concept="순이익", style="정의 위주", text="지금 매수 추천")]),
                    ("tool_use", [tool_use("go_main")]))
@@ -138,6 +144,32 @@ def test_limits(monkeypatch):
     monkeypatch.setattr(ag, "MAX_CALLS", 2)
     script(monkeypatch, *[("tool_use", [tool_use("ready_concepts")])] * 2)
     assert ag.start(session()).finished_by == "call_limit"
+
+
+def test_go_main_refused_while_targets_left(monkeypatch):
+    """#254: 목표가 기준 미만이고 퀴즈가 남았으면 go_main 을 거절하고 지금 상태를 돌려준다. GO_MAIN_REFUSALS 번 뒤엔 받는다"""
+    calls = script(monkeypatch, *[("tool_use", [tool_use("go_main")])] * 3)
+    s = ag.start(session({"주당순이익": 0.97}))          # 자사주 소각만 남음, 퀴즈 0/6
+    assert s.finished_by == "go_main" and s.go_main_refused == 2 and len(calls) == 3
+    res = calls[1]["messages"][-1]["content"][0]
+    assert res["is_error"] and "자사주 소각" in res["content"] and "주당순이익" not in res["content"].split("지금 상태")[0]
+    assert "남은 퀴즈 6개" in res["content"] and '"targets"' in res["content"]
+    assert [e.get("refused", False) for e in s.log] == [True, True, False]
+
+    script(monkeypatch, ("tool_use", [tool_use("go_main")]))   # 목표를 다 알면 바로 끝
+    s = ag.start(session({"주당순이익": 0.97, "자사주 소각": 0.95}))
+    assert s.finished_by == "go_main" and s.go_main_refused == 0
+
+
+def test_go_main_allowed_when_no_quizzes_left(monkeypatch):
+    fake_quiz(monkeypatch)
+    script(monkeypatch,
+           ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="용어 뜻")]),
+           ("tool_use", [tool_use("go_main")]))
+    one = session()
+    one.max_quizzes = 1
+    s = ag.answer(ag.start(one), 0, "확신해요")          # 퀴즈를 다 썼으니 목표가 남아도 끝낼 수 있다
+    assert s.finished_by == "go_main" and s.go_main_refused == 0
 
 
 def test_text_only_is_nudged_once(monkeypatch):
