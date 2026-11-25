@@ -189,3 +189,13 @@ def test_renamed_node_moves_learner_records_and_is_deleted(conn):
     s = load(conn, {"nodes": [{"id": "c2", "label": new, "desc": "", "aliases": [old], "card_ids": [card]}],
                     "prereqs": []})
     assert s["absorbed"] == {} and other in s["stale_nodes"]    # 별칭이 아닌 노드는 지금처럼 지우지 않는다
+
+
+def test_renamed_node_not_absorbed_when_alias_is_ambiguous(conn):
+    # #263 리뷰: 같은 별칭이 지도 노드 둘에 걸리면 옛 노드와 기록을 그대로 둔다
+    tag = uuid.uuid4().hex[:8]
+    old, a, b = f"옛{tag}", f"가{tag}", f"나{tag}"
+    load(conn, {"nodes": [{"id": "c1", "label": old, "desc": "", "aliases": [], "card_ids": []}], "prereqs": []})
+    s = load(conn, {"nodes": [{"id": "c2", "label": a, "desc": "", "aliases": [old], "card_ids": []},
+                              {"id": "c3", "label": b, "desc": "", "aliases": [old], "card_ids": []}], "prereqs": []})
+    assert s["absorbed"] == {} and old in s["stale_nodes"]

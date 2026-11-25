@@ -299,7 +299,9 @@ def apply_review(m: Materials, rows: list[ReviewRow]) -> dict[str, int]:
             src = by_key.get(term_key(r.term))
             if src is not None and src is not t:   # 지도에 따로 있던 용어: 합친다
                 m.terms.remove(src)
-                by_key[term_key(r.term)] = t
+                for k, v in list(by_key.items()):   # src 를 가리키던 이름 전부 (연달아 합칠 때 A→B, B→C 뒤 D→A 도 C 로)
+                    if v is src:
+                        by_key[k] = t
                 t.card_ids = sorted(set(t.card_ids) | set(src.card_ids))
                 for v in (src.term, *src.variants):
                     if v not in t.variants and term_key(v) != term_key(t.term):

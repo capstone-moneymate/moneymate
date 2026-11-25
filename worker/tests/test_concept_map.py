@@ -269,3 +269,12 @@ def test_apply_review_same_merges_term_already_on_map():
     assert by["매출액 대비 계약 비율"].desc == "계약금액이 매출액의 몇 %인지"
     apply_review(m, rows)   # 두 번 불러도 같다
     assert len(m.terms) == 2 and by["지수 기여도(%p)"].variants == ["%p", "%p(퍼센트포인트)"]
+
+
+def test_apply_review_chained_same_merges_keep_cards():
+    # #263 리뷰: A→B, B→C 뒤 D→A 를 합쳐도 D 의 카드가 남은 용어(C)로 간다
+    m = Materials([Term("가", "", [1]), Term("나", "", [2]), Term("다", "", [3]), Term("라", "", [4])], {}, texts={})
+    rows = [ReviewRow("가", "same", "나"), ReviewRow("나", "same", "다"), ReviewRow("라", "same", "가")]
+    assert apply_review(m, rows)["merged"] == 3
+    assert [t.term for t in m.terms] == ["다"]
+    assert m.terms[0].card_ids == [1, 2, 3, 4] and sorted(m.terms[0].variants) == ["가", "나", "라"]
