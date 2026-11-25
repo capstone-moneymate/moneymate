@@ -121,6 +121,7 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
             agent_map = ag.ConceptMap(cmap.labels, cmap.desc, [], cmap.confusable)
         ep, s = te.agent(agent_map, targets, learner, draw, mastery, cap, title=card_bank.get("title", ""))
         row["calls"] = s.calls
+        row["go_main_refused"] = s.go_main_refused
         row["log"] = [{"tool": e["tool"], "input": {k: v for k, v in e["input"].items() if k != "text"}} for e in s.log]
     right, total = te.final_test(card_bank["test"], targets, learner, random.Random(base + 2))
     row.update({"quizzes": ep.quizzes, "explains": ep.explains, "mastered_at": ep.mastered_at,

@@ -134,4 +134,5 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-25 | B | docs/modules/eval_learner.md | 가상 학습자 숫자 근거를 원문 확인한 출처로 바꿈: 배울 확률 0.3(pyBKT 각주 5)·범위 0.1~0.5(문헌값), 튜터 BKT 0.2 와 다른 이유, Haiku 학습자 제외 이유에 Fukuhara & Domingue 2026 425쪽 숫자. 원문 확인 (Fukuhara PDF 본문, Lu & Wang 2024 arXiv 본문) | - |
 | 2026-11-25 | B | docs/modules/eval_run.md | 앱 BKT 기본값 변경(#245, 0.25/0.2/0.1) 뒤 1-5 비용 0 조건(고정·규칙)을 다시 돌려 결과 줄을 새 숫자로 고침. 예전 값(0.3/0.1/0.1) 결과와 칸별 비교 | - |
 | 2026-11-25 | B | web/src/pages/tab1/steps/TutorChipQuiz.tsx·TutorStep.tsx, docs/modules/web_tutor_step.md | 개념 단계 사례 분류 제목에 개념 이름 넣기 (바구니가 "이 개념에 해당"이라 기준이 안 보임, 전체 연결 테스트에서 발견). 목 데이터 화면으로 확인 | - |
+| 2026-11-25 | B | worker/tutor/agent.py, eval/run.py, tests/test_tutor_agent.py·test_tutor_api.py, docs/modules/tutor_agent.md | 튜터가 목표 개념이 기준 미만이고 퀴즈가 남았는데 go_main 으로 끝내면 코드가 거절하고 지금 상태를 돌려줌(2번까지), 프롬프트 한 줄. 전체 연결 테스트(카드 23)와 1-5 평가 결과에서 발견. 테스트 2개 추가, 기존 테스트 5개는 이 검사를 끔 | - |
 | 2026-11-25 | A | docs/design/index.html, docs/design/app.html | 새 UI 시안(랜딩·앱 화면) HTML 작성: 흰 바탕에 파란 포인트 색 하나, 모바일 폭 기준 | - |

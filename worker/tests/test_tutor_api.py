@@ -14,6 +14,12 @@ USER = str(uuid.uuid4())
 
 
 @pytest.fixture
+def no_guard(monkeypatch):
+    """끝내기 검사(#254)를 끈다 (목표를 남긴 채 go_main 한 번으로 끝나는 흐름을 보는 테스트)"""
+    monkeypatch.setattr(ag, "GO_MAIN_REFUSALS", 0)
+
+
+@pytest.fixture
 def client(monkeypatch):
     tapi.SESSIONS.clear()
 
@@ -28,7 +34,7 @@ def client(monkeypatch):
     return TestClient(judge_api.app)
 
 
-def test_start_answer_done(client, monkeypatch):
+def test_start_answer_done(client, monkeypatch, no_guard):
     calls = script(monkeypatch,
                    ("tool_use", [tool_use("explain", concept="순이익", style="예시 위주", text="번 돈에서 비용을 뺀 것")]),
                    ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="용어 뜻")]),
@@ -59,7 +65,7 @@ def test_other_user_and_missing_session_are_404(client, monkeypatch):
     assert client.post("/tutor/start", json={"user_id": USER, "card_id": 404}).status_code == 404
 
 
-def test_answer_when_not_waiting_is_409(client, monkeypatch):
+def test_answer_when_not_waiting_is_409(client, monkeypatch, no_guard):
     script(monkeypatch, ("tool_use", [tool_use("go_main")]))
     r = client.post("/tutor/start", json={"user_id": USER, "card_id": 17}).json()
     assert r["status"] == "done"
