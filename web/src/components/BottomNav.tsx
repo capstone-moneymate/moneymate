@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router'
+import { NavLink } from 'react-router'
 
 /**
  * 탭2(13F·ETF)를 화면에 보일지. false면 하단 탭과 결과 화면의 탭2 이동 버튼을 숨긴다.
@@ -8,42 +8,17 @@ export const SHOW_TAB2 = false
 
 const TABS = [
   { to: '/', label: '뉴스', icon: NewsIcon },
+  { to: '/lab', label: '분석 자료', icon: LabIcon },
   ...(SHOW_TAB2 ? [{ to: '/etf', label: '13F·ETF', icon: ChartIcon }] : []),
   { to: '/mypage', label: '마이페이지', icon: UserIcon },
 ]
 
-/** 카드뉴스(/news/:id)는 화면 전체가 파랗다 (UI 시안 02~04) */
-const BLUE_PAGE = /^\/news\/[^/]+$/
-
-/** 하단 탭 (탭2를 숨기면 2개). 카드뉴스·학습·결과(/news/…)에서도 뉴스 탭이 켜진다 */
+/** 하단 탭: 뉴스 · 분석 자료 · (탭2를 켜면 13F·ETF) · 마이페이지. 켜진 탭은 연한 파란 칸 (UI 시안 app.html 의 .tabs) */
 export const BottomNav = () => {
-  const { pathname } = useLocation()
-  const blue = BLUE_PAGE.test(pathname)
-  const inNews = pathname === '/' || pathname.startsWith('/news/')
-
   return (
-    <nav
-      className={`grid shrink-0 ${TABS.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} border-t pb-[env(safe-area-inset-bottom)] ${
-        blue ? 'border-transparent bg-[#2f74e0]' : 'border-slate-200 bg-white'
-      }`}
-    >
+    <nav className="mm-tabs" aria-label="주요 메뉴">
       {TABS.map(({ to, label, icon: Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) => {
-            const active = to === '/' ? inNews : isActive
-            const color = blue
-              ? active
-                ? 'font-semibold text-white'
-                : 'text-white/70'
-              : active
-                ? 'text-primary font-semibold'
-                : 'text-slate-500'
-            return `flex flex-col items-center gap-1 py-2.5 text-xs ${color}`
-          }}
-        >
+        <NavLink key={to} to={to} end={to === '/'}>
           <Icon />
           {label}
         </NavLink>
@@ -54,50 +29,35 @@ export const BottomNav = () => {
 
 function NewsIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden
-    >
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-      <path d="M14 3v5h5M9 13h6M9 17h6" />
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M7 3h7l4 4v14H7z" />
+      <path d="M10 12h5M10 16h5" />
+    </svg>
+  )
+}
+
+function LabIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9.4a2.5 2.5 0 1 1 3.8 2.1c-.9.6-1.4 1.1-1.4 2.1M12 17.2v.1" />
     </svg>
   )
 }
 
 function ChartIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden
-    >
-      <path d="M6 20v-6M12 20V4M18 20v-10" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M6 20v-6M12 20V4M18 20v-10" />
     </svg>
   )
 }
 
 function UserIcon() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden
-    >
+    <svg viewBox="0 0 24 24" aria-hidden>
       <circle cx="12" cy="8" r="4" />
-      <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" strokeLinecap="round" />
+      <path d="M4 21c1-4.500 4-6 8-6s7 1.500 8 6" />
     </svg>
   )
 }

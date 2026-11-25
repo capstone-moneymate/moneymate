@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
+import { Mate } from '@/components/Mate'
 import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
-import { CloseLink } from '@/pages/tab1/CloseLink'
+import { LessonTop } from '@/pages/tab1/LessonTop'
+
+const MOODS = ['hi', 'think', 'smile'] as const
 
 /**
- * 카드뉴스: 파란 화면에서 2~3장을 스토리처럼 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1, UI 시안 02~04)
+ * 카드뉴스: 2~3장을 한 장씩 넘긴 뒤 단계형 학습으로 들어간다 (서비스흐름 2.1, UI 시안 app.html 의 뉴스 장).
+ * 위 진행 막대는 카드뉴스 장과 학습 단계를 합쳐 지금 어디인지 보여 준다 (학습 화면과 이어진다).
  * ?review=날짜(탭3 풀었던 내용 보기)면 학습 화면에도 그대로 넘겨 그날 낸 답을 보여 준다
  */
 export const CardNewsPage = () => {
@@ -15,12 +19,12 @@ export const CardNewsPage = () => {
   const [index, setIndex] = useState(0)
   const review = useReviewDate()
 
-  if (isPending) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
+  if (isPending) return <p className="text-sub p-5 text-sm font-semibold">불러오는 중…</p>
   if (isError) {
     return (
-      <div className="p-5 text-sm text-slate-500">
+      <div className="text-sub p-5 text-sm font-semibold">
         카드를 찾을 수 없어요.{' '}
-        <Link to="/" className="text-primary">
+        <Link to="/" className="text-blue-ink underline">
           뉴스 홈으로
         </Link>
       </div>
@@ -32,73 +36,56 @@ export const CardNewsPage = () => {
   const isLast = index === total - 1
 
   return (
-    <div className="bg-primary flex min-h-full flex-col px-6 pt-7 pb-6 text-white">
-      {/* 장 수만큼 막대. 지난 장과 지금 장은 흰색 */}
-      <div className="flex gap-1.5" aria-label={`${index + 1} / ${total}장`}>
-        {card.slides.map((s, i) => (
-          <span
-            key={s.label}
-            className={`h-1 flex-1 rounded-full ${i <= index ? 'bg-white' : 'bg-white/30'}`}
-          />
-        ))}
+    <div className="flex h-full flex-col">
+      <LessonTop
+        progress={((index + 1) / (total + card.steps.length)) * 100}
+        onBack={index > 0 ? () => setIndex(index - 1) : undefined}
+        backLabel="이전 카드"
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* key: 장이 바뀌면 내용이 옆에서 다시 들어온다 */}
+        <div className="mm-l-body" key={index}>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="mm-chip butter">
+              {review ? `풀었던 내용 · ${reviewLabel(review)}` : '카드뉴스'} {index + 1} / {total}
+            </span>
+            {card.theme && <span className="mm-chip gray">{card.theme}</span>}
+          </div>
+          <div className="mm-nstage" aria-hidden>
+            <Mate mood={MOODS[index % MOODS.length]} />
+          </div>
+          <p className="text-sub mt-5 text-[14.5px] font-bold">{slide.label}</p>
+          <h2 className="mt-1 text-[30px] leading-[1.24] font-extrabold tracking-[-0.03em] whitespace-pre-line">
+            {slide.heading}
+          </h2>
+          <p className="text-sub mt-2.5 text-[16.5px] leading-[1.6] font-medium">{slide.body}</p>
+          {slide.facts && (
+            <dl className="mm-nstats">
+              {slide.facts.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>
+                    <b>{fact.value}</b>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
       </div>
 
-      <div className="mt-6 flex items-center justify-between">
-        <span className="rounded-full bg-white/15 px-3 py-1.5 text-sm font-semibold">
-          {[
-            review && `풀었던 내용 · ${reviewLabel(review)}`,
-            card.theme,
-            `카드 ${index + 1} / ${total}`,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </span>
-        <CloseLink tone="onBlue" />
-      </div>
-
-      {/* 본문은 화면 가운데 */}
-      <div className="flex flex-1 flex-col justify-center py-8">
-        <p className="text-sm text-white/80">{slide.label}</p>
-        <h2 className="mt-3 text-3xl leading-tight font-bold whitespace-pre-line">
-          {slide.heading}
-        </h2>
-        <p className="mt-4 leading-relaxed text-white/90">{slide.body}</p>
-        {slide.facts && (
-          <dl className="mt-6 rounded-2xl bg-white/10 px-5 py-2">
-            {slide.facts.map((fact) => (
-              <div key={fact.label} className="flex justify-between gap-3 py-3 text-sm">
-                <dt className="text-white/80">{fact.label}</dt>
-                <dd className="text-right font-bold tabular-nums">{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-3">
+      <div className="mm-l-foot">
         <button
           type="button"
           onClick={() =>
             isLast ? navigate(withReview(`/news/${card.id}/learn`, review)) : setIndex(index + 1)
           }
-          className="text-primary w-full rounded-2xl bg-white py-4 text-base font-bold transition active:scale-[0.99]"
+          className="mm-btn"
         >
-          {isLast
-            ? review
-              ? '풀었던 퀴즈 보기 ›'
-              : '이해했어요, 개념 학습 시작 ›'
-            : '다음 카드 ›'}
+          {isLast ? (review ? '풀었던 퀴즈 보기' : '개념 배우러 가기') : '다음'}
         </button>
-        {index > 0 && (
-          <button
-            type="button"
-            onClick={() => setIndex(index - 1)}
-            className="text-sm text-white/80"
-          >
-            ‹ 이전 카드
-          </button>
-        )}
-        <p className="text-center text-xs text-white/60">
+        <p className="text-faint text-center text-xs font-medium">
           출처{' '}
           <a href={card.sourceUrl} target="_blank" rel="noreferrer" className="underline">
             {card.sourceName}

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { authErrorMessage, useLogin, useSignup } from '@/api/auth'
+import { Mate } from '@/components/Mate'
 import { markEntered } from '@/lib/entry'
 
 type Mode = 'login' | 'signup'
@@ -11,7 +12,11 @@ const MIN_PASSWORD = 8
 const MAX_PASSWORD = 64
 
 /** 회원가입 입력 검사. 문제가 없으면 null */
-const validateSignup = (loginId: string, password: string, passwordCheck: string): string | null => {
+const validateSignup = (
+  loginId: string,
+  password: string,
+  passwordCheck: string,
+): string | null => {
   if (!LOGIN_ID_RULE.test(loginId)) return '아이디는 영문 소문자·숫자·_ 4~20자로 써 주세요'
   if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD)
     return '비밀번호는 8~64자로 써 주세요'
@@ -65,42 +70,50 @@ export const LoginPage = () => {
   const message = formError ?? (serverError ? authErrorMessage(serverError) : null)
 
   return (
-    <div className="min-h-full px-6 pt-10 pb-8">
-      <h1 className="text-2xl font-bold text-slate-900">
-        {mode === 'login' ? '로그인' : '회원가입'}
-      </h1>
-      <p className="mt-2 text-sm leading-relaxed text-slate-500">
-        {mode === 'login'
-          ? '로그인하면 다른 기기에서도 학습 기록을 이어 볼 수 있어요.'
-          : '지금까지 이 기기에서 푼 기록이 새 계정으로 이어져요.'}
-      </p>
-      {params.get('expired') && (
-        <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          로그인이 끝났어요. 다시 로그인해 주세요.
-        </p>
-      )}
-
-      <div className="mt-6 grid grid-cols-2 rounded-2xl bg-slate-100 p-1 text-sm font-semibold">
-        {(['login', 'signup'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => switchMode(m)}
-            aria-pressed={mode === m}
-            className={`rounded-xl py-2.5 ${mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-          >
-            {m === 'login' ? '로그인' : '회원가입'}
-          </button>
-        ))}
+    <div className="flex min-h-full flex-col">
+      {/* UI 시안 app.html 의 로그인·가입 화면: 위에 마스코트와 인사말, 아래에 입력 칸 */}
+      <div className="px-5 pt-[calc(14px+env(safe-area-inset-top))] pb-1.5">
+        <Link to="/welcome" className="text-sub inline-flex h-9 items-center text-sm font-bold">
+          MONEYMATE 소개로
+        </Link>
+        <div className="mt-2.5 flex items-end gap-3">
+          <Mate mood={mode === 'login' ? 'hi' : 'happy'} className="size-[84px] shrink-0" />
+          <h1 className="font-display text-[28px] leading-tight">
+            {mode === 'login' ? (
+              <>
+                다시 왔네요,
+                <br />
+                오늘 뉴스 볼까요
+              </>
+            ) : (
+              <>
+                하루 5분,
+                <br />
+                같이 시작해요
+              </>
+            )}
+          </h1>
+        </div>
       </div>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
+      <form onSubmit={onSubmit} className="flex-1 px-5 pt-4 pb-6" noValidate>
+        <p className="text-sub mb-4 text-sm leading-relaxed font-medium">
+          {mode === 'login'
+            ? '로그인하면 다른 기기에서도 학습 기록을 이어 볼 수 있어요.'
+            : '지금까지 이 기기에서 푼 기록이 새 계정으로 이어져요.'}
+        </p>
+        {params.get('expired') && (
+          <p className="bg-mist mb-4 rounded-2xl px-4 py-3 text-sm font-semibold">
+            로그인이 끝났어요. 다시 로그인해 주세요.
+          </p>
+        )}
+
         <Field
           label="아이디"
           value={loginId}
           onChange={setLoginIdInput}
           autoComplete="username"
-          hint={mode === 'signup' ? '영문 소문자·숫자·_ 4~20자' : undefined}
+          placeholder={mode === 'signup' ? '영문 소문자·숫자·_ 4~20자' : '아이디를 입력하세요'}
         />
         <Field
           label="비밀번호"
@@ -108,7 +121,7 @@ export const LoginPage = () => {
           value={password}
           onChange={setPassword}
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          hint={mode === 'signup' ? '8자 이상' : undefined}
+          placeholder={mode === 'signup' ? '8자 이상' : '비밀번호를 입력하세요'}
         />
         {mode === 'signup' && (
           <Field
@@ -117,31 +130,38 @@ export const LoginPage = () => {
             value={passwordCheck}
             onChange={setPasswordCheck}
             autoComplete="new-password"
+            placeholder="한 번 더 입력하세요"
           />
         )}
 
-        {message && (
-          <p role="alert" className="text-up text-sm">
-            {message}
+        <p role="alert" className="text-no-ink mt-0.5 mb-2.5 min-h-[22px] text-[13.5px] font-bold">
+          {message}
+        </p>
+
+        <button type="submit" disabled={pending || !loginId.trim() || !password} className="mm-btn">
+          {pending ? '잠시만요' : mode === 'login' ? '로그인' : '가입하고 시작하기'}
+        </button>
+
+        <p className="text-sub mt-4 text-center text-[14.5px] font-semibold">
+          {mode === 'login' ? '처음이신가요? ' : '이미 계정이 있나요? '}
+          <button
+            type="button"
+            onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
+            className="text-blue-ink font-extrabold underline underline-offset-4"
+          >
+            {mode === 'login' ? '가입하기' : '로그인'}
+          </button>
+        </p>
+        {mode === 'signup' && (
+          <p className="text-faint mt-3.5 text-center text-[12.5px] leading-relaxed font-medium">
+            머니메이트는 투자 권유가 아닌 학습용 서비스예요.
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={pending || !loginId.trim() || !password}
-          className="bg-primary w-full rounded-2xl py-4 font-bold text-white disabled:opacity-40"
-        >
-          {pending ? '잠시만요' : mode === 'login' ? '로그인' : '가입하고 시작하기'}
+        <button type="button" onClick={() => void navigate(-1)} className="mm-textbtn mt-3">
+          나중에 할게요
         </button>
       </form>
-
-      <button
-        type="button"
-        onClick={() => void navigate(-1)}
-        className="mt-4 w-full py-2 text-sm text-slate-500"
-      >
-        나중에 할게요
-      </button>
     </div>
   )
 }
@@ -152,12 +172,19 @@ type FieldProps = {
   onChange: (v: string) => void
   type?: 'text' | 'password'
   autoComplete: string
-  hint?: string
+  placeholder: string
 }
 
-const Field = ({ label, value, onChange, type = 'text', autoComplete, hint }: FieldProps) => (
-  <label className="block">
-    <span className="text-sm font-semibold text-slate-700">{label}</span>
+const Field = ({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  autoComplete,
+  placeholder,
+}: FieldProps) => (
+  <label className="mm-field">
+    <span>{label}</span>
     <input
       type={type}
       value={value}
@@ -165,8 +192,7 @@ const Field = ({ label, value, onChange, type = 'text', autoComplete, hint }: Fi
       autoComplete={autoComplete}
       autoCapitalize="none"
       spellCheck={false}
-      className="focus:ring-primary mt-2 w-full rounded-2xl bg-slate-100 px-4 py-3.5 outline-none focus:ring-2"
+      placeholder={placeholder}
     />
-    {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
   </label>
 )

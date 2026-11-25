@@ -5,7 +5,7 @@ import { signedPct } from './labels'
 
 /** "1 · 무엇이 바뀌었나요?" 같은 카드 번호 줄 */
 export const CardLabel = ({ no, children }: { no: number; children: ReactNode }) => (
-  <p className="text-primary text-[15px] font-bold">
+  <p className="text-blue-ink text-[15px] font-bold">
     {no} · {children}
   </p>
 )

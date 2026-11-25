@@ -3,7 +3,14 @@ import { useLocation, useNavigate, useParams } from 'react-router'
 import { StockNotFoundError, useStockOverlap } from '@/api/overlap'
 import type { EtfChange, FilerChange, StockOverlap } from '@/types/overlap'
 import { CardLabel, CardTitle, Rate } from './CardParts'
-import { etfShortName, FILERS, filerPersonName, isBigHeld, quarterMonths, shortDate } from './labels'
+import {
+  etfShortName,
+  FILERS,
+  filerPersonName,
+  isBigHeld,
+  quarterMonths,
+  shortDate,
+} from './labels'
 import { NowCard } from './NowCard'
 import { AGAINST_TREND_TEXT, AGAINST_TREND_TITLE, DETAIL_NOTE } from './notices'
 import { ReasonsCard } from './ReasonsCard'
@@ -31,7 +38,7 @@ export const StockDetailPage = () => {
         {Array.from({ length: CARD_COUNT }, (_, i) => (
           <span
             key={i}
-            className={`h-[3px] flex-1 rounded-full ${i <= index ? 'bg-primary' : 'bg-blue-100'}`}
+            className={`h-[3px] flex-1 rounded-full ${i <= index ? 'bg-primary' : 'bg-blue-soft'}`}
           />
         ))}
       </div>
@@ -106,7 +113,10 @@ export const StockDetailPage = () => {
 
 /** ETF 최신 스냅샷 날짜 (YYYY-MM-DD 라 글자 비교로 가장 늦은 날). 없으면 null */
 const latestSnapshot = (etfs: EtfChange[]) =>
-  etfs.reduce<string | null>((a, e) => (a === null || e.snapshotDate > a ? e.snapshotDate : a), null)
+  etfs.reduce<string | null>(
+    (a, e) => (a === null || e.snapshotDate > a ? e.snapshotDate : a),
+    null,
+  )
 
 /** ETF 가 분기 말 이후 늘렸는지 (새로 담았으면 trendChgPct 가 null) */
 const etfUp = (e: EtfChange) => e.trendChgPct === null || e.trendChgPct > 0
@@ -215,7 +225,7 @@ const ChangedCard = ({ stock }: { stock: StockOverlap }) => {
           </div>
           {against.length > 0 && (
             <div className="mt-3 border-t border-slate-200 pt-3">
-              <p className="text-sm font-bold text-amber-700">{AGAINST_TREND_TITLE}</p>
+              <p className="text-butter-ink text-sm font-bold">{AGAINST_TREND_TITLE}</p>
               <p className="mt-1 text-[15px] leading-relaxed text-slate-700">
                 {against.map((e) => etfShortName(e.etfCode)).join('·')} · {AGAINST_TREND_TEXT}
               </p>

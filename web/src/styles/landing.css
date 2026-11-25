@@ -1,0 +1,691 @@
+/*
+ * 시작 화면(/welcome) 모양. UI 시안 docs/design/index.html 의 CSS 를 옮긴 것이다.
+ * 이 화면에서만 쓰므로 전부 .landing 안에서만 먹게 했다 (WelcomePage.tsx 의 맨 바깥 칸).
+ */
+@layer components {
+  .landing {
+    --pad: 22px;
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    line-height: 1.6;
+  }
+  .landing .l-scroll {
+    height: 100%;
+    overflow-y: auto;
+  }
+  .landing .l-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+  }
+
+  /* ---------- 처음 들어올 때 한 번 나오는 화면 ---------- */
+  .landing .splash {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: var(--color-blue);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+  .landing .splash-icons svg {
+    position: absolute;
+    width: var(--s, 30px);
+    height: var(--s, 30px);
+    left: var(--x);
+    top: var(--y);
+    stroke: #fff;
+    stroke-width: 2.4;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform: scale(0) rotate(var(--r, 0deg));
+    animation: l-pop 0.5s var(--ease-spring) var(--d, 0s) forwards;
+  }
+  @keyframes l-pop {
+    to {
+      transform: scale(1) rotate(var(--r, 0deg));
+    }
+  }
+  .landing .splash-core {
+    position: relative;
+    text-align: center;
+    animation: l-core-out 0.35s ease-in 1.75s forwards;
+  }
+  @keyframes l-core-out {
+    to {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+  }
+  .landing .splash-face {
+    width: 92px;
+    height: 92px;
+    margin: 0 auto 14px;
+    transform: scale(0);
+    animation: l-pop 0.6s var(--ease-spring) 0.15s forwards;
+  }
+  .landing .splash .l-display {
+    font-size: 40px;
+    line-height: 1;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .landing .splash .l-display span {
+    display: inline-block;
+    transform: translateY(120%);
+    opacity: 0;
+    animation: l-rise 0.5s var(--ease-out) forwards;
+    animation-delay: calc(0.3s + var(--i) * 0.045s);
+  }
+  @keyframes l-rise {
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  .landing .splash-tag {
+    margin-top: 12px;
+    color: #fff;
+    opacity: 0;
+    font-weight: 600;
+    font-size: 15px;
+    animation: l-fade 0.4s ease-out 0.9s forwards;
+  }
+  @keyframes l-fade {
+    to {
+      opacity: 0.72;
+    }
+  }
+  .landing .ribbons {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .landing .ribbons path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+  .landing .rb-lemon {
+    stroke: var(--color-butter);
+    stroke-width: 54;
+    animation: l-draw 0.7s var(--ease-out) 1.45s forwards;
+  }
+  .landing .rb-white {
+    stroke: #fff;
+    stroke-width: 120;
+    animation:
+      l-draw 0.65s var(--ease-out) 1.6s forwards,
+      l-flood 0.55s cubic-bezier(0.6, 0, 0.4, 1) 2.1s forwards;
+  }
+  @keyframes l-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes l-flood {
+    to {
+      stroke-width: 1700;
+    }
+  }
+  .landing .skip {
+    position: absolute;
+    right: 16px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    color: #fff;
+    opacity: 0.7;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 10px;
+  }
+
+  /* ---------- 맨 위 ---------- */
+  .landing .hero {
+    padding: env(safe-area-inset-top) var(--pad) 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .landing .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .landing .bar a {
+    font-weight: 700;
+    font-size: 14px;
+    padding: 8px 14px;
+    border-radius: 99px;
+    background: var(--color-mist);
+  }
+  .landing .hero h1 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(38px, 11.4vw, 46px);
+    line-height: 1.14;
+    letter-spacing: -0.01em;
+    margin-top: 18px;
+  }
+  .landing .hero h1 span {
+    display: block;
+  }
+  .landing .lede {
+    margin-top: 14px;
+    font-size: 16.5px;
+    line-height: 1.55;
+    font-weight: 500;
+    color: var(--color-sub);
+    max-width: 19em;
+  }
+  .landing .cta {
+    margin-top: 24px;
+    display: grid;
+    gap: 12px;
+  }
+  .landing .sub-link {
+    display: block;
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--color-sub);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .landing .stage {
+    position: relative;
+    margin-top: 22px;
+    height: 318px;
+  }
+  .landing .stage::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 26px;
+    width: 360px;
+    height: 360px;
+    margin-left: -180px;
+    border-radius: 50%;
+    background: var(--color-blue-soft);
+  }
+  .landing .mate {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 190px;
+    margin-left: -95px;
+  }
+  .landing .mate svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .landing .newscard {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 108px;
+    background: #fff;
+    border: 2px solid var(--color-line);
+    border-bottom: 0;
+    border-radius: 26px 26px 0 0;
+    padding: 20px 20px 0;
+    height: 230px;
+    transform-origin: 50% 100%;
+  }
+  .landing .hand {
+    position: absolute;
+    top: -13px;
+    width: 26px;
+    height: 22px;
+    border-radius: 12px;
+    background: var(--color-butter);
+    border: 2.5px solid var(--color-ink);
+  }
+  .landing .hand.l {
+    left: 38px;
+  }
+  .landing .hand.r {
+    right: 38px;
+  }
+  .landing .newscard h2 {
+    margin-top: 12px;
+    font-size: 19px;
+    line-height: 1.35;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .landing .spark {
+    display: block;
+    width: 100%;
+    height: 58px;
+    margin-top: 10px;
+  }
+  .landing .newscard p {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-sub);
+    margin-top: 2px;
+  }
+
+  /* 맨 위 등장: 처음 화면이 걷히면 글 → 카드 → 마스코트 순서로 올라온다 */
+  .landing .hero h1 span,
+  .landing .lede,
+  .landing .cta,
+  .landing .sub-link {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  .landing .mate {
+    transform: translateY(120px);
+  }
+  .landing .newscard {
+    transform: translateY(260px) rotate(6deg);
+  }
+  .landing.ready .hero h1 span,
+  .landing.ready .lede,
+  .landing.ready .cta,
+  .landing.ready .sub-link {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.5s ease-out,
+      transform 0.7s var(--ease-out);
+    transition-delay: calc(var(--n) * 70ms);
+  }
+  .landing.ready .newscard {
+    transform: rotate(-2.5deg);
+    transition: transform 0.9s var(--ease-spring) 0.25s;
+  }
+  .landing.ready .mate {
+    transform: none;
+    transition: transform 0.8s var(--ease-spring) 0.55s;
+  }
+
+  /* ---------- 소개 구역 ---------- */
+  .landing .sec {
+    padding: 64px var(--pad) 0;
+  }
+  .landing .sec h2.t {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 31px;
+    line-height: 1.22;
+    letter-spacing: -0.01em;
+  }
+  .landing .sec .d {
+    margin-top: 10px;
+    color: var(--color-sub);
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .landing .loop {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin: 24px calc(var(--pad) * -1) 0;
+    padding: 4px var(--pad) 14px;
+  }
+  .landing .step {
+    flex: 0 0 244px;
+    scroll-snap-align: center;
+    border: 2px solid var(--color-line);
+    border-bottom-width: 4px;
+    border-radius: 26px;
+    padding: 18px 18px 20px;
+    min-height: 292px;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+  }
+  .landing .step .no {
+    font-family: var(--font-display);
+    font-size: 44px;
+    line-height: 1;
+    color: var(--color-blue);
+  }
+  .landing .step h3 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-top: 6px;
+  }
+  .landing .step p {
+    font-size: 14.5px;
+    font-weight: 500;
+    line-height: 1.5;
+    margin-top: 6px;
+    color: var(--color-sub);
+  }
+  .landing .mini {
+    margin-top: auto;
+    background: var(--color-mist);
+    border-radius: 16px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .landing .mini .row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .landing .pill {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 11px;
+    border-radius: 99px;
+    border: 2px solid var(--color-line);
+    font-size: 12.5px;
+    font-weight: 800;
+    background: #fff;
+  }
+  .landing .pill.on {
+    background: var(--color-blue);
+    border-color: var(--color-blue);
+    color: #fff;
+  }
+  .landing .mini small {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-sub);
+    margin-top: 4px;
+  }
+  .landing .bars {
+    display: flex;
+    gap: 5px;
+    align-items: flex-end;
+    height: 38px;
+  }
+  .landing .bars b {
+    flex: 1;
+    border-radius: 5px 5px 0 0;
+    background: #c9dfff;
+  }
+
+  /* 맛보기 퀴즈 */
+  .landing .quiz {
+    margin-top: 24px;
+    background: #fff;
+    border: 2px solid var(--color-line);
+    border-bottom-width: 4px;
+    border-radius: 28px;
+    padding: 22px 18px 18px;
+  }
+  .landing .quiz .q {
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1.4;
+    letter-spacing: -0.02em;
+  }
+  .landing .explain {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.45s var(--ease-out);
+  }
+  .landing .explain.open {
+    grid-template-rows: 1fr;
+  }
+  .landing .explain > div {
+    overflow: hidden;
+  }
+  .landing .explain .box {
+    margin-top: 14px;
+    background: var(--color-ok-soft);
+    border-radius: 18px;
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.55;
+    font-weight: 500;
+  }
+  .landing .explain strong {
+    display: block;
+    font-weight: 800;
+    font-size: 18px;
+    margin-bottom: 4px;
+    color: var(--color-ok-ink);
+  }
+  .landing .retry {
+    margin-top: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    padding: 6px 2px;
+  }
+
+  /* 기록 */
+  .landing .me {
+    display: flex;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .landing .stat {
+    flex: 1;
+    border: 2px solid var(--color-line);
+    border-bottom-width: 4px;
+    border-radius: 20px;
+    padding: 12px 14px;
+    background: #fff;
+  }
+  .landing .stat b {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 30px;
+    line-height: 1.1;
+    color: var(--color-blue);
+  }
+  .landing .stat span {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .landing .seg {
+    display: flex;
+    margin-top: 14px;
+    padding: 4px;
+    border-radius: 16px;
+    background: var(--color-mist);
+  }
+  .landing .seg button {
+    flex: 1;
+    height: 42px;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 15px;
+    color: var(--color-sub);
+    transition:
+      background 0.2s,
+      color 0.2s;
+  }
+  .landing .seg button[aria-selected='true'] {
+    background: var(--color-blue);
+    color: #fff;
+  }
+  .landing .panel {
+    margin-top: 12px;
+    border: 2px solid var(--color-line);
+    border-bottom-width: 4px;
+    border-radius: 24px;
+    padding: 18px 16px;
+    min-height: 330px;
+  }
+  .landing .cal-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 800;
+    font-size: 17px;
+  }
+  .landing .cal-h small {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-faint);
+  }
+  .landing .chain li {
+    position: relative;
+    padding: 0 0 18px 30px;
+  }
+  .landing .chain li::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 6px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2.5px solid var(--color-blue);
+  }
+  .landing .chain li::after {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 22px;
+    bottom: -4px;
+    width: 2.5px;
+    background: #c9dfff;
+  }
+  .landing .chain li:last-child {
+    padding-bottom: 0;
+  }
+  .landing .chain li:last-child::after {
+    display: none;
+  }
+  .landing .chain li:last-child::before {
+    background: var(--color-blue);
+  }
+  .landing .chain b {
+    font-size: 15.5px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    display: block;
+    line-height: 1.35;
+  }
+  .landing .tag {
+    display: inline-block;
+    margin-top: 5px;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 2px 9px;
+    border-radius: 99px;
+  }
+  .landing .tag.up {
+    background: var(--color-up-soft);
+    color: var(--color-no-ink);
+  }
+  .landing .tag.down {
+    background: var(--color-down-soft);
+    color: #3a4bb5;
+  }
+  .landing .tag.re {
+    background: var(--color-butter-soft);
+    color: var(--color-butter-ink);
+  }
+  .landing .l-note {
+    margin-top: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-faint);
+    text-align: center;
+  }
+
+  /* 맨 아래 */
+  .landing .final {
+    margin-top: 72px;
+    background: var(--color-blue);
+    color: #fff;
+    border-radius: 36px 36px 0 0;
+    padding: 44px var(--pad) calc(56px + env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  .landing .mate2 {
+    width: 150px;
+    margin: 0 auto 8px;
+  }
+  .landing .mate2 svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    display: block;
+  }
+  .landing .wave {
+    transform-box: fill-box;
+    transform-origin: 0% 100%;
+    animation: l-wave 2.4s ease-in-out infinite;
+  }
+  @keyframes l-wave {
+    0%,
+    60%,
+    100% {
+      transform: rotate(0);
+    }
+    70% {
+      transform: rotate(-16deg);
+    }
+    80% {
+      transform: rotate(8deg);
+    }
+    90% {
+      transform: rotate(-10deg);
+    }
+  }
+  .landing .final h2 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 33px;
+    line-height: 1.22;
+  }
+  .landing .final p {
+    margin-top: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .landing .final .mm-btn {
+    margin-top: 24px;
+    background: #fff;
+    color: var(--color-blue-ink);
+    box-shadow: 0 4px 0 #c9dfff;
+  }
+  .landing .final .legal {
+    margin-top: 36px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  /* 스크롤하는 동안 아래에 붙어 있는 시작 버튼 */
+  .landing .dock {
+    position: absolute;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px var(--pad) calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, #fff 62%, rgba(255, 255, 255, 0));
+    transform: translateY(110%);
+    transition: transform 0.45s var(--ease-out);
+  }
+  .landing .dock.show {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing .splash {
+      display: none;
+    }
+  }
+}

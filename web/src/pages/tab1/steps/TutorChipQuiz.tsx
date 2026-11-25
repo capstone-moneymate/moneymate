@@ -9,7 +9,7 @@ import type {
   TutorGradedEvent,
 } from '@/types/tutor'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
-import { TutorFeedback } from '@/pages/tab1/steps/TutorFeedback'
+import { tutorResult } from '@/pages/tab1/steps/tutorResult'
 
 type ChipQuizProps = {
   badge: string
@@ -126,14 +126,15 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
     <StepFrame
       badge={badge}
       heading={HEADING[kind]}
-      buttonLabel="다음 ›"
+      buttonLabel="계속하기"
       onButton={onNext}
       confidence={
         graded ? undefined : { disabled: filled.some((v) => v === null) || pending, onPick: check }
       }
+      feedback={graded ? { result: tutorResult(graded) } : undefined}
     >
       {props.kind === '칩 빈칸' && (
-        <p className="rounded-3xl bg-slate-50 px-5 py-5 text-lg leading-[2.4] font-semibold text-slate-800">
+        <p className="mm-box px-[18px] py-4 text-lg leading-[2.4] font-extrabold tracking-[-0.02em]">
           {props.content.sentence.split(BLANK).map((part, i, parts) => (
             <span key={i}>
               {part}
@@ -145,8 +146,8 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
       {props.kind === '짝 맞추기' && (
         <ul className="flex flex-col gap-3">
           {props.content.terms.map((term, i) => (
-            <li key={term} className="rounded-2xl bg-slate-50 px-4 py-3">
-              <p className="mb-2 font-bold text-slate-900">{term}</p>
+            <li key={term} className="bg-mist rounded-2xl px-4 py-3">
+              <p className="mb-2 font-extrabold">{term}</p>
               {slot(i, '뜻 넣기', true)}
             </li>
           ))}
@@ -155,8 +156,8 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
       {props.kind === '사례 분류' && (
         <ul className="flex flex-col gap-3">
           {props.content.cases.map((text, i) => (
-            <li key={text} className="rounded-2xl bg-slate-50 px-4 py-3">
-              <p className="mb-2 leading-relaxed text-slate-800">{text}</p>
+            <li key={text} className="bg-mist rounded-2xl px-4 py-3">
+              <p className="mb-2 leading-relaxed font-semibold">{text}</p>
               {slot(i, '어느 쪽?', true)}
             </li>
           ))}
@@ -164,7 +165,7 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
       )}
 
       {!graded && (
-        <div className="mt-5 flex flex-wrap gap-2" aria-label="넣을 칩">
+        <div className="mt-3.5 flex flex-wrap gap-2" aria-label="넣을 칩">
           {chips.map((c) => {
             const used = !reusable && filled.includes(c.value)
             return (
@@ -173,10 +174,8 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
                 type="button"
                 disabled={locked || active === null}
                 onClick={() => tapChip(c.value)}
-                className={`min-h-11 rounded-full border px-4 py-2 text-left text-sm font-semibold transition ${
-                  used
-                    ? 'border-slate-200 bg-white text-slate-300'
-                    : 'border-primary text-primary bg-white active:scale-[0.98]'
+                className={`border-line min-h-[46px] rounded-[14px] border-2 border-b-4 bg-white px-4 py-1.5 text-left text-[15.5px] font-extrabold transition ${
+                  used ? 'opacity-40' : 'active:translate-y-0.5'
                 }`}
               >
                 {c.text}
@@ -186,8 +185,7 @@ export const TutorChipQuiz = (props: ChipQuizProps) => {
         </div>
       )}
 
-      {graded && <TutorFeedback graded={graded} />}
-      {error && <p className="text-up mt-3 text-sm">{error}</p>}
+      {error && <p className="text-no-ink mt-3 text-sm font-bold">{error}</p>}
     </StepFrame>
   )
 }
@@ -218,14 +216,14 @@ const Slot = ({
 }: SlotProps) => {
   const tone =
     state === 'right'
-      ? 'border-primary bg-blue-50 text-slate-900'
+      ? 'border-blue bg-blue text-white'
       : state === 'wrong'
-        ? 'border-up bg-rose-50 text-slate-900'
+        ? 'bg-no-soft text-no-ink border-[#f7bfc8]'
         : active
-          ? 'border-primary border-dashed bg-white text-slate-400'
+          ? 'border-blue text-faint border-dashed bg-white'
           : text
-            ? 'border-slate-300 bg-white text-slate-900'
-            : 'border-slate-300 border-dashed bg-white text-slate-400'
+            ? 'border-blue bg-blue-soft text-ink'
+            : 'text-faint border-dashed border-[#c6ceda] bg-white'
   return (
     <span className={wide ? 'block' : 'mx-1 inline-block align-middle'}>
       <button
@@ -233,14 +231,14 @@ const Slot = ({
         disabled={disabled}
         onClick={onClick}
         aria-label={text ? `${text} (누르면 비워요)` : placeholder}
-        className={`min-h-10 rounded-xl border-2 px-3 py-1 text-base leading-snug font-semibold transition ${tone} ${
+        className={`min-h-10 rounded-[11px] border-2 px-3 py-1 text-base leading-snug font-extrabold transition ${tone} ${
           wide ? 'w-full text-left' : 'min-w-20'
         }`}
       >
         {text ?? placeholder}
       </button>
       {correctText && (
-        <span className="text-primary mt-1 block text-sm leading-snug font-semibold">
+        <span className="text-blue-ink mt-1 block text-sm leading-snug font-extrabold">
           정답: {correctText}
         </span>
       )}
