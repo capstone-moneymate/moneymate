@@ -98,8 +98,7 @@ def _out(sid: str, e: _Entry, all_events: bool = False) -> TutorOut:
     if not all_events:
         e.seen = len(s.events)
     return TutorOut(session_id=sid, status=s.status, finished_by=s.finished_by, targets=s.targets, quizzes=s.quizzes,
-                    # max_quizzes 는 #239 에서 세션마다 생긴다. 그 전에는 모듈 기본값
-                    max_quizzes=getattr(s, "max_quizzes", ag.MAX_QUIZZES), events=list(events))
+                    max_quizzes=s.max_quizzes, events=list(events))
 
 
 def new_session(user_id: str, card_id: int) -> ag.Session:
