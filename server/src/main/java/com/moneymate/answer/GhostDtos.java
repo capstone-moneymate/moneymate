@@ -37,9 +37,28 @@ public final class GhostDtos {
      * @param previous      지난번 (끝까지 푼 시도)
      * @param current       이번 (가장 최근 시도)
      * @param rows          답 단계마다 한 줄, 단계 번호 순
-     * @param improvedSteps 좋아진 단계 수
+     * @param improvedSteps 좋아진 단계 수 (답 단계만 센다. 개념 단계는 concept 에 따로)
+     * @param concept       개념 단계(튜터 퀴즈) 비교. 두 시도 모두 튜터 기록이 없으면 null
      */
-    public record Comparison(AttemptInfo previous, AttemptInfo current, List<Row> rows, int improvedSteps) {
+    public record Comparison(AttemptInfo previous, AttemptInfo current, List<Row> rows, int improvedSteps,
+                             ConceptRow concept) {
+    }
+
+    /**
+     * 개념 단계 한 줄. 본 문제와 달리 튜터 퀴즈는 풀 때마다 새 문제라서 "같은 개념, 다른 문제"의 비교다.
+     *
+     * @param previous 지난번 (튜터 기록이 없으면 null)
+     * @param current  이번 (튜터 기록이 없으면 null)
+     * @param improved 지난번보다 퀴즈를 적게 풀고 본 문제로 넘어갔는가 (둘 다 기록이 있을 때만)
+     */
+    public record ConceptRow(ConceptCell previous, ConceptCell current, boolean improved) {
+    }
+
+    /**
+     * @param quizzes 튜터가 낸 퀴즈 수
+     * @param correct 그중 맞힌 수
+     */
+    public record ConceptCell(int quizzes, int correct) {
     }
 
     public record AttemptInfo(int attemptNo, String date, Integer sureWrong) {

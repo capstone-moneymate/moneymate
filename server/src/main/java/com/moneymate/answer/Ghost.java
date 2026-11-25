@@ -4,9 +4,12 @@ import com.moneymate.answer.GhostDtos.Attempt;
 import com.moneymate.answer.GhostDtos.AttemptInfo;
 import com.moneymate.answer.GhostDtos.Cell;
 import com.moneymate.answer.GhostDtos.Comparison;
+import com.moneymate.answer.GhostDtos.ConceptCell;
+import com.moneymate.answer.GhostDtos.ConceptRow;
 import com.moneymate.answer.GhostDtos.Report;
 import com.moneymate.answer.GhostDtos.Row;
 import com.moneymate.answer.GhostDtos.StepRecord;
+import com.moneymate.answer.GhostRepository.GhostConcept;
 import com.moneymate.answer.GhostRepository.GhostStep;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +26,9 @@ import java.util.TreeMap;
  *   <li>이번 = 가장 최근 시도, 지난번 = 그 앞의 끝까지 푼 시도 중 가장 최근</li>
  *   <li>좋아졌다: ① 틀림 → 맞힘 ② 둘 다 맞혔으면 초가 줄었을 때. 판단해보기는 시간 대신 점수가 올랐을 때</li>
  *   <li>최고 기록: 이번보다 앞선 기록이 {@link #MIN_EARLIER}번 이상 있을 때만. 1번뿐이면 "지난번보다"와 같은 말이다</li>
+ *   <li>개념 단계: 튜터가 낸 퀴즈 수와 맞힌 수를 시도끼리 나란히 놓는다 (concept_answers, 시도 번호는 본 문제와 같다).
+ *       좋아졌다 = 지난번보다 퀴즈를 적게 풀고 본 문제로 넘어갔을 때. 튜터는 목표 개념을 안다고 볼 때까지 퀴즈를 내므로
+ *       적게 풀었다는 것은 이미 아는 개념이 늘었다는 뜻이다. 퀴즈가 매번 새 문제라 문제를 기억해서 줄어든 것이 아니다</li>
  * </ul>
  * 시간은 화면에 보이는 초 단위(반올림)로 비교한다. 한 번씩 잰 값이라 우연과 구분하는 검정은 할 수 없어서,
  * 보이는 숫자가 줄었을 때만 줄었다고 한다. 정답이 시간보다 먼저다.
@@ -38,6 +44,11 @@ public final class Ghost {
     }
 
     public static Report report(List<GhostStep> steps, List<GhostRow> rows) {
+        return report(steps, rows, List.of());
+    }
+
+    /** @param concepts 시도마다 개념 단계에서 튜터가 낸 퀴즈 수 (없으면 빈 목록) */
+    public static Report report(List<GhostStep> steps, List<GhostRow> rows, List<GhostConcept> concepts) {
         if (steps.isEmpty() || rows.isEmpty()) {
             return new Report(null, null);
         }
@@ -60,7 +71,8 @@ public final class Ghost {
         }
         Attempt lastComplete = lastCompleteNo == null ? null
                 : attempt(lastCompleteNo, steps, attempts.get(lastCompleteNo));
-        Comparison comparison = previousNo == null ? null : compare(steps, attempts, previousNo, currentNo);
+        Comparison comparison = previousNo == null ? null
+                : compare(steps, attempts, previousNo, currentNo, concepts);
         return new Report(lastComplete, comparison);
     }
 
@@ -69,7 +81,7 @@ public final class Ghost {
     }
 
     private static Comparison compare(List<GhostStep> steps, TreeMap<Integer, Map<Long, GhostRow>> attempts,
-                                      int previousNo, int currentNo) {
+                                      int previousNo, int currentNo, List<GhostConcept> concepts) {
         Map<Long, GhostRow> prev = attempts.get(previousNo);
         Map<Long, GhostRow> cur = attempts.get(currentNo);
         List<Row> out = new ArrayList<>();
@@ -83,7 +95,23 @@ public final class Ghost {
                     improved(p, c, judged), best(earlier, c, judged)));
         }
         int improvedSteps = (int) out.stream().filter(Row::improved).count();
-        return new Comparison(info(previousNo, prev), info(currentNo, cur), out, improvedSteps);
+        return new Comparison(info(previousNo, prev), info(currentNo, cur), out, improvedSteps,
+                concept(concepts, previousNo, currentNo));
+    }
+
+    /** 개념 단계 줄. 두 시도 모두 튜터 기록이 없으면 null (튜터가 없던 때의 기록이거나 개념 단계가 없는 카드) */
+    static ConceptRow concept(List<GhostConcept> concepts, int previousNo, int currentNo) {
+        ConceptCell p = conceptCell(concepts, previousNo);
+        ConceptCell c = conceptCell(concepts, currentNo);
+        if (p == null && c == null) {
+            return null;
+        }
+        return new ConceptRow(p, c, p != null && c != null && c.quizzes() < p.quizzes());
+    }
+
+    private static ConceptCell conceptCell(List<GhostConcept> concepts, int attemptNo) {
+        return concepts.stream().filter(g -> g.attemptNo() == attemptNo).findFirst()
+                .map(g -> new ConceptCell(g.quizzes(), g.correct())).orElse(null);
     }
 
     /** 지난번보다 좋아졌는가. 정답이 먼저, 둘 다 맞혔을 때만 시간을 본다 */

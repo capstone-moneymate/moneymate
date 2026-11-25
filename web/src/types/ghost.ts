@@ -34,11 +34,31 @@ export interface GhostRow {
   best: boolean
 }
 
+/** 개념 단계에서 튜터가 낸 퀴즈 수와 그중 맞힌 수 */
+export interface GhostConceptCell {
+  quizzes: number
+  correct: number
+}
+
+/**
+ * 개념 단계 한 줄. 튜터 퀴즈는 풀 때마다 새 문제라서 "같은 개념, 다른 문제"의 비교다.
+ * improved 는 지난번보다 퀴즈를 적게 풀고 본 문제로 넘어갔을 때 (둘 다 기록이 있을 때만)
+ */
+export interface GhostConceptRow {
+  /** 튜터 기록이 없는 시도면 null */
+  previous: GhostConceptCell | null
+  current: GhostConceptCell | null
+  improved: boolean
+}
+
 export interface GhostComparison {
   previous: Pick<GhostAttempt, 'attemptNo' | 'date' | 'sureWrong'>
   current: Pick<GhostAttempt, 'attemptNo' | 'date' | 'sureWrong'>
   rows: GhostRow[]
+  /** 좋아진 답 단계 수 (개념 단계는 concept 에 따로) */
   improvedSteps: number
+  /** 개념 단계 비교. 두 시도 모두 튜터 기록이 없으면 null (옛 서버 응답에는 없을 수 있다) */
+  concept?: GhostConceptRow | null
 }
 
 export interface GhostReport {
