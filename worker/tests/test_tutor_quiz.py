@@ -6,8 +6,11 @@ import pytest
 
 from tutor import quiz as qz
 
-CHOICE = {"question": "EPS 의 뜻은?", "options": ["주당순이익", "주가수익비율", "자기자본"], "answer_index": 0,
+# 용어 뜻 출제 응답: 보기는 칸 3개 (#246). to_quiz 가 [correct, wrong_1, wrong_2] 순서, 정답 0 으로 만든다
+CHOICE = {"question": "EPS 의 뜻은?", "correct": "주당순이익", "wrong_1": "주가수익비율", "wrong_2": "자기자본",
           "explanation": "순이익을 주식 수로 나눈 값"}
+OPTIONS = ["주당순이익", "주가수익비율", "자기자본"]
+PAIR = {"question": "EPS 는?", "options": ["주당순이익", "주당순자산"], "answer_index": 1, "explanation": "e"}
 
 
 def test_guess_probability_by_hand():
@@ -24,15 +27,14 @@ def test_guess_probability_by_hand():
 
 def test_choice_quiz_ok_and_hides_key():
     q = qz.to_quiz("용어 뜻", "주당순이익", CHOICE)
-    assert q.content == {"question": "EPS 의 뜻은?", "options": ["주당순이익", "주가수익비율", "자기자본"]}
+    assert q.content == {"question": "EPS 의 뜻은?", "options": OPTIONS}
     assert q.key == 0 and "answer_index" not in q.content
     assert qz.grade(q, 0) and not qz.grade(q, 1)
 
 
 @pytest.mark.parametrize("change, msg", [
-    ({"options": ["a", "b"]}, "보기가 3개"),
-    ({"options": ["a", "a", "b"]}, "같은 보기"),
-    ({"answer_index": 3}, "범위 밖"),
+    ({"wrong_1": "주당순이익"}, "같은 보기"),
+    ({"wrong_2": " "}, "빈 보기"),
     ({"explanation": "지금 매수 추천"}, "금지 표현"),
 ])
 def test_choice_quiz_errors(change, msg):
@@ -41,10 +43,26 @@ def test_choice_quiz_errors(change, msg):
 
 
 def test_confusable_pair_must_use_both_names():
-    data = CHOICE | {"options": ["주당순이익", "주당순자산"], "answer_index": 1}
-    assert qz.to_quiz("헷갈리는 쌍", "주당순이익", data, pair=["주당순이익", "주당순자산"]).key == 1
+    pair = ["주당순이익", "주당순자산"]
+    assert qz.to_quiz("헷갈리는 쌍", "주당순이익", PAIR, pair=pair).key == 1
     with pytest.raises(qz.QuizError, match="두 개념 이름"):
-        qz.to_quiz("헷갈리는 쌍", "주당순이익", data | {"options": ["EPS", "BPS"]}, pair=["주당순이익", "주당순자산"])
+        qz.to_quiz("헷갈리는 쌍", "주당순이익", PAIR | {"options": ["EPS", "BPS"]}, pair=pair)
+    with pytest.raises(qz.QuizError, match="보기가 2개"):
+        qz.to_quiz("헷갈리는 쌍", "주당순이익", PAIR | {"options": pair + ["EPS"]}, pair=pair)
+    with pytest.raises(qz.QuizError, match="범위 밖"):
+        qz.to_quiz("헷갈리는 쌍", "주당순이익", PAIR | {"answer_index": 2}, pair=pair)
+
+
+def test_wrong_statement_slots():
+    """틀린 설명은 맞는 설명 2칸 + 틀린 설명 1칸. 틀린 설명이 정답이고 보기는 늘 3개 (#246)"""
+    data = {"question": "틀린 것은?", "true_1": "가", "true_2": "나", "wrong": "다", "explanation": "e"}
+    q = qz.to_quiz("틀린 설명", "주당순이익", data)
+    assert q.content == {"question": "틀린 것은?", "options": ["가", "나", "다"]} and q.key == 2
+    assert q.guess_p == pytest.approx(1 / 3)
+    with pytest.raises(qz.QuizError, match="같은 보기"):
+        qz.to_quiz("틀린 설명", "주당순이익", data | {"wrong": "가"})
+    schema = qz._schema_for("틀린 설명")
+    assert "options" not in schema["properties"] and schema["required"] == ["question", "true_1", "true_2", "wrong", "explanation"]
 
 
 def test_ox_chips_match_classify():
@@ -93,15 +111,15 @@ def _fake(monkeypatch, *payloads):
 
 
 def test_generate_retries_bad_shape_then_ok(monkeypatch):
-    calls = _fake(monkeypatch, CHOICE | {"options": ["a"]}, CHOICE)
+    calls = _fake(monkeypatch, CHOICE | {"wrong_1": "주당순이익"}, CHOICE)
     q = qz.generate("용어 뜻", "주당순이익", "순이익 ÷ 주식 수")
     assert q.content["options"][q.key] == "주당순이익" and len(calls) == 2 and calls[0]["module"] == "tutor_quiz"
     assert '"desc": "순이익 ÷ 주식 수"' in calls[0]["messages"][0]["content"]
 
 
 def test_generate_gives_up(monkeypatch):
-    _fake(monkeypatch, *[CHOICE | {"options": ["a"]}] * 3)
-    with pytest.raises(qz.QuizError, match="보기가 3개"):
+    _fake(monkeypatch, *[CHOICE | {"wrong_1": "주당순이익"}] * 3)
+    with pytest.raises(qz.QuizError, match="같은 보기"):
         qz.generate("용어 뜻", "주당순이익", "")
     with pytest.raises(qz.QuizError, match="모르는"):
         qz.generate("없는 종류", "주당순이익", "")
@@ -119,7 +137,7 @@ def test_shuffle_keeps_answer_text():
     rng = random.Random(1)
     for _ in range(20):
         q = qz.shuffle(qz.to_quiz("용어 뜻", "주당순이익", CHOICE), rng)
-        assert q.content["options"][q.key] == "주당순이익" and sorted(q.content["options"]) == sorted(CHOICE["options"])
+        assert q.content["options"][q.key] == "주당순이익" and sorted(q.content["options"]) == sorted(OPTIONS)
         c = qz.shuffle(_chips(), rng)
         assert [c.content["chips"][k] for k in c.key] == ["자사주", "소각"] and c.guess_p == _chips().guess_p
     cls = {"baskets": ["해당", "해당 안 함"], "explanation": "e",
@@ -158,8 +176,9 @@ def test_claims_by_kind():
     q = qz.to_quiz("용어 뜻", "주당순이익", CHOICE)
     assert qz.claims(q) == [("'주당순이익'의 뜻: 주당순이익", True), ("'주당순이익'의 뜻: 주가수익비율", False),
                             ("'주당순이익'의 뜻: 자기자본", False), ("해설: 순이익을 주식 수로 나눈 값", True)]
-    wrong = qz.to_quiz("틀린 설명", "주당순이익", CHOICE | {"answer_index": 1, "explanation": " "})
-    assert [ok for _, ok in qz.claims(wrong)] == [True, False, True]   # 빈 해설은 넣지 않는다
+    wrong = qz.to_quiz("틀린 설명", "주당순이익", {"question": "q", "true_1": "가", "true_2": "나", "wrong": "다",
+                                               "explanation": " "})
+    assert [ok for _, ok in qz.claims(wrong)] == [True, True, False]   # 빈 해설은 넣지 않는다
     cls = {"baskets": ["기업", "상장기업"], "explanation": "",
            "cases": [{"text": x, "basket": b} for x, b in [("가", 0), ("나", 1), ("다", 0), ("라", 1)]]}
     got = qz.claims(qz.to_quiz("사례 분류", "자사주 소각", cls))
