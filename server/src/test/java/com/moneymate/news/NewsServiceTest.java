@@ -104,6 +104,42 @@ class NewsServiceTest {
         assertThat(service.home(USER).completedCardIds()).containsExactly("4");
     }
 
+    // --- 지난 뉴스 ---
+
+    @Test
+    void pastListsCardsBeforeHomeDateWithTheirDates() {
+        LocalDate homeDate = LocalDate.of(2026, 11, 6);
+        when(repo.findLatestCardDate(TODAY, false)).thenReturn(Optional.of(homeDate));
+        CardRow older = new CardRow(1, 1, LocalDate.of(2026, 11, 4), "환율 1,400원", "환율", null, SLIDES,
+                null, null, null, null, null, 4);
+        CardRow newer = new CardRow(2, 2, LocalDate.of(2026, 11, 5), "유가 급등", "원자재", null, SLIDES,
+                null, null, null, null, null, 5);
+        when(repo.findCardsBefore(eq(homeDate), eq(false), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of(newer, older));
+        when(repo.findCompletedCardIds(USER, List.of(2L, 1L))).thenReturn(List.of(1L));
+
+        var past = service.past(USER);
+
+        // 저장소가 준 순서(최근 날짜부터) 그대로, 카드마다 그 카드의 날짜를 붙인다
+        assertThat(past.cards()).extracting(c -> c.date()).containsExactly("2026-11-05", "2026-11-04");
+        assertThat(past.cards().get(0).card().id()).isEqualTo("2");
+        assertThat(past.cards().get(0).card().title()).isEqualTo("유가 급등");
+        assertThat(past.completedCardIds()).containsExactly("1");
+    }
+
+    @Test
+    void pastWithoutUserDoesNotAskCompleted() {
+        when(repo.findLatestCardDate(any(), anyBoolean())).thenReturn(Optional.empty());
+        when(repo.findCardsBefore(eq(TODAY), eq(false), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of());
+
+        var past = service.past(null);
+
+        assertThat(past.cards()).isEmpty();
+        assertThat(past.completedCardIds()).isEmpty();
+        verify(repo, never()).findCompletedCardIds(anyString(), anyList());
+    }
+
     @Test
     void includePendingIsPassedToRepository() {
         NewsService pending = new NewsService(repo, true, CLOCK);
