@@ -4,6 +4,7 @@ import com.moneymate.auth.AuthController;
 import com.moneymate.auth.UserGuard;
 import com.moneymate.news.NewsDtos.CardDetail;
 import com.moneymate.news.NewsDtos.NewsHome;
+import com.moneymate.news.NewsDtos.PastNews;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,13 @@ public class NewsController {
     public NewsHome home(@RequestParam(required = false) UUID userId,
                          @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
         return service.home(guard.check(userId, sessionUserId));
+    }
+
+    /** 지난 뉴스 목록 (홈에 보이는 날짜보다 앞선 카드, 최근 날짜부터). 홈의 "지난 뉴스"와 검색이 쓴다. */
+    @GetMapping("/api/news/past")
+    public PastNews past(@RequestParam(required = false) UUID userId,
+                         @SessionAttribute(name = AuthController.SESSION_USER_ID, required = false) String sessionUserId) {
+        return service.past(guard.check(userId, sessionUserId));
     }
 
     /** 카드뉴스 slides + 단계 steps. 정답은 내려보내지 않는다. */

@@ -113,7 +113,7 @@ const OverlapView = () => {
                 className="block rounded-2xl border border-slate-200 bg-white px-4 py-4 transition active:scale-[0.99]"
               >
                 <div className="flex items-baseline gap-3">
-                  <span className="text-primary text-base font-bold tabular-nums">{i + 1}</span>
+                  <span className="text-blue-ink text-base font-bold tabular-nums">{i + 1}</span>
                   <span className="text-lg font-extrabold text-slate-900">{stock.ticker}</span>
                   <span className="min-w-0 truncate text-base text-slate-500">
                     {stock.issuerName ?? stock.etfStockName}
@@ -123,7 +123,9 @@ const OverlapView = () => {
                   </span>
                 </div>
                 <p className="mt-3 text-[15px] text-slate-500">
-                  {held.map((f) => `${filerPersonName(f.filerKey)} ${bigChangeLabel(f)}`).join(' · ')}
+                  {held
+                    .map((f) => `${filerPersonName(f.filerKey)} ${bigChangeLabel(f)}`)
+                    .join(' · ')}
                 </p>
               </Link>
             </li>
@@ -163,7 +165,7 @@ const EtfDailyView = () => {
           <MoveCard
             key={t.rawCode}
             label="두 ETF가 함께 늘렸어요"
-            labelClass="text-primary"
+            labelClass="text-blue-ink"
             ticker={t.ticker}
           >
             <StockName ticker={t.ticker} name={t.stockName} />

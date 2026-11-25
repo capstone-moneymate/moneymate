@@ -4,9 +4,9 @@ import { useCard, usePastAnswers } from '@/api/cards'
 import { useGhost } from '@/api/ghost'
 import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
-import type { AnswerResult, PastAnswer, Step } from '@/types/card'
+import type { AnswerResult, PastAnswer, PastInput, Step } from '@/types/card'
 import type { GhostAttempt } from '@/types/ghost'
-import { BackButton } from '@/pages/tab1/CloseLink'
+import { LessonTop } from '@/pages/tab1/LessonTop'
 import { CausalOrderView } from '@/pages/tab1/steps/CausalOrderView'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
 import { QuizView } from '@/pages/tab1/steps/QuizView'
@@ -33,6 +33,10 @@ export const LearnPage = () => {
   const saveResult = useLearnStore((s) => s.saveResult)
   const resetCard = useLearnStore((s) => s.resetCard)
   const [index, setIndex] = useState(0)
+  // 이번에 푼 단계의 답과 채점 결과. 뒤로 가면 다시 풀지 않고 푼 상태 그대로 보여 준다 (다시 제출하지 않는다)
+  const [answered, setAnswered] = useState<Record<string, PastAnswer>>({})
+  /** 지금까지 가 본 가장 뒤 단계 */
+  const [reached, setReached] = useState(0)
 
   // 처음부터 다시 풀면 이전 기록을 지운다. 풀었던 내용 보기면 그날 채점 결과로 채워 결과 화면이 읽게 한다
   useEffect(() => {
@@ -41,12 +45,12 @@ export const LearnPage = () => {
   }, [cardId, resetCard, saveResult, past.data])
 
   if (isPending || (review && past.isPending))
-    return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
+    return <p className="text-sub p-5 text-sm font-semibold">불러오는 중…</p>
   if (isError) {
     return (
-      <p className="p-5 text-sm text-slate-500">
+      <p className="text-sub p-5 text-sm font-semibold">
         카드를 찾을 수 없어요.{' '}
-        <Link to="/" className="text-primary">
+        <Link to="/" className="text-blue-ink underline">
           뉴스 홈으로
         </Link>
       </p>
@@ -54,63 +58,59 @@ export const LearnPage = () => {
   }
 
   const step = card.steps[index]
-  const next = (result?: AnswerResult) => {
+  const next = (result?: AnswerResult, input?: PastInput) => {
     if (result) saveResult(card.id, result)
+    if (result && input) setAnswered({ ...answered, [step.id]: { stepId: step.id, input, result } })
     if (index === card.steps.length - 1) navigate(withReview(`/news/${card.id}/result`, review))
-    else setIndex(index + 1)
+    else {
+      setIndex(index + 1)
+      setReached(Math.max(reached, index + 1))
+    }
   }
+  // 뒤로: 앞 단계가 있으면 그 단계로(푼 상태 그대로), 첫 단계면 카드뉴스로
+  const back = () =>
+    index > 0 ? setIndex(index - 1) : navigate(withReview(`/news/${card.id}`, review))
 
-  const total = card.steps.length
   const nextStep = card.steps[index + 1]
   // 퀴즈가 여러 개면 "퀴즈 1 / 2" 표시
   const quizzes = card.steps.filter((s) => s.kind === 'quiz')
   const quizNo =
     step.kind === 'quiz' ? { no: quizzes.indexOf(step) + 1, total: quizzes.length } : null
   const lastTime = ghostLine(ghost.data?.lastComplete ?? null, step.id)
+  // 진행 막대는 카드뉴스 장부터 이어서 센다 (CardNewsPage 와 같은 식)
+  const slides = card.slides.length
 
   return (
-    <div className="flex min-h-full flex-col">
-      {/* UI 시안 05~15: ‹ 뒤로 + "STEP n · 전체 · 단계 이름" + 단계 수만큼 막대 */}
-      <div className="flex items-center gap-4 px-5 pt-4">
-        <BackButton
-          label="카드뉴스로 돌아가기"
-          onClick={() => navigate(withReview(`/news/${card.id}`, review))}
-        />
-        <div>
-          {review && (
-            <p className="text-primary text-xs font-bold">풀었던 내용 · {reviewLabel(review)}</p>
-          )}
-          <p className="text-sm font-semibold text-slate-500">
-            STEP {index + 1} · {total} · {KIND_LABEL[step.kind]}
-          </p>
-          <div className="mt-1.5 flex gap-1" aria-hidden>
-            {card.steps.map((s, i) => (
-              <span
-                key={s.id}
-                className={`h-1 w-6 rounded-full ${i <= index ? 'bg-primary' : 'bg-slate-200'}`}
-              />
-            ))}
-          </div>
-          {lastTime && <p className="mt-1.5 text-xs text-slate-500">{lastTime}</p>}
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col">
-        {/* key: 단계가 바뀌면 고른 답·입력을 새로 시작 */}
-        <StepSwitch
-          key={step.id}
-          cardId={card.id}
-          step={step}
-          onNext={next}
-          nextLabel={nextStep ? KIND_LABEL[nextStep.kind] : null}
-          quizNo={quizNo}
-          past={review ? (past.data?.find((p) => p.stepId === step.id) ?? null) : undefined}
-        />
-      </div>
+    <div className="flex h-full flex-col">
+      {/* UI 시안 app.html 의 학습 화면 위쪽: 닫기 · 뒤로 · 진행 막대 · 연속 학습 */}
+      <LessonTop
+        progress={((slides + index + 1) / (slides + card.steps.length)) * 100}
+        onBack={back}
+        backLabel={index > 0 ? '이전 단계로 돌아가기' : '카드뉴스로 돌아가기'}
+      />
+      {(review || lastTime) && (
+        <p className="text-sub px-5 pb-1 text-xs font-semibold">
+          {review && <b className="text-blue-ink">풀었던 내용 · {reviewLabel(review)}</b>}
+          {review && lastTime && ' · '}
+          {lastTime}
+        </p>
+      )}
+      {/* key: 단계가 바뀌면 고른 답·입력을 새로 시작 */}
+      <StepSwitch
+        key={step.id}
+        cardId={card.id}
+        step={step}
+        onNext={next}
+        nextLabel={nextStep ? KIND_LABEL[nextStep.kind] : null}
+        quizNo={quizNo}
+        past={review ? (past.data?.find((p) => p.stepId === step.id) ?? null) : answered[step.id]}
+        revisit={index < reached}
+      />
     </div>
   )
 }
 
-/** 단계 이름 (STEP 줄과 개념 학습의 "이해했어요, ○○ ›" 버튼) */
+/** 단계 이름 (개념 학습의 "이해했어요, ○○" 버튼) */
 const KIND_LABEL: Record<Step['kind'], string> = {
   concept: '개념 학습',
   quiz: '간단 퀴즈',
@@ -133,19 +133,30 @@ const ghostLine = (ghost: GhostAttempt | null, stepId: string): string | null =>
 interface StepSwitchProps {
   cardId: string
   step: Step
-  onNext: (result?: AnswerResult) => void
+  onNext: (result?: AnswerResult, input?: PastInput) => void
   /** 다음 단계 이름. 마지막이면 null */
   nextLabel: string | null
   quizNo: { no: number; total: number } | null
-  /** 풀었던 내용 보기의 그 단계 답 (null = 안 풀었음, undefined = 평소 풀기) */
+  /** 그 단계에 이미 낸 답: 풀었던 내용 보기의 그날 답, 또는 이번에 풀고 뒤로 돌아온 단계의 답 (null = 안 풀었음, undefined = 지금 푼다) */
   past: PastAnswer | null | undefined
+  /** 이미 지나간 단계로 돌아왔다 */
+  revisit: boolean
 }
 
-const StepSwitch = ({ cardId, step, onNext, nextLabel, quizNo, past }: StepSwitchProps) => {
+const StepSwitch = ({
+  cardId,
+  step,
+  onNext,
+  nextLabel,
+  quizNo,
+  past,
+  revisit,
+}: StepSwitchProps) => {
   switch (step.kind) {
     case 'concept':
-      // 풀었던 내용 보기에서는 튜터를 새로 열지 않는다 (그날의 튜터 세션은 남아 있지 않다)
-      if (past !== undefined)
+      // 풀었던 내용 보기에서는 튜터를 새로 열지 않는다 (그날의 튜터 세션은 남아 있지 않다).
+      // 뒤로 돌아왔을 때도 튜터를 다시 시작하지 않고 개념 설명만 보여 준다
+      if (past !== undefined || revisit)
         return <ConceptView step={step} onNext={onNext} nextLabel={nextLabel} />
       return <TutorStep cardId={cardId} step={step} onNext={onNext} nextLabel={nextLabel} />
     case 'quiz':

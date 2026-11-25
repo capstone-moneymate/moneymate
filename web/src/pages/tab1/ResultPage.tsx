@@ -2,15 +2,19 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useCard } from '@/api/cards'
 import { useGhost } from '@/api/ghost'
 import { SHOW_TAB2 } from '@/components/BottomNav'
+import { Mate } from '@/components/Mate'
 import { reviewLabel, useReviewDate, withReview } from '@/lib/review'
 import { useLearnStore } from '@/store/learnStore'
 import type { AnswerResult, CardDetail } from '@/types/card'
-import { BackButton, CloseLink } from '@/pages/tab1/CloseLink'
+import { Cheer } from '@/pages/tab1/Cheer'
+import { LessonTop } from '@/pages/tab1/LessonTop'
 import { GhostCard } from '@/pages/tab1/GhostCard'
 import { AiAnalysis } from '@/pages/tab1/steps/AiAnalysis'
+import { VerdictIcon } from '@/pages/tab1/steps/AnswerFeedback'
 
 /**
- * 결과 화면 (UI 시안 17): 종합 점수 원, 개념 이해도·적용 판단, 오늘의 학습 요약, AI 피드백
+ * 결과 화면 (UI 시안 app.html 의 완료 화면): 마스코트와 완료 문구, 점수 세 칸(종합·개념 이해도·적용 판단),
+ * 오늘 한 것, 지난번과 비교, AI 피드백. 방금 다 풀고 들어오면 '잘했어요!' 축하 화면이 잠깐 덮는다
  * → 13F·ETF로 (유형 3은 종목 상세로)
  * 이 카드를 이전에 끝까지 푼 적이 있으면 지난번과 이번을 나란히 보여 준다 (고스트 비교, 추가 구현 2-6)
  */
@@ -23,13 +27,18 @@ export const ResultPage = () => {
   // 풀었던 내용 보기는 새로 푼 게 아니라서 비교하지 않는다. 방금 푼 기록이 없으면(새로고침) 부르지 않는다
   const ghost = useGhost(cardId, 'result', !review && !!results)
 
-  if (!card) return <p className="p-5 text-sm text-slate-500">불러오는 중…</p>
+  if (!card) return <p className="text-sub p-5 text-sm font-semibold">불러오는 중…</p>
   if (!results) {
     return (
-      <div className="p-5 text-sm text-slate-500">
-        학습 기록이 없어요. (새로고침하면 기록이 사라져요)
-        <Link to={`/news/${card.id}/learn`} className="text-primary mt-3 block font-semibold">
-          처음부터 다시 풀기 ›
+      <div className="mm-empty">
+        <Mate mood="think" />
+        <p>
+          학습 기록이 없어요.
+          <br />
+          (새로고침하면 기록이 사라져요)
+        </p>
+        <Link to={`/news/${card.id}/learn`} className="mm-btn">
+          처음부터 다시 풀기
         </Link>
       </div>
     )
@@ -46,138 +55,95 @@ export const ResultPage = () => {
   // 채점된 단계가 하나도 없으면(판단 채점 실패·한도 초과뿐인 유형 3 등) 점수 대신 '-'
   const total = parts.length ? Math.round(parts.reduce((a, b) => a + b, 0) / parts.length) : null
 
+  const primary = review
+    ? { to: '/mypage', label: '학습 달력으로' }
+    : !SHOW_TAB2
+      ? // 탭2를 숨긴 동안에는 홈으로 돌아가는 버튼 하나만 둔다
+        { to: '/', label: '홈으로' }
+      : card.type === 3 && card.ticker
+        ? { to: `/etf?ticker=${card.ticker}`, label: `${card.ticker} 종목 상세로 이어 보기` }
+        : { to: '/etf', label: '13F·ETF로 실제 행동 복습하기' }
+
   return (
-    <div className="flex min-h-full flex-col px-5 pt-4 pb-5">
-      <div className="flex items-center justify-between">
-        <BackButton
-          label="카드뉴스 다시 보기"
-          onClick={() => navigate(withReview(`/news/${card.id}`, review))}
-        />
-        <CloseLink />
-      </div>
-      <h2 className="mt-5 text-2xl leading-snug font-bold text-slate-900">
-        {review ? (
-          <>
-            {reviewLabel(review)}의 판단,
-            <br />
-            다시 봤어요
-          </>
-        ) : (
-          <>
-            오늘의 판단,
-            <br />
-            기록했어요
-          </>
-        )}
-      </h2>
+    <div className="relative flex h-full flex-col overflow-hidden">
+      {!review && <Cheer />}
+      <LessonTop
+        progress={100}
+        onBack={() => navigate(withReview(`/news/${card.id}`, review))}
+        backLabel="카드뉴스 다시 보기"
+      />
 
-      <ScoreRing value={total} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mm-l-body">
+          <div className="mm-done-top">
+            <Mate mood="happy" />
+            <h2>{review ? `${reviewLabel(review)}의 판단` : '카드뉴스 한 건 완료!'}</h2>
+            <p>
+              {review ? '그날 낸 답과 채점 결과를 다시 봤어요.' : '오늘의 판단까지 기록했어요.'}
+            </p>
+          </div>
 
-      <dl className="mt-6 grid grid-cols-2 gap-2.5">
-        <Score label="개념 이해도" value={concept} />
-        <Score label="적용 판단" value={judgement} />
-      </dl>
+          <dl className="mm-scores">
+            <Score label="종합 점수" value={total} main />
+            <Score label="개념 이해도" value={concept} />
+            <Score label="적용 판단" value={judgement} />
+          </dl>
 
-      {ghost.data?.comparison && <GhostCard card={card} comparison={ghost.data.comparison} />}
+          <div className="mm-h-sec">
+            <h3>오늘 한 것</h3>
+          </div>
+          <ul className="mm-did">
+            {summaryLines(card, results).map((line) => (
+              <li key={line}>
+                <VerdictIcon ok />
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
 
-      <section className="mt-7">
-        <h3 className="font-bold text-slate-900">오늘의 학습 요약</h3>
-        <ul className="mt-3 flex flex-col gap-2">
-          {summaryLines(card, results).map((line) => (
-            <li
-              key={line}
-              className="flex items-center gap-3 rounded-2xl bg-slate-100 px-4 py-3.5 text-sm font-semibold text-slate-900"
-            >
-              <CheckIcon />
-              {line}
-            </li>
-          ))}
-        </ul>
-      </section>
+          {ghost.data?.comparison && <GhostCard card={card} comparison={ghost.data.comparison} />}
 
-      {/* AI 피드백: 판단해보기 채점 결과 (모든 유형 공통) */}
-      {grade && (
-        <div className="mt-6">
-          <AiAnalysis grade={grade} />
+          {/* AI 피드백: 판단해보기 채점 결과 (모든 유형 공통) */}
+          {grade && <AiAnalysis grade={grade} />}
         </div>
-      )}
+      </div>
 
-      <div className="mt-auto flex flex-col items-center gap-2 pt-7">
-        {review ? (
-          <Link
-            to="/mypage"
-            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
-          >
-            학습 달력으로
-          </Link>
-        ) : !SHOW_TAB2 ? (
-          // 탭2를 숨긴 동안에는 홈으로 돌아가는 버튼 하나만 둔다
-          <Link
-            to="/"
-            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
-          >
+      <div className="mm-l-foot">
+        <Link to={primary.to} className="mm-btn">
+          {primary.label}
+        </Link>
+        {SHOW_TAB2 && !review && (
+          <Link to="/" className="mm-textbtn leading-10">
             홈으로
           </Link>
-        ) : card.type === 3 && card.ticker ? (
-          <Link
-            to={`/etf?ticker=${card.ticker}`}
-            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
-          >
-            {card.ticker} 종목 상세로 이어 보기 ›
-          </Link>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** 점수 한 칸. 채점된 것이 없으면 '-' */
+const Score = ({
+  label,
+  value,
+  main = false,
+}: {
+  label: string
+  value: number | null
+  main?: boolean
+}) => {
+  return (
+    <div className={`mm-score ${main ? 'main' : ''}`}>
+      <dt>{label}</dt>
+      <dd>
+        {value === null ? (
+          '-'
         ) : (
-          <Link
-            to="/etf"
-            className="bg-primary w-full rounded-2xl py-4 text-center font-bold text-white"
-          >
-            13F·ETF로 실제 행동 복습하기 ›
-          </Link>
+          <>
+            {value}
+            <small>점</small>
+          </>
         )}
-        {SHOW_TAB2 && (
-          <Link to="/" className="min-h-11 px-4 py-3 text-slate-500">
-            홈으로
-          </Link>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/** 종합 점수 원 (100점이면 한 바퀴) */
-const ScoreRing = ({ value }: { value: number | null }) => {
-  const r = 54
-  const len = 2 * Math.PI * r
-  const ratio = value === null ? 0 : Math.min(Math.max(value, 0), 100) / 100
-
-  return (
-    <div className="relative mx-auto mt-6 size-36">
-      <svg viewBox="0 0 128 128" className="size-full -rotate-90" aria-hidden>
-        <circle cx="64" cy="64" r={r} fill="none" stroke="#e2e8f0" strokeWidth="12" />
-        <circle
-          cx="64"
-          cy="64"
-          r={r}
-          fill="none"
-          stroke="var(--color-primary)"
-          strokeWidth="12"
-          strokeLinecap="round"
-          strokeDasharray={`${len * ratio} ${len}`}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <p className="text-4xl font-bold text-slate-900 tabular-nums">{value ?? '-'}</p>
-        <p className="mt-0.5 text-xs text-slate-500">종합 점수</p>
-      </div>
-    </div>
-  )
-}
-
-const Score = ({ label, value }: { label: string; value: number | null }) => {
-  return (
-    <div className="rounded-2xl bg-slate-100 px-4 py-4 text-center">
-      <dt className="text-sm text-slate-500">{label}</dt>
-      <dd className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
-        {value === null ? '-' : `${value}점`}
       </dd>
     </div>
   )
@@ -206,22 +172,4 @@ const summaryLines = (card: CardDetail, results: Record<string, AnswerResult>) =
       lines.push(results[s.id] ? '판단 시뮬레이션 완료' : '판단 시뮬레이션 · 풀지 않음')
   }
   return lines
-}
-
-function CheckIcon() {
-  return (
-    <span className="bg-primary flex size-6 shrink-0 items-center justify-center rounded-md text-white">
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        aria-hidden
-      >
-        <path d="M5 12l5 5 9-10" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </span>
-  )
 }

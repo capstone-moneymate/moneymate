@@ -3,7 +3,7 @@ import { useAnswerMeter } from '@/lib/answerMeter'
 import type { AnswerMeta, Confidence } from '@/types/card'
 import type { ChoiceContent, TutorChoiceKind, TutorGradedEvent } from '@/types/tutor'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
-import { TutorFeedback } from '@/pages/tab1/steps/TutorFeedback'
+import { tutorResult } from '@/pages/tab1/steps/tutorResult'
 
 interface TutorChoiceQuizProps {
   kind: TutorChoiceKind
@@ -57,54 +57,45 @@ export const TutorChoiceQuiz = ({
 
   return (
     <StepFrame
-      badge={badge}
+      badge={`${badge} · ${GUIDE[kind]}`}
       heading={content.question ?? content.statement ?? ''}
-      buttonLabel="다음 ›"
+      buttonLabel="계속하기"
       onButton={onNext}
       confidence={graded ? undefined : { disabled: picked === null || pending, onPick: check }}
+      feedback={
+        graded
+          ? {
+              result: tutorResult(graded),
+              correctText: key !== null ? content.options[key] : undefined,
+            }
+          : undefined
+      }
     >
-      <p className="-mt-2 mb-4 text-sm text-slate-500">{GUIDE[kind]}</p>
-      <ul className={ox ? 'grid grid-cols-2 gap-3' : 'flex flex-col gap-3'}>
+      <ul className={`mm-opts mt-0 ${ox ? 'grid-cols-2' : ''}`}>
         {content.options.map((option, i) => (
           <li key={option}>
             <button
               type="button"
               disabled={!!graded || pending}
               onClick={() => pick(i)}
-              aria-pressed={picked === i}
-              className={`flex w-full items-center gap-3 rounded-2xl border font-semibold transition ${
-                ox ? 'justify-center py-7 text-3xl' : 'px-4 py-4 text-left'
-              } ${optionClass(i, picked, key)}`}
+              aria-pressed={key === null && picked === i}
+              className={`mm-opt ${ox ? 'big' : ''} ${optionClass(i, picked, key)}`}
             >
-              {!ox && (
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-600">
-                  {LETTERS[i]}
-                </span>
-              )}
+              {!ox && <span className="k">{LETTERS[i]}</span>}
               {option}
             </button>
           </li>
         ))}
       </ul>
-      {graded && (
-        <TutorFeedback
-          graded={graded}
-          correctText={key !== null ? content.options[key] : undefined}
-        />
-      )}
-      {error && <p className="text-up mt-3 text-sm">{error}</p>}
+      {error && <p className="text-no-ink mt-3 text-sm font-bold">{error}</p>}
     </StepFrame>
   )
 }
 
-/** 고르기 전·후 보기 색. 채점되면 정답은 파랑, 내가 고른 오답은 빨강 테두리 (QuizView 와 같다) */
+/** 채점 뒤 보기 색: 정답은 파랑, 내가 고른 오답은 빨강, 나머지는 흐리게 (QuizView 와 같다) */
 const optionClass = (i: number, picked: number | null, key: number | null) => {
-  if (key !== null) {
-    if (i === key) return 'border-primary bg-blue-50 text-slate-900'
-    if (i === picked) return 'border-up bg-rose-50 text-slate-900'
-    return 'border-transparent bg-slate-100 text-slate-400'
-  }
-  return i === picked
-    ? 'border-primary bg-blue-50 text-slate-900'
-    : 'border-transparent bg-slate-100 text-slate-800'
+  if (key === null) return ''
+  if (i === key) return 'right'
+  if (i === picked) return 'wrong'
+  return 'dim'
 }

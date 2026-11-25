@@ -4,6 +4,8 @@ import { SHOW_TAB2 } from '@/components/BottomNav'
 import { ENTRY_FREE_PATHS, hasEntered } from '@/lib/entry'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { WelcomePage } from '@/pages/auth/WelcomePage'
+import { LabPage } from '@/pages/lab/LabPage'
+import { LabQuizPage } from '@/pages/lab/LabQuizPage'
 import { CardNewsPage } from '@/pages/tab1/CardNewsPage'
 import { LearnPage } from '@/pages/tab1/LearnPage'
 import { NewsHomePage } from '@/pages/tab1/NewsHomePage'
@@ -36,6 +38,8 @@ export const router = createBrowserRouter([
             { path: '/etf/:ticker', element: <StockDetailPage /> },
           ]
         : [{ path: '/etf/*', loader: () => redirect('/') }]),
+      { path: '/lab', element: <LabPage /> },
+      { path: '/lab/:kind/:id', element: <LabQuizPage /> },
       { path: '/mypage', element: <MyPage /> },
       { path: '/mypage/map', element: <CausalMapPage /> },
       { path: '/mypage/review', element: <ReviewPage /> },

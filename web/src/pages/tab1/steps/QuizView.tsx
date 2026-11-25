@@ -6,15 +6,16 @@ import type {
   ChartStep as ChartStepData,
   Confidence,
   PastAnswer,
+  PastInput,
   QuizStep,
 } from '@/types/card'
-import { AnswerFeedback, NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
+import { NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
 import { ChartStep } from '@/pages/tab1/steps/ChartStep'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 interface QuizViewProps {
   step: QuizStep | ChartStepData
-  onNext: (result?: AnswerResult) => void
+  onNext: (result?: AnswerResult, input?: PastInput) => void
   /** 퀴즈가 여러 개일 때 "퀴즈 1 / 2" */
   quizNo?: { no: number; total: number } | null
   /**
@@ -55,58 +56,65 @@ export const QuizView = ({ step, onNext, quizNo, past }: QuizViewProps) => {
 
   return (
     <StepFrame
-      badge={quizNo && quizNo.total > 1 ? `퀴즈 ${quizNo.no} / ${quizNo.total}` : undefined}
+      badge={
+        step.kind === 'chart'
+          ? '차트 읽기'
+          : quizNo && quizNo.total > 1
+            ? `퀴즈 ${quizNo.no} / ${quizNo.total} · 하나만 골라요`
+            : '간단 퀴즈 · 하나만 골라요'
+      }
       heading={step.question}
-      buttonLabel="다음 ›"
-      onButton={() => onNext(reviewing ? past?.result : result)}
+      mood={step.kind === 'chart' ? 'wow' : 'think'}
+      buttonLabel="계속하기"
+      onButton={() =>
+        reviewing
+          ? onNext(past?.result)
+          : onNext(result, picked === null ? undefined : { kind: step.kind, optionIndex: picked })
+      }
       confidence={
         result || reviewing
           ? undefined
           : { disabled: picked === null || submit.isPending, onPick: check }
       }
+      feedback={
+        result
+          ? {
+              result,
+              correctText:
+                typeof result.correct === 'number' ? step.options[result.correct] : undefined,
+            }
+          : undefined
+      }
     >
       {step.kind === 'chart' && <ChartStep chart={step.chart} ticker={step.ticker} />}
-      <ul className="flex flex-col gap-3">
+      <ul className="mm-opts mt-0">
         {step.options.map((option, i) => (
           <li key={option}>
             <button
               type="button"
               disabled={!!result || reviewing}
               onClick={() => pick(i)}
-              className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left font-semibold transition ${optionClass(i, picked, result)}`}
+              aria-pressed={!result && picked === i}
+              className={`mm-opt ${optionClass(i, picked, result)}`}
             >
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-600">
-                {LETTERS[i]}
-              </span>
+              <span className="k">{LETTERS[i]}</span>
               {option}
             </button>
           </li>
         ))}
       </ul>
       {past === null && <NotAnswered />}
-      {result && (
-        <AnswerFeedback
-          result={result}
-          correctText={
-            typeof result.correct === 'number' ? step.options[result.correct] : undefined
-          }
-        />
-      )}
       {submit.isError && (
-        <p className="text-up mt-3 text-sm">채점하지 못했어요. 다시 눌러 주세요.</p>
+        <p className="text-no-ink mt-3 text-sm font-bold">채점하지 못했어요. 다시 눌러 주세요.</p>
       )}
     </StepFrame>
   )
 }
 
-/** 고르기 전·후 보기 색. 결과가 나오면 정답은 파랑, 내가 고른 오답은 빨강 테두리 */
+/** 채점 뒤 보기 색: 정답은 파랑, 내가 고른 오답은 빨강, 나머지는 흐리게. 고르는 중의 색은 aria-pressed 가 맡는다 */
 const optionClass = (i: number, picked: number | null, result?: AnswerResult) => {
-  if (result) {
-    if (i === result.correct) return 'border-primary bg-blue-50 text-slate-900'
-    if (i === picked) return 'border-up bg-rose-50 text-slate-900'
-    return 'border-transparent bg-slate-100 text-slate-400'
-  }
-  return i === picked
-    ? 'border-primary bg-blue-50 text-slate-900'
-    : 'border-transparent bg-slate-100 text-slate-800'
+  if (!result) return ''
+  if (i === result.correct) return 'right'
+  if (i === picked) return 'wrong'
+  return 'dim'
 }

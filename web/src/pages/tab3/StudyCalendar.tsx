@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
+import { Mate } from '@/components/Mate'
 import { withReview } from '@/lib/review'
 import type { CalendarCard, CalendarDay } from '@/types/causalMap'
 
@@ -49,7 +50,7 @@ interface StudyCalendarProps {
 }
 
 /**
- * 탭3 학습 달력. 문제를 푼 날(KST)에 남색 동그라미, 오늘은 진한 테두리.
+ * 탭3 학습 달력 (UI 시안 app.html 의 달력). 문제를 푼 날(KST)에 파란 동그라미, 오늘은 진한 테두리.
  * 달은 옆으로 밀어 넘기고(처음엔 이번 달), 동그라미 날을 누르면 그날 푼 카드뉴스가 아래에 나온다.
  */
 export const StudyCalendar = ({ days, streakDays }: StudyCalendarProps) => {
@@ -73,10 +74,10 @@ export const StudyCalendar = ({ days, streakDays }: StudyCalendarProps) => {
 
   return (
     <section>
-      <h2 className="px-5 text-xl font-bold text-[#232c5c]">학습 달력</h2>
+      <h2 className="px-5 text-xl font-extrabold tracking-[-0.02em]">학습 달력</h2>
       <div
         ref={scroller}
-        className="mt-4 flex snap-x snap-mandatory scroll-px-5 gap-3 overflow-x-auto px-5 pb-2"
+        className="mt-2.5 flex snap-x snap-mandatory scroll-px-5 gap-2.5 overflow-x-auto px-5 pt-0.5 pb-1.5"
       >
         {months.map((month) => (
           <MonthGrid
@@ -90,17 +91,20 @@ export const StudyCalendar = ({ days, streakDays }: StudyCalendarProps) => {
         ))}
       </div>
 
-      <div className="mt-5 px-5">
+      <div className="mt-3 px-5">
         {selected ? (
           <DayCards date={selected} cards={selectedCards} onClose={() => setSelected(null)} />
         ) : (
-          <p className="rounded-3xl bg-[#fff3c4] px-5 py-4 text-sm leading-relaxed font-semibold text-[#232c5c]">
-            {streakDays > 0
-              ? `${streakDays}일째 이어가는 중이에요.`
-              : '오늘 첫 카드뉴스를 풀어 볼까요?'}
-            <br />
-            남색 동그라미가 카드뉴스를 배운 날이에요. 누르면 다시 볼 수 있어요.
-          </p>
+          <div className="mm-note">
+            <Mate mood={streakDays > 0 ? 'wink' : 'smile'} />
+            <p>
+              {streakDays > 0
+                ? `${streakDays}일째 이어가는 중이에요.`
+                : '오늘 첫 카드뉴스를 풀어 볼까요?'}
+              <br />
+              파란 날짜를 누르면 그날 문제를 다시 볼 수 있어요.
+            </p>
+          </div>
         )}
       </div>
     </section>
@@ -118,19 +122,17 @@ interface MonthGridProps {
 const MonthGrid = ({ month, today, studied, selected, onSelect }: MonthGridProps) => {
   const [y, m] = month.split('-').map(Number)
   return (
-    <div className="w-[88%] shrink-0 snap-start rounded-[28px] bg-white px-4 pt-5 pb-4 shadow-[0_6px_0_#dfe4f6]">
-      <p className="text-center text-lg font-bold text-[#232c5c]">
+    <div className="mm-box w-[90%] shrink-0 snap-center px-3 pt-4 pb-3.5">
+      <p className="text-center text-[17px] font-extrabold">
         {y}년 {m}월
       </p>
-      <div className="mt-3 grid grid-cols-7 text-center text-xs font-semibold text-[#5b6694]">
+      <div className="mm-cal">
         {WEEKDAYS.map((w) => (
           <span key={w}>{w}</span>
         ))}
-      </div>
-      <div className="mt-2 grid grid-cols-7 gap-y-1.5">
         {monthCells(month).map((date, i) =>
           date === null ? (
-            <span key={`e${i}`} />
+            <i key={`e${i}`} />
           ) : (
             <DayCell
               key={date}
@@ -160,14 +162,11 @@ interface DayCellProps {
 const DayCell = ({ date, isToday, isFuture, cards, isSelected, onSelect }: DayCellProps) => {
   const day = Number(date.slice(8))
   const studied = !!cards?.length
-  const base = 'mx-auto flex size-10 items-center justify-center rounded-full text-[15px] font-bold'
 
   if (!studied) {
     return (
       <span
-        className={`${base} ${isFuture ? 'text-[#a3abcb]' : 'text-[#3a4473]'} ${
-          isToday ? 'ring-2 ring-[#232c5c]' : ''
-        }`}
+        className={`d ${isFuture ? 'future' : ''} ${isToday ? 'today' : ''}`}
         aria-label={isToday ? `오늘 ${day}일` : undefined}
       >
         {day}
@@ -181,9 +180,7 @@ const DayCell = ({ date, isToday, isFuture, cards, isSelected, onSelect }: DayCe
       onClick={() => onSelect(date)}
       aria-pressed={isSelected}
       aria-label={`${formatDay(date)} 카드뉴스 ${cards.length}장 다시 보기`}
-      className={`${base} bg-[#5468b8] text-white active:scale-95 ${
-        isSelected ? 'ring-4 ring-[#ffd84d]' : isToday ? 'ring-2 ring-[#232c5c] ring-offset-0' : ''
-      }`}
+      className={`d ${isToday ? 'today' : ''}`}
     >
       {day}
     </button>
@@ -199,38 +196,32 @@ interface DayCardsProps {
 /** 고른 날에 푼 카드뉴스. 풀었던 내용 보기(그날 답 그대로) / 퀴즈 다시 풀기(처음 상태) */
 const DayCards = ({ date, cards, onClose }: DayCardsProps) => {
   return (
-    <div>
+    <div aria-live="polite">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-base font-bold text-[#232c5c]">{formatDay(date)}에 푼 카드뉴스</h3>
-        <button type="button" onClick={onClose} className="text-xs font-semibold text-[#5b6694]">
+        <h3 className="text-[15px] font-extrabold">{formatDay(date)}에 푼 카드뉴스</h3>
+        <button type="button" onClick={onClose} className="text-sub text-xs font-bold">
           닫기
         </button>
       </div>
-      <ul className="mt-3 space-y-3">
+      <ul className="mt-2 space-y-2">
         {cards.map((c) => (
-          <li key={c.cardId} className="rounded-3xl bg-white p-4 shadow-[0_4px_0_#dfe4f6]">
+          <li key={c.cardId} className="mm-box p-3.5">
             {c.cardDate !== date && (
-              <p className="text-[11px] font-semibold text-[#5468b8]">
+              <p className="text-blue-ink text-[11.5px] font-extrabold">
                 지난 뉴스 · {formatDay(c.cardDate)}
               </p>
             )}
-            <p className="text-[15px] leading-snug font-bold text-[#232c5c]">{c.title}</p>
-            <p className="mt-1 text-xs text-[#5b6694]">
+            <p className="text-[15px] leading-snug font-extrabold">{c.title}</p>
+            <p className="text-sub mt-1 text-xs font-semibold">
               {c.stepCount > 0 ? `문제 ${c.stepCount}개 중 ${c.correct}개 맞힘` : '문제 없음'}
               {c.answered < c.stepCount && ` · ${c.stepCount - c.answered}개는 안 풀었어요`}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {/* 둘 다 카드뉴스부터 시작해 퀴즈로 이어진다. 보기는 그날 낸 답·채점 결과를 채워서, 다시 풀기는 처음 상태로 */}
-              <Link
-                to={withReview(`/news/${c.cardId}`, date)}
-                className="rounded-2xl bg-[#e6eafa] py-2.5 text-center text-[#3a4a99]"
-              >
+              <Link to={withReview(`/news/${c.cardId}`, date)} className="mm-btn sm ghost">
                 풀었던 내용 보기
               </Link>
-              <Link
-                to={`/news/${c.cardId}`}
-                className="rounded-2xl bg-[#5468b8] py-2.5 text-center text-white"
-              >
+              <Link to={`/news/${c.cardId}`} className="mm-btn sm">
                 퀴즈 다시 풀기
               </Link>
             </div>

@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useSubmitAnswer } from '@/api/cards'
 import { useAnswerMeter } from '@/lib/answerMeter'
-import type { AnswerResult, CausalOrderStep, PastAnswer } from '@/types/card'
-import { AnswerFeedback, NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
+import type { AnswerResult, CausalOrderStep, PastAnswer, PastInput } from '@/types/card'
+import { NotAnswered } from '@/pages/tab1/steps/AnswerFeedback'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 
 interface CausalOrderViewProps {
   step: CausalOrderStep
-  onNext: (result?: AnswerResult) => void
+  onNext: (result?: AnswerResult, input?: PastInput) => void
   /** 풀었던 내용 보기(탭3). null = 그날 안 풀었음, undefined = 평소처럼 푼다 (QuizView 와 같음) */
   past?: PastAnswer | null
 }
@@ -26,6 +26,8 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
   const result = reviewing ? past?.result : submit.data
   const labelOf = (id: string) => step.items.find((item) => item.conceptId === id)?.label ?? id
   const full = order.length === step.items.length
+  /** 정답 순서 (채점 뒤에만 있다) */
+  const correct = result && Array.isArray(result.correct) ? result.correct : null
 
   const toggle = (id: string) => {
     if (result || reviewing) return
@@ -44,9 +46,12 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
 
   return (
     <StepFrame
+      badge="순서 맞추기 · 원인부터 차례로"
       heading={step.question}
-      buttonLabel="다음 ›"
-      onButton={() => onNext(reviewing ? past?.result : result)}
+      buttonLabel="계속하기"
+      onButton={() =>
+        reviewing ? onNext(past?.result) : onNext(result, { kind: 'causal_order', order })
+      }
       confidence={
         result || reviewing
           ? undefined
@@ -60,31 +65,31 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
                 }),
             }
       }
+      feedback={
+        result
+          ? { result, correctText: correct ? correct.map(labelOf).join(' → ') : undefined }
+          : undefined
+      }
     >
-      <p className="text-sm text-slate-500">
+      <p className="text-sub text-sm font-semibold">
         {reviewing ? '그때 고른 순서예요.' : '원인부터 차례대로 카드를 눌러 주세요.'}
       </p>
 
-      <ul className="mt-4 flex flex-col gap-3">
+      <ul className="mm-opts mt-3">
         {step.items.map((item) => {
           const pos = order.indexOf(item.conceptId)
+          // 채점 뒤: 제자리에 놓은 카드는 파랑, 아니면 빨강
+          const mark = correct ? (correct[pos] === item.conceptId ? 'right' : 'wrong') : ''
           return (
             <li key={item.conceptId}>
               <button
                 type="button"
                 disabled={!!result || reviewing}
                 onClick={() => toggle(item.conceptId)}
-                className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left font-semibold text-slate-900 transition ${
-                  pos >= 0 ? 'border-primary bg-blue-50' : 'border-transparent bg-slate-100'
-                }`}
+                aria-pressed={!correct && pos >= 0}
+                className={`mm-opt ${pos < 0 ? 'k-empty' : ''} ${mark}`}
               >
-                <span
-                  className={`flex size-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                    pos >= 0 ? 'bg-primary text-white' : 'bg-slate-300'
-                  }`}
-                >
-                  {pos >= 0 ? pos + 1 : ''}
-                </span>
+                <span className="k">{pos >= 0 ? pos + 1 : '0'}</span>
                 {item.label}
               </button>
             </li>
@@ -96,23 +101,15 @@ export const CausalOrderView = ({ step, onNext, past }: CausalOrderViewProps) =>
         <button
           type="button"
           onClick={reset}
-          className="mt-4 min-h-11 text-sm text-slate-500 underline underline-offset-4"
+          className="mm-textbtn mt-3 underline underline-offset-4"
         >
           다시 고르기
         </button>
       )}
 
       {past === null && <NotAnswered />}
-      {result && (
-        <AnswerFeedback
-          result={result}
-          correctText={
-            Array.isArray(result.correct) ? result.correct.map(labelOf).join(' → ') : undefined
-          }
-        />
-      )}
       {submit.isError && (
-        <p className="text-up mt-3 text-sm">채점하지 못했어요. 다시 눌러 주세요.</p>
+        <p className="text-no-ink mt-3 text-sm font-bold">채점하지 못했어요. 다시 눌러 주세요.</p>
       )}
     </StepFrame>
   )

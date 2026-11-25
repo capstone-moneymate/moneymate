@@ -69,7 +69,7 @@ const NowBody = ({ now }: { now: StockNow }) => {
 
       {now.linked.length > 0 && (
         <div className="mt-4 rounded-2xl bg-orange-50 px-4 py-3.5">
-          <p className="text-sm font-bold text-amber-700">{NOW_LINKED_TITLE}</p>
+          <p className="text-butter-ink text-sm font-bold">{NOW_LINKED_TITLE}</p>
           <ul className="mt-1 space-y-1 text-[15px] leading-relaxed text-slate-800">
             {now.linked.map((l) => (
               <li key={l.conceptId}>

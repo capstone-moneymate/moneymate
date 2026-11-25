@@ -60,7 +60,10 @@ export const ReasonsCard = ({
 
   if (data.reasons.some((r) => r.side)) {
     // 번호는 큰손 쪽부터 이어 붙인다 (이유 1·2 는 큰손, 3 은 ETF)
-    const groups = SIDES.map((side) => ({ side, items: data.reasons.filter((r) => r.side === side) }))
+    const groups = SIDES.map((side) => ({
+      side,
+      items: data.reasons.filter((r) => r.side === side),
+    }))
     const offsets = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.items.length, 0))
     return (
       <>
@@ -79,8 +82,15 @@ export const ReasonsCard = ({
               ) : (
                 <ul className="mt-2 flex flex-col gap-3">
                   {items.map((r, i) => (
-                    <li key={`${side}-${i}-${r.title}`} className="rounded-2xl bg-slate-50 px-4 py-4">
-                      <ReasonItem reason={r} index={offsets[gi] + i + 1} end={endLabel(r.direction)} />
+                    <li
+                      key={`${side}-${i}-${r.title}`}
+                      className="rounded-2xl bg-slate-50 px-4 py-4"
+                    >
+                      <ReasonItem
+                        reason={r}
+                        index={offsets[gi] + i + 1}
+                        end={endLabel(r.direction)}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -88,7 +98,9 @@ export const ReasonsCard = ({
             </section>
           )
         })}
-        <p className="mt-4 text-[13px] leading-relaxed text-slate-500">{splitFootNote(periodEnd)}</p>
+        <p className="mt-4 text-[13px] leading-relaxed text-slate-500">
+          {splitFootNote(periodEnd)}
+        </p>
       </>
     )
   }
@@ -106,7 +118,9 @@ export const ReasonsCard = ({
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-[13px] leading-relaxed text-slate-500">{reasonsFootNote(periodEnd)}</p>
+      <p className="mt-4 text-[13px] leading-relaxed text-slate-500">
+        {reasonsFootNote(periodEnd)}
+      </p>
     </>
   )
 }
@@ -129,7 +143,7 @@ const ReasonItem = ({
         {reason.inMyMap ? (
           <Link
             to="/mypage/map"
-            className="bg-primary/10 text-primary shrink-0 rounded-full px-3 py-1.5 text-[13px] font-bold"
+            className="bg-primary/10 text-blue-ink shrink-0 rounded-full px-3 py-1.5 text-[13px] font-bold"
           >
             {MY_MAP_BADGE} ›
           </Link>
@@ -146,7 +160,7 @@ const ReasonItem = ({
             <span
               className={`rounded-lg border px-2.5 py-1.5 text-sm font-bold ${
                 c.learned
-                  ? 'border-primary text-primary bg-blue-50'
+                  ? 'border-primary text-blue-ink bg-blue-soft'
                   : 'border-slate-300 bg-white text-slate-800'
               }`}
             >
@@ -193,7 +207,7 @@ const EvidenceLine = ({ evidence }: { evidence: ReasonEvidence[] }) => {
                 href={e.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary break-words underline underline-offset-2"
+                className="text-blue-ink break-words underline underline-offset-2"
               >
                 {e.title}
               </a>

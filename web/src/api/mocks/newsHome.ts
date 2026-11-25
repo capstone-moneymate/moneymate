@@ -1,4 +1,4 @@
-import type { Candle, NewsHome, StockChart } from '@/types/news'
+import type { Candle, NewsHome, PastNews, StockChart } from '@/types/news'
 
 /** 목 종목 차트: 2026-11-19 까지 20거래일(주말 제외) NVDA 모양의 예시 값. 실제 시세가 아니다 */
 const mockCandles = (): Candle[] => {
@@ -109,6 +109,19 @@ export const newsHomeMock: NewsHome = {
       sourcePublishedAt: '2026-10-08T06:30:00Z',
       stepCount: 4,
     },
+  ],
+  completedCardIds: ['mock-kospi-3up'],
+}
+
+/**
+ * 지난 뉴스 목 데이터. 목에는 카드 상세가 세 건뿐이라 지난 카드도 그 세 건을 가리킨다 (제목은 그 카드의 것).
+ * 뉴스 API 연결 후 삭제한다.
+ */
+export const pastNewsMock: PastNews = {
+  cards: [
+    { date: '2026-10-07', card: newsHomeMock.cards[1] },
+    { date: '2026-10-06', card: newsHomeMock.cards[2] },
+    { date: '2026-10-02', card: newsHomeMock.cards[0] },
   ],
   completedCardIds: ['mock-kospi-3up'],
 }

@@ -4,6 +4,8 @@ import com.moneymate.news.NewsDtos.CardDetail;
 import com.moneymate.news.NewsDtos.MarketIndex;
 import com.moneymate.news.NewsDtos.NewsCardSummary;
 import com.moneymate.news.NewsDtos.NewsHome;
+import com.moneymate.news.NewsDtos.PastCard;
+import com.moneymate.news.NewsDtos.PastNews;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.Clock;
@@ -42,6 +44,8 @@ public class NewsService {
 
     /** 홈 카드 한 줄 요약 최대 글자 수 (첫 슬라이드 본문을 자른다) */
     static final int SUMMARY_MAX = 80;
+    /** 지난 뉴스로 한 번에 내려 주는 카드 수 (약 2주치) */
+    static final int PAST_LIMIT = 40;
 
     /** content 에 있으면 안 되는 정답 키. compose.py 는 정답을 steps.answer 에만 쓰지만 한 번 더 막는다 */
     static final Set<String> ANSWER_KEYS = Set.of("answer", "answer_index", "answer_order", "correct",
@@ -78,6 +82,24 @@ public class NewsService {
         }
         return new NewsHome(cardDate.toString(), indices(repository.findLatestIndices(List.copyOf(INDICES.keySet()))),
                 cards, completed);
+    }
+
+    /**
+     * 지난 뉴스: 홈에 보이는 날짜(가장 최근 card_date)보다 앞선 카드를 최근 날짜부터 PAST_LIMIT 건까지.
+     * 홈과 겹치지 않게 기준 날짜를 홈과 같은 방법으로 정한다.
+     */
+    public PastNews past(String userId) {
+        LocalDate today = LocalDate.now(clock.withZone(KST));
+        LocalDate cardDate = repository.findLatestCardDate(today, includePending).orElse(today);
+        List<CardRow> rows = repository.findCardsBefore(cardDate, includePending, PAST_LIMIT);
+
+        List<PastCard> cards = rows.stream().map(r -> new PastCard(r.cardDate().toString(), summary(r))).toList();
+        List<String> completed = List.of();
+        if (userId != null && !rows.isEmpty()) {
+            List<Long> ids = rows.stream().map(CardRow::id).toList();
+            completed = repository.findCompletedCardIds(userId, ids).stream().map(String::valueOf).toList();
+        }
+        return new PastNews(cards, completed);
     }
 
     public CardDetail card(long cardId) {

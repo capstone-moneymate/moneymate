@@ -21,6 +21,11 @@ public interface NewsRepository {
     List<CardRow> findCardsByDate(@Param("cardDate") LocalDate cardDate,
                                   @Param("includePending") boolean includePending);
 
+    /** before 보다 앞선 날짜의 카드 (최근 날짜부터, 같은 날은 id 순), 최대 limit 건. */
+    List<CardRow> findCardsBefore(@Param("before") LocalDate before,
+                                  @Param("includePending") boolean includePending,
+                                  @Param("limit") int limit);
+
     /** 카드 한 건. 없거나 보여 줄 상태가 아니면 빈 값. */
     Optional<CardRow> findCard(@Param("cardId") long cardId, @Param("includePending") boolean includePending);
 

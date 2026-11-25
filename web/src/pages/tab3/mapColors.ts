@@ -5,8 +5,8 @@ import type { ForceDir } from '@/types/causalMap'
  * 연결: 올리는 힘 빨강, 누르는 힘 파랑. 탭 2의 늘림▲·줄임▼와 같은 색이라 ▲▼ 기호는 붙이지 않고 범례로만 설명한다.
  */
 export const EDGE_COLORS: Record<ForceDir, string> = {
-  up: '#d6213b',
-  down: '#1b64da',
+  up: '#f0506a',
+  down: '#4f63d2',
 }
 
 /** 테마 색. 시안의 금리·AI·반도체·차트 읽기 색을 따르고, 나머지는 순서대로 */

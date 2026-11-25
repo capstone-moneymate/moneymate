@@ -79,6 +79,15 @@
          ORDER BY c.id
     </select>
 
+    <!-- 지난 뉴스: 홈에 보이는 날짜(before)보다 앞선 카드. 최근 날짜부터 -->
+    <select id="findCardsBefore" resultMap="cardMap">
+        <include refid="cardColumns"/>
+         WHERE c.card_date &lt; #{before}
+           AND <include refid="visibleStatus"/>
+         ORDER BY c.card_date DESC, c.id
+         LIMIT #{limit}
+    </select>
+
     <select id="findCard" resultMap="cardMap">
         <include refid="cardColumns"/>
          WHERE c.id = #{cardId}
