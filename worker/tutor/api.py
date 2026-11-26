@@ -1,7 +1,8 @@
 """튜터 에이전트 API (사람1, #240). 채점 서버(judge_api.py)에 붙는 라우터다. Spring 이 로그인 사용자를 확인한 뒤 부른다.
 
 - POST /tutor/start              카드의 개념 단계 튜터를 시작한다. 퀴즈를 낼 때까지(또는 끝날 때까지) 돌고 이벤트를 돌려준다
-- POST /tutor/{session_id}/answer 기다리는 퀴즈의 답을 낸다. 채점 → 알 확률·답 기록 → 다음 퀴즈(또는 끝)까지 돌고 이벤트를 돌려준다
+- POST /tutor/{session_id}/answer 기다리는 퀴즈의 답을 낸다. 채점 → 알 확률·답 기록까지 하고 graded 를 바로 돌려준다(status running).
+                                 다음 퀴즈(또는 끝)는 뒤에서 만들고, 화면은 GET 으로 받아 간다 (#281)
 - GET  /tutor/{session_id}        지금 상태와 지금까지의 이벤트 전부 (화면을 새로 열었을 때)
 
 이벤트 (tutor/agent.py 가 만든다. 화면은 순서대로 그린다)
@@ -84,7 +85,7 @@ class AnswerIn(BaseModel):
 
 class TutorOut(BaseModel):
     session_id: str
-    status: str = Field(description="waiting(퀴즈 답 기다림) / done / error")
+    status: str = Field(description="waiting(퀴즈 답 기다림) / running(다음 퀴즈를 만드는 중) / done / error")
     finished_by: str | None
     targets: list[str] = Field(description="이 카드의 목표 개념 (개념 단계 용어)")
     quizzes: int
@@ -134,19 +135,39 @@ def start(req: StartIn) -> TutorOut:
 
 @router.post("/{session_id}/answer", response_model=TutorOut)
 def answer(session_id: str, req: AnswerIn) -> TutorOut:
+    """채점 결과(graded)를 먼저 돌려주고(status running), 다음 퀴즈(모델 호출 몇 번, 수 초)는 뒤에서 만든다 (#281).
+    화면은 사용자가 해설을 보는 동안 GET 으로 다음 이벤트를 받아 간다. 잠금은 뒤 작업이 끝날 때 풀린다 (그동안 답이 오면 409)."""
     e = _get(session_id, req.user_id)
     if not e.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="앞의 답을 처리하고 있어요.")
+    background = False
     try:
         e.touched = datetime.now(timezone.utc)
         if e.s.status != "waiting" or not e.s.pending:
             raise HTTPException(status_code=409, detail="기다리는 퀴즈가 없어요.")
+        # 지금까지의 이벤트(뒤에서 만든 다음 퀴즈 포함)는 화면이 GET 으로 이미 받았다. 이 답의 응답에는 채점 결과만 담는다
+        e.seen = len(e.s.events)
         try:
-            ag.answer(e.s, req.answer, req.confidence, response_ms=req.response_ms, answer_changes=req.answer_changes)
-        except Exception as ex:   # 채점·기록은 끝났고 다음 모델 호출이 실패했다: graded 와 done(stop:...) 이벤트를 돌려준다
-            log.warning("튜터를 이어 가지 못했어요 (세션 %s): %s", session_id, ex)
-        return _out(session_id, e)
+            ag.grade(e.s, req.answer, req.confidence, response_ms=req.response_ms, answer_changes=req.answer_changes)
+        except Exception as ex:   # 채점·기록 실패(DB 등): 전처럼 새 이벤트 없이 돌려준다 (status waiting 그대로)
+            log.warning("답을 채점하지 못했어요 (세션 %s): %s", session_id, ex)
+            return _out(session_id, e)
+        out = _out(session_id, e)   # graded 만, status running
+        threading.Thread(target=_resume, args=(session_id, e), daemon=True).start()
+        background = True           # 잠금은 _resume 이 푼다
+        return out
     finally:
+        if not background:
+            e.lock.release()
+
+
+def _resume(session_id: str, e: _Entry) -> None:
+    try:
+        ag.resume(e.s)
+    except Exception as ex:   # 다음 모델 호출이 실패했다: agent 가 세션을 error 로 끝내고 done(stop:...) 이벤트를 남겼다
+        log.warning("튜터를 이어 가지 못했어요 (세션 %s): %s", session_id, ex)
+    finally:
+        e.touched = datetime.now(timezone.utc)
         e.lock.release()
 
 

@@ -243,3 +243,19 @@ def test_quiz_maker_replaces_generation(monkeypatch):
                                                               0, "e", 1 / 3)
     s = ag.start(s)
     assert got == [("순이익", "용어 뜻")] and s.status == "waiting"
+
+
+def test_start_and_answer_carry_current_state(monkeypatch, no_guard):
+    # #281: 처음 메시지와 퀴즈 답 결과에 ready_concepts 와 같은 상태를 넣어 상태 확인 호출을 줄인다
+    import json
+    fake_quiz(monkeypatch)
+    calls = script(monkeypatch,
+                   ("tool_use", [tool_use("ask_quiz", concept="유통 주식 수", kind="용어 뜻")]),
+                   ("tool_use", [tool_use("go_main")]))
+    s = ag.start(session({"순이익": 0.97}))
+    first = calls[0]["messages"][0]["content"]
+    assert "<state>" in first and json.dumps(ag.tool_ready(s), ensure_ascii=False) in first
+    s = ag.answer(s, 0, "확신해요")
+    res = json.loads(calls[1]["messages"][-1]["content"][0]["content"])
+    assert res["correct"] is True and res["state"] == ag.tool_ready(s)   # 답 반영 뒤 상태
+    assert res["state"]["targets"][0]["concept"] == "주당순이익"

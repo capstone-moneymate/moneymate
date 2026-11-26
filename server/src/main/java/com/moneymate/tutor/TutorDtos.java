@@ -15,7 +15,7 @@ public final class TutorDtos {
 
     /**
      * @param sessionId  튜터 세션 id. 답을 낼 때 쓴다
-     * @param status     waiting(퀴즈 답 기다림) / done / error
+     * @param status     waiting(퀴즈 답 기다림) / running(답 뒤 다음 퀴즈를 만드는 중, #281) / done / error
      * @param finishedBy 끝난 이유. go_main(본 문제로), quiz_limit, call_limit, no_tool, no_targets(개념 단계 용어가 없는 카드), stop:오류
      * @param targets    이 카드의 목표 개념
      * @param quizzes    지금까지 낸 퀴즈 수
