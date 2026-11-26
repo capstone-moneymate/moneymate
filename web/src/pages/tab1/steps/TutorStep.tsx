@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { fetchTutor, useTutorAnswer, useTutorStart } from '@/api/tutor'
 import { Mate } from '@/components/Mate'
@@ -35,6 +35,44 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
   const [syncing, setSyncing] = useState(false)
   const [retryMsg, setRetryMsg] = useState<string | null>(null)
   const [lost, setLost] = useState(false)
+  // 서버는 채점 결과를 먼저 주고(status running) 다음 문제는 뒤에서 만든다 (#281). 사용자가 해설을 보는 동안 받아 둔다
+  const [fetchingNext, setFetchingNext] = useState(false)
+  const sessionForNext = start.data?.sessionId
+  const firstForNext = start.data?.events.length ?? 0
+  useEffect(() => {
+    if (!fetchingNext || !sessionForNext) return
+    let alive = true
+    void (async () => {
+      for (let i = 0; alive && i < NEXT_TRIES; i++) {
+        await wait(NEXT_WAIT_MS)
+        if (!alive) return
+        try {
+          const s = await fetchTutor(sessionForNext)
+          if (!alive) return
+          if (s.status !== 'running') {
+            setMore(s.events.slice(firstForNext))
+            setFetchingNext(false)
+            return
+          }
+        } catch (e) {
+          if (!alive) return
+          if ([404, 503].includes(statusOf(e))) {
+            setLost(true)
+            setFetchingNext(false)
+            return
+          }
+          // 잠깐 끊긴 것: 다음 차례에 다시 본다
+        }
+      }
+      if (alive) {
+        setLost(true) // 너무 오래 걸린다: 개념 단계를 여기서 끝낸다 (푼 기록은 저장돼 있다)
+        setFetchingNext(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [fetchingNext, sessionForNext, firstForNext])
 
   if (start.isPending) return <Waiting text="지금 아는 정도를 보고 첫 문제를 고르는 중이에요…" />
   const fallback = <ConceptView step={step} onNext={onNext} nextLabel={nextLabel} />
@@ -93,7 +131,10 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
     answer.mutate(
       { sessionId, answer: value, meta },
       {
-        onSuccess: (s) => setMore((m) => [...m, ...s.events]),
+        onSuccess: (s) => {
+          setMore((m) => [...m, ...s.events])
+          if (s.status === 'running') setFetchingNext(true)
+        },
         onError: (e) => {
           const code = statusOf(e)
           if (code === 404) setLost(true)
@@ -152,6 +193,10 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
 const SYNC_TRIES = 30
 const SYNC_WAIT_MS = 3_000
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** 채점 뒤 다음 문제를 받아 올 때: 이만큼 간격으로 서버 상태를 본다 (최대 약 100초, Spring 이 채점 서버를 90초 기다림) */
+const NEXT_TRIES = 100
+const NEXT_WAIT_MS = 1_000
 
 /** HTTP 상태. 응답 자체가 없으면(연결 끊김·시간 초과) 0 */
 const statusOf = (e: unknown) => (axios.isAxiosError(e) ? (e.response?.status ?? 0) : 0)

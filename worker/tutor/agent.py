@@ -135,7 +135,7 @@ SYSTEM = "\n".join([
     "너는 경제 초보자 학습 서비스의 튜터다. 뉴스 본 문제 전에, 그 뉴스를 이해하는 데 필요한 목표 개념을 짧게 확인하고 가르친다.",
     "도구 결과를 보고 다음에 할 일을 스스로 하나 고른다. 고정된 순서는 없다. 한 번에 도구 하나만 부른다.",
     "모든 도구의 reason 에 왜 그 행동을 골랐는지 한국어 한 문장으로 먼저 쓴다.",
-    "ready_concepts 결과의 targets 는 목표 개념 전부의 상태이고, ready 는 지금 배울 준비가 된 개념이다. 상태를 모르면 ready_concepts 를 부른다.",
+    "ready_concepts 결과의 targets 는 목표 개념 전부의 상태이고, ready 는 지금 배울 준비가 된 개념이다. 처음 <state> 와 퀴즈 답 결과의 state 가 바로 그 결과(지금 상태)라 따로 부르지 않아도 된다. 그래도 상태가 필요하면 ready_concepts 를 부른다.",
     "선수 개념을 모르는 목표 개념은 바로 묻지 말고, 준비된 선수 개념부터 다룬다.",
     "퀴즈 종류 고르는 근거:",
     "- 처음 보는 개념(알 확률 낮고 기록 없음) → 용어 뜻",
@@ -222,8 +222,10 @@ def _unknown_targets(s: Session) -> list[str]:
 
 
 def _finish(s: Session, by: str) -> Session:
-    s.status, s.finished_by = ("error" if by.startswith("stop:") else "done"), by
+    # 이벤트를 먼저 넣고 상태를 바꾼다: API 의 GET 은 잠금 없이 읽어서, 상태가 끝인데 done 이벤트가 없는 순간이 보이면 안 된다
     s.events.append({"type": "done", "by": by})
+    s.finished_by = by
+    s.status = "error" if by.startswith("stop:") else "done"
     return s
 
 
@@ -307,23 +309,39 @@ def _run(s: Session) -> Session:
                 continue
             s.quizzes += 1
             s.pending = (u.id, q)
-            s.status = "waiting"
             s.events.append({"type": "quiz", "kind": q.kind, "concept": q.concept, "content": q.content,
                              "guess_p": round(q.guess_p, 3)})
+            s.status = "waiting"   # 퀴즈 이벤트 다음에: waiting 을 본 GET 에는 그 퀴즈가 꼭 들어 있다
             return s
         s.messages.append({"role": "user", "content": [_result(u.id, f"모르는 도구: {u.name}", True)]})
 
 
 def start(s: Session) -> Session:
     lesson = {"card": s.card, "targets": s.targets, "max_quizzes": s.max_quizzes}
-    s.messages = [{"role": "user", "content": f"<lesson>\n{json.dumps(lesson, ensure_ascii=False)}\n</lesson>\n개념 단계를 시작해."}]
+    state = json.dumps(tool_ready(s), ensure_ascii=False)   # 첫 상태도 같이 줘서 시작할 때 상태 확인 호출을 줄인다 (#281)
+    s.messages = [{"role": "user", "content": f"<lesson>\n{json.dumps(lesson, ensure_ascii=False)}\n</lesson>\n"
+                                              f"<state>\n{state}\n</state>\n개념 단계를 시작해."}]
     return _advance(s)
 
 
 def answer(s: Session, response, confidence, response_ms: int | None = None,
            answer_changes: int | None = None) -> Session:
-    """퀴즈 답을 넣고 이어 간다. confidence: 확신해요 / 애매해요 (또는 2 / 1, 비워도 됨).
+    """퀴즈 답을 넣고 이어 간다 (= grade + resume). confidence: 확신해요 / 애매해요 (또는 2 / 1, 비워도 됨).
     알 확률 갱신과 답 기록(DbMastery 면 concept_answers)은 다음 모델 호출 전에 끝난다."""
+    grade(s, response, confidence, response_ms=response_ms, answer_changes=answer_changes)
+    return resume(s)
+
+
+def resume(s: Session) -> Session:
+    """grade 뒤 다음 퀴즈(또는 끝)까지 돈다. API 는 채점 결과를 먼저 돌려주고 이것을 뒤에서 돌린다 (#281)."""
+    if s.status != "running":
+        raise RuntimeError("채점한 답이 없어요")
+    return _advance(s)
+
+
+def grade(s: Session, response, confidence, response_ms: int | None = None,
+          answer_changes: int | None = None) -> Session:
+    """채점·알 확률 갱신·답 기록·graded 이벤트까지만 한다 (모델을 부르지 않는다). status 는 running 이 된다."""
     if s.status != "waiting" or not s.pending:
         raise RuntimeError("기다리는 퀴즈가 없어요")
     tool_use_id, q = s.pending
@@ -335,7 +353,16 @@ def answer(s: Session, response, confidence, response_ms: int | None = None,
     s.events.append({"type": "graded", "concept": q.concept, "kind": q.kind, "correct": correct, "key": q.key,
                      "explanation": q.explanation})
     s.pending, s.status = None, "running"
+    try:
+        # 지금 상태(ready_concepts 와 같은 내용)를 같이 넘긴다. 없으면 튜터가 퀴즈 두 개마다 상태 확인을 따로 불러
+        # Opus 호출이 한 번 더(3~4초) 들었다 (#281, 2026-11-26 측정)
+        state = tool_ready(s)
+    except Exception as e:
+        # 답은 이미 기록됐다. waiting 으로 되돌리면 다시 낸 답이 두 번 기록되고, running 으로 두면 이어 갈 퀴즈가 없어
+        # 세션이 멈춘다. 그래서 여기서 끝낸다 (#282 리뷰)
+        _finish(s, f"stop:{type(e).__name__}")
+        raise
     s.messages.append({"role": "user", "content": [_result(tool_use_id, {
         "concept": q.concept, "kind": q.kind, "correct": correct, "confidence": confidence,
-        "guess_p": round(q.guess_p, 3), "p_know_now": round(p, 2)})]})
-    return _advance(s)
+        "guess_p": round(q.guess_p, 3), "p_know_now": round(p, 2), "state": state})]})
+    return s
