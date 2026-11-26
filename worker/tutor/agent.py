@@ -226,8 +226,10 @@ def _unknown_targets(s: Session) -> list[str]:
 
 
 def _finish(s: Session, by: str) -> Session:
-    s.status, s.finished_by = ("error" if by.startswith("stop:") else "done"), by
+    # 이벤트를 먼저 넣고 상태를 바꾼다: API 의 GET 은 잠금 없이 읽어서, 상태가 끝인데 done 이벤트가 없는 순간이 보이면 안 된다
     s.events.append({"type": "done", "by": by})
+    s.finished_by = by
+    s.status = "error" if by.startswith("stop:") else "done"
     return s
 
 
@@ -311,9 +313,9 @@ def _run(s: Session) -> Session:
                 continue
             s.quizzes += 1
             s.pending = (u.id, q)
-            s.status = "waiting"
             s.events.append({"type": "quiz", "kind": q.kind, "concept": q.concept, "content": q.content,
                              "guess_p": round(q.guess_p, 3)})
+            s.status = "waiting"   # 퀴즈 이벤트 다음에: waiting 을 본 GET 에는 그 퀴즈가 꼭 들어 있다
             return s
         s.messages.append({"role": "user", "content": [_result(u.id, f"모르는 도구: {u.name}", True)]})
 
@@ -355,10 +357,16 @@ def grade(s: Session, response, confidence, response_ms: int | None = None,
     s.events.append({"type": "graded", "concept": q.concept, "kind": q.kind, "correct": correct, "key": q.key,
                      "explanation": q.explanation})
     s.pending, s.status = None, "running"
-    s.messages.append({"role": "user", "content": [_result(tool_use_id, {
-        "concept": q.concept, "kind": q.kind, "correct": correct, "confidence": confidence,
-        "guess_p": round(q.guess_p, 3), "p_know_now": round(p, 2),
+    try:
         # 지금 상태(ready_concepts 와 같은 내용)를 같이 넘긴다. 없으면 튜터가 퀴즈 두 개마다 상태 확인을 따로 불러
         # Opus 호출이 한 번 더(3~4초) 들었다 (#281, 2026-11-26 측정)
-        "state": tool_ready(s)})]})
+        state = tool_ready(s)
+    except Exception as e:
+        # 답은 이미 기록됐다. waiting 으로 되돌리면 다시 낸 답이 두 번 기록되고, running 으로 두면 이어 갈 퀴즈가 없어
+        # 세션이 멈춘다. 그래서 여기서 끝낸다 (#282 리뷰)
+        _finish(s, f"stop:{type(e).__name__}")
+        raise
+    s.messages.append({"role": "user", "content": [_result(tool_use_id, {
+        "concept": q.concept, "kind": q.kind, "correct": correct, "confidence": confidence,
+        "guess_p": round(q.guess_p, 3), "p_know_now": round(p, 2), "state": state})]})
     return s

@@ -95,10 +95,11 @@ class TutorOut(BaseModel):
 
 def _out(sid: str, e: _Entry, all_events: bool = False) -> TutorOut:
     s = e.s
+    status = s.status   # 상태를 이벤트보다 먼저 읽는다: agent 가 이벤트를 넣은 뒤 상태를 바꾸므로 waiting·done 이면 그 이벤트가 있다
     events = s.events if all_events else s.events[e.seen:]
     if not all_events:
         e.seen = len(s.events)
-    return TutorOut(session_id=sid, status=s.status, finished_by=s.finished_by, targets=s.targets, quizzes=s.quizzes,
+    return TutorOut(session_id=sid, status=status, finished_by=s.finished_by, targets=s.targets, quizzes=s.quizzes,
                     max_quizzes=s.max_quizzes, events=list(events))
 
 
@@ -149,7 +150,8 @@ def answer(session_id: str, req: AnswerIn) -> TutorOut:
         e.seen = len(e.s.events)
         try:
             ag.grade(e.s, req.answer, req.confidence, response_ms=req.response_ms, answer_changes=req.answer_changes)
-        except Exception as ex:   # 채점·기록 실패(DB 등): 전처럼 새 이벤트 없이 돌려준다 (status waiting 그대로)
+        except Exception as ex:   # 채점·기록 실패(DB 등): 기록 전이면 새 이벤트 없이 waiting 그대로,
+                                  # 기록 뒤 상태 읽기에서 실패했으면 graded 와 done(stop:...) 으로 끝난 세션을 돌려준다
             log.warning("답을 채점하지 못했어요 (세션 %s): %s", session_id, ex)
             return _out(session_id, e)
         out = _out(session_id, e)   # graded 만, status running

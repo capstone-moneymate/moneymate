@@ -100,6 +100,25 @@ def test_model_failure_still_returns_graded_and_done(client, monkeypatch):
     assert full["status"] == "error" and full["finished_by"].startswith("stop:")
 
 
+def test_state_read_failure_after_grading_ends_session(client, monkeypatch):
+    # 답은 기록됐는데 그 뒤 상태 읽기(DB)가 실패: running 인 채 멈추지도, waiting 으로 돌아가 답이 두 번 기록되지도 않고 끝난다 (#282 리뷰)
+    script(monkeypatch, ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="용어 뜻")]))
+    r = client.post("/tutor/start", json={"user_id": USER, "card_id": 17}).json()
+    s = tapi.SESSIONS[r["session_id"]].s
+    recorded = []
+    real_answer = s.mastery.answer
+    s.mastery.answer = lambda *a, **k: recorded.append(a) or real_answer(*a, **k)
+
+    def down(user):
+        raise ConnectionError("DB down")
+    s.mastery.get_mastery = down
+    a = client.post(f"/tutor/{r['session_id']}/answer", json={"user_id": USER, "answer": 0}).json()
+    assert [e["type"] for e in a["events"]] == ["graded", "done"] and len(recorded) == 1
+    assert a["status"] == "error" and a["finished_by"] == "stop:ConnectionError"
+    assert client.post(f"/tutor/{r['session_id']}/answer", json={"user_id": USER, "answer": 0}).status_code == 409
+    assert len(recorded) == 1
+
+
 def test_start_failure_returns_error_done(client, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("API down")
