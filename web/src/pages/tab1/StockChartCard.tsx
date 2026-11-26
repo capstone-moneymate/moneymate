@@ -52,7 +52,10 @@ export const StockChartCard = ({ chart }: StockChartCardProps) => {
   const shown = candles.slice(-VISIBLE_DAYS)
   const last = candles[candles.length - 1]
   const prev = candles[candles.length - 2]
-  const chg = last && prev ? last.close / prev.close - 1 : null
+  // 장 마감 뒤(todayClose 있음)에는 오늘 종가와 어제 대비 등락률, 그 전에는 어제 종가와 그 전날 대비
+  const price = chart.todayClose ?? last?.close
+  const base = chart.todayClose != null ? last : prev
+  const chg = price != null && base ? price / base.close - 1 : null
 
   return (
     <section className="mm-box p-3.5" aria-label="TOP 1 종목">
@@ -62,10 +65,10 @@ export const StockChartCard = ({ chart }: StockChartCardProps) => {
           <b className="font-display text-xl leading-none font-normal">{chart.ticker}</b>
           <span className="text-sub truncate text-[13.5px] font-semibold">{chart.name}</span>
         </div>
-        {last && (
+        {price != null && (
           <div className="shrink-0 text-right">
             <p className="font-display text-[22px] leading-[1.1] whitespace-nowrap tabular-nums">
-              {formatPrice(last.close, chart.market)}
+              {formatPrice(price, chart.market)}
             </p>
             {chg !== null && <ChangeText chg={chg} className="mt-1 block text-[13px]" />}
           </div>
