@@ -106,7 +106,7 @@ def test_good_card_passes(offline, ids):
     (lambda c: c["steps"][3]["chart_check"].update(value="2.5"), "코드가 계산한 값은 3.0"),
     # chart_check 는 맞는데 answer_index 가 다른 보기를 가리킴 (리뷰 #45)
     (lambda c: c["steps"][3].update(answer_index=1), "정답 보기(1번 '2배')에 코드가 확인한 값 3.0 이 없어요"),
-    (lambda c: c["steps"][3].update(options=["3배", "3.0배", "1배"], answer_index=0), "보기 여러 개(0, 1번)"),
+    (lambda c: c["steps"][3].update(options=["3배", "평균의 3배", "1배"], answer_index=0), "보기 여러 개(0, 1번)"),
     (lambda c: c["steps"][3]["chart_check"].update(end_date="2026-09-06"), "확인할 수 없어요"),  # 일요일
     (lambda c: c["steps"][4].update(chain=[]), "chain"),
     (lambda c: c["steps"][0].update(concept_ids=["moon"]), "사전에 없는 개념"),
@@ -448,6 +448,35 @@ def test_shape_errors(offline, ids, break_it, expect):
 def test_option_matches(option, metric, expected, ok):
     assert cp.option_matches(option, metric, expected) is ok
 
+
+
+# --- 보기 숫자 표기가 같아야 한다 (#257: 정답만 자세한 숫자면 차트를 안 봐도 맞힘) ---
+
+@pytest.mark.parametrize("options, metric, ok", [
+    (["약 1배", "약 5배", "18.36배", "약 50배"], "volume_ratio", False),          # 카드 23: '약' 과 자리 수가 정답만 다름
+    (["약 0.9배", "약 1.5배", "약 2.83배", "약 5배"], "volume_ratio", False),      # 자리 수만 다름
+    (["약 0.9배", "약 1.5배", "약 2.8배", "약 5.0배"], "volume_ratio", True),
+    (["-1.86%", "-3.12%", "-4.86%", "-6.50%"], "return_pct", True),
+    (["+1.22% 상승", "-1.22% 하락", "-0.12% 하락", "거의 변화 없음"], "return_pct", True),   # 숫자 없는 보기는 안 봄
+    (["2026-10-22", "10월 23일", "10/27", "2026-11-03"], "top_volume_date", True),          # 날짜 문제는 안 봄
+    (["2026-10-30 기준 -10%", "2026-10-30 기준 +5%"], "return_pct", True),                  # 날짜 속 숫자는 안 읽음
+    (["20일 평균의 약 1배", "20일 평균의 약 5배", "20일 평균의 약 18.36배"], "volume_ratio", False),  # 앞의 20 이 아니라 답 숫자를 본다
+    (["20일 평균의 약 1.0배", "20일 평균의 약 5.0배", "20일 평균의 약 18.4배"], "volume_ratio", True),
+    (["+2.8% 강세", "-1.5% 약세", "0.0% 보합"], "return_pct", True),                      # '약세' 의 '약' 은 어림말이 아니다
+    (["약 +2.8% 강세", "-1.5% 약세", "약 0.0% 보합"], "return_pct", False),                # 진짜 '약' 은 여전히 본다
+])
+def test_option_format_errors(options, metric, ok):
+    assert (cp.option_format_errors(options, metric) == []) is ok
+
+
+def test_option_errors_reports_format_first():
+    errs = cp.option_errors(["약 1배", "약 5배", "18.36배"], 2, "volume_ratio", 18.36)
+    assert len(errs) == 1 and "표기" in errs[0]
+    assert cp.option_errors(["약 1.0배", "약 5.0배", "약 18.4배"], 2, "volume_ratio", 18.36) == []   # 반올림해도 정답
+
+
+def test_prompt_asks_same_option_format_and_no_slide_values():
+    assert "같은 소수 자리 수" in cp.PROMPT and "이미 쓴 값은 차트 문제로 묻지 않는다" in cp.PROMPT
 
 # --- ETF 변화율은 코드가 문구로 바꿔서 넘긴다 (소수 0.053097 = +5.3%, NULL = 신규 편입) ---
 
