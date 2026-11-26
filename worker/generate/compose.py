@@ -368,16 +368,27 @@ def option_matches(option: str, metric: str, expected) -> bool:
     return any(abs(v - float(expected)) <= tol for v, tol in _numbers_in(option))
 
 
-_HEDGE = ("약", "거의", "대략")
+# 어림말은 숫자 바로 앞에 올 때만 본다 ('약 2.8%' 는 어림, '-1.5% 약세' 의 '약' 은 아니다)
+_HEDGE = re.compile(r"(?:약|거의|대략)\s*[+\-−]?\d")
 
 
-def option_format(option: str) -> tuple[int, bool] | None:
-    """보기의 숫자 표기 (소수 자리 수, '약' 같은 어림말이 있나). 숫자가 없으면 None. 날짜 속 숫자는 읽지 않는다."""
-    nums = _NUM.findall(_DATE.sub(" ", option))
+def option_format(option: str) -> tuple[tuple[int, ...], bool] | None:
+    """보기의 숫자 표기 (숫자마다 소수 자리 수, '약' 같은 어림말이 있나). 숫자가 없으면 None. 날짜 속 숫자는 읽지 않는다."""
+    text = _DATE.sub(" ", option)
+    nums = _NUM.findall(text)
     if not nums:
         return None
-    s = nums[0].replace(",", "")
-    return (len(s.split(".")[1]) if "." in s else 0), any(h in option for h in _HEDGE)
+    decimals = tuple(len(s.split(".")[1]) if "." in s else 0 for s in (n.replace(",", "") for n in nums))
+    return decimals, bool(_HEDGE.search(text))
+
+
+def _decimals_differ(fmts: list[tuple[tuple[int, ...], bool]]) -> bool:
+    """숫자 개수가 같으면 자리마다 비교한다 ('20일 평균의 약 18.36배' 는 앞의 20 이 아니라 18.36 이 다르다).
+    개수가 다르면 마지막 숫자끼리 비교한다."""
+    decs = [d for d, _ in fmts]
+    if len({len(d) for d in decs}) == 1:
+        return any(len({d[i] for d in decs}) > 1 for i in range(len(decs[0])))
+    return len({d[-1] for d in decs}) > 1
 
 
 def option_format_errors(options: list[str], metric: str) -> list[str]:
@@ -386,8 +397,8 @@ def option_format_errors(options: list[str], metric: str) -> list[str]:
     ('약 18.4배' 는 18.36 과 같음) 반올림해 써도 된다. 날짜 문제와 숫자 없는 보기('평균과 비슷')는 보지 않는다."""
     if metric == "top_volume_date":
         return []
-    fmts = {f for f in (option_format(o) for o in options) if f is not None}
-    if len({d for d, _ in fmts}) > 1 or len({h for _, h in fmts}) > 1:
+    fmts = [f for f in (option_format(o) for o in options) if f is not None]
+    if fmts and (_decimals_differ(fmts) or len({h for _, h in fmts}) > 1):
         return [f"보기 숫자 표기가 서로 달라요 ({' / '.join(options)}). 정답만 자세한 숫자면 차트를 안 봐도 맞혀요. "
                 "모든 숫자 보기를 같은 소수 자리 수로 쓰고, '약'은 모두 붙이거나 모두 빼세요 (예: 약 2.8배 / 약 1.5배 / 약 5.0배)"]
     return []

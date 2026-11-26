@@ -460,6 +460,10 @@ def test_option_matches(option, metric, expected, ok):
     (["+1.22% 상승", "-1.22% 하락", "-0.12% 하락", "거의 변화 없음"], "return_pct", True),   # 숫자 없는 보기는 안 봄
     (["2026-10-22", "10월 23일", "10/27", "2026-11-03"], "top_volume_date", True),          # 날짜 문제는 안 봄
     (["2026-10-30 기준 -10%", "2026-10-30 기준 +5%"], "return_pct", True),                  # 날짜 속 숫자는 안 읽음
+    (["20일 평균의 약 1배", "20일 평균의 약 5배", "20일 평균의 약 18.36배"], "volume_ratio", False),  # 앞의 20 이 아니라 답 숫자를 본다
+    (["20일 평균의 약 1.0배", "20일 평균의 약 5.0배", "20일 평균의 약 18.4배"], "volume_ratio", True),
+    (["+2.8% 강세", "-1.5% 약세", "0.0% 보합"], "return_pct", True),                      # '약세' 의 '약' 은 어림말이 아니다
+    (["약 +2.8% 강세", "-1.5% 약세", "약 0.0% 보합"], "return_pct", False),                # 진짜 '약' 은 여전히 본다
 ])
 def test_option_format_errors(options, metric, ok):
     assert (cp.option_format_errors(options, metric) == []) is ok

@@ -140,3 +140,4 @@ AI 활용 방식 보고서(8주차)의 재료다. **시킨 일마다 한 줄.** 
 | 2026-11-26 | B | docs/modules/eval_run.md, docs/추가구현_계획.md | 1-5 에이전트 조건 결과(본 비교·상한 10·제거 실험·확신)와 해석·한계를 문서로 정리, 계획 1-5 체크 | - |
 | 2026-11-26 | B | worker/concepts/concept_requests.py(새로), run_daily.py, tests/test_concept_requests.py, docs/modules/concept_requests.md | 매일 카드의 개념 단계 용어 중 지도에 없는 것을 찾아 Haiku 2회 일치 요청서(같은 말·뜻·선수 개념, 지도 이름 enum)를 logs/concept_requests.jsonl 에 쌓고, --to-review 로 검토 파일 빈칸 줄로 옮기기. run_daily 마지막 단계에 붙임. 실제 Haiku 로 2개 시험 | - |
 | 2026-11-26 | B | worker/generate/compose.py·prompts/compose.md, tests/test_compose.py, docs/modules/compose.md | 차트 보기 숫자 표기(소수 자리 수·약)가 다르면 검사 실패 (정답만 자세한 숫자라 티 나는 문제, 기존 39개 중 29개), 슬라이드에 쓴 값은 차트로 묻지 않게 프롬프트 안내. 최근 카드 4장 다시 출제해 확인 | - |
+| 2026-11-27 | B | worker/generate/compose.py, prompts/compose.md, tests/test_compose.py, docs/modules/compose.md | #257 코드래빗 리뷰 반영: 보기 숫자 표기를 첫 숫자가 아니라 자리마다 비교, '약세' 의 '약'을 어림말로 보지 않기, chart_check value 는 반올림하지 않게 프롬프트 고치기, 테스트 4개 | - |
