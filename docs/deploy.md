@@ -12,7 +12,7 @@
 | server (Spring) | API. `DB_HOST=db`, `JUDGE_API_URL=http://judge:8000` | X |
 | judge (FastAPI) | 판단 채점. 인증이 없어서 절대 밖에 열지 않는다 | X |
 | db (PostgreSQL 16) | 데이터. 첫 실행 때 db/migrations 자동 적용 | X |
-| scheduler (worker) | `run_daily.py --schedule`, 매일 08:00 KST | X |
+| scheduler (worker) | `run_daily.py --schedule`, 매일 08:00 KST + 평일 15:40(16:10·17:10 재시도) 그날 국내 가격 | X |
 
 **현재 환경**: AWS 무료 플랜(크레딧, 리전은 시드니 ap-southeast-2로 고정), t3.small(2GB) + 스왑 2GB, Ubuntu 24.04, gp3 30GB. 보안 그룹은 22(관리자 IP만)·80. 예산 알림 월 $15.
 

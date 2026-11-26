@@ -265,3 +265,99 @@ def test_previous_trading_day(monkeypatch, today, want):
     monkeypatch.setattr(prices, "kr_trading_days", lambda end, n: [d for d in
                         [date(2026, 11, 12), date(2026, 11, 13)] if d <= end][-n:])
     assert rd.previous_trading_day(today) == want
+
+
+# --- 장 마감 뒤 국내 가격 (홈 차트 O/X 정답용) ---
+
+class _CloseConn:
+    """count(*) 한 번만 묻는 가짜 연결."""
+
+    def __init__(self, have):
+        self.have = have
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params):
+        assert "market = 'KR'" in sql and params == (date(2026, 11, 26),)
+        have = self.have
+
+        class Cur:
+            def fetchone(self):
+                return (have,)
+
+        return Cur()
+
+
+def _patch_close(monkeypatch, have, kr_rows):
+    import collectors.prices as prices
+    import db
+
+    calls = []
+    monkeypatch.setattr(db, "get_conn", lambda: _CloseConn(have))
+    monkeypatch.setattr(prices, "fetch_kr_daily", lambda d: calls.append(("kr", d)) or kr_rows)
+    monkeypatch.setattr(prices, "fetch_index", lambda k, s, e: calls.append(("index", k, s, e)) or pd.DataFrame())
+    monkeypatch.setattr(prices, "save_prices", lambda conn, df: len(df))
+    return calls
+
+
+def test_closing_prices_saves_today_kr_and_kr_indexes(monkeypatch):
+    rows = pd.DataFrame({"ticker": ["277070", "005930"]})
+    calls = _patch_close(monkeypatch, have=0, kr_rows=rows)
+
+    out = rd.collect_closing_prices(date(2026, 11, 26))
+
+    assert out == "국내 2026-11-26 2종목 + 국내 지수 2개"
+    assert calls[0] == ("kr", date(2026, 11, 26))
+    assert [c[1] for c in calls[1:]] == ["KS11", "KQ11"]   # 미국 지수는 아침에 받는다
+    assert calls[1][2:] == (date(2026, 11, 16), date(2026, 11, 27))
+
+
+def test_closing_prices_skips_when_already_collected(monkeypatch):
+    calls = _patch_close(monkeypatch, have=rd.CLOSE_MIN_ROWS, kr_rows=pd.DataFrame())
+
+    assert rd.collect_closing_prices(date(2026, 11, 26)) == f"국내 2026-11-26 이미 {rd.CLOSE_MIN_ROWS}종목"
+    assert calls == []
+
+
+def test_closing_prices_holiday_or_not_ready_is_zero_without_indexes(monkeypatch):
+    calls = _patch_close(monkeypatch, have=0, kr_rows=pd.DataFrame())
+
+    assert rd.collect_closing_prices(date(2026, 11, 26)) == "국내 2026-11-26 0종목 (휴장이거나 아직 자료 없음)"
+    assert calls == [("kr", date(2026, 11, 26))]
+
+
+def test_close_prices_flag_runs_only_price_step(monkeypatch, tmp_path):
+    monkeypatch.setattr(rd, "LOG_PATH", tmp_path / "run_daily.jsonl")
+    seen = []
+    monkeypatch.setattr(rd, "collect_closing_prices", lambda d: seen.append(d) or "ok")
+    monkeypatch.setattr(rd, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("run 을 부르면 안 된다")))
+
+    assert rd.main(["--close-prices", "--date", "2026-11-26"]) == 0
+    assert seen == [date(2026, 11, 26)]
+    line = (tmp_path / "run_daily.jsonl").read_text(encoding="utf-8").strip()
+    assert '"장 마감 국내 가격"' in line and '"target": "2026-11-26"' in line
+
+
+def test_schedule_adds_morning_and_close_jobs(monkeypatch):
+    blocking = pytest.importorskip("apscheduler.schedulers.blocking")  # pyproject 의존성. 옛 venv 면 건너뛴다
+
+    jobs = []
+
+    class FakeScheduler:
+        def __init__(self, timezone):
+            assert str(timezone) == "Asia/Seoul"
+
+        def add_job(self, fn, trigger, hour, minute, misfire_grace_time):
+            jobs.append((fn.__name__, hour, minute))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(blocking, "BlockingScheduler", FakeScheduler)
+    rd.schedule()
+
+    assert jobs == [("job", 8, 0), ("close_job", 15, 40), ("close_job", 16, 10), ("close_job", 17, 10)]
