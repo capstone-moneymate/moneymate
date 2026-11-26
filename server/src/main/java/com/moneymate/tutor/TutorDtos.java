@@ -21,7 +21,7 @@ public final class TutorDtos {
      * @param quizzes    지금까지 낸 퀴즈 수
      * @param maxQuizzes 퀴즈 상한
      * @param events     이번 요청에서 새로 생긴 이벤트 (조회는 전부). 순서대로 그린다.
-     *                   type 이 explain {concept, style, text}, quiz {kind, concept, content, guess_p} (정답 없음),
+     *                   type 이 explain {concept, definition, detail, example} (example 은 빈 문자열일 수 있다), quiz {kind, concept, content, guess_p} (정답 없음),
      *                   graded {concept, kind, correct, key, explanation} (답한 뒤라 정답 포함), done {by}.
      *                   이벤트 안의 키는 채점 서버 그대로(snake_case)다
      */

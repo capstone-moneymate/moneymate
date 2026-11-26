@@ -43,7 +43,8 @@ def client(monkeypatch):
 
 def test_start_answer_done(client, monkeypatch, no_guard):
     calls = script(monkeypatch,
-                   ("tool_use", [tool_use("explain", concept="순이익", style="예시 위주", text="번 돈에서 비용을 뺀 것")]),
+                   ("tool_use", [tool_use("explain", concept="순이익", definition="번 돈에서 비용을 뺀 거예요.",
+                                                  detail="d", example="e")]),
                    ("tool_use", [tool_use("ask_quiz", concept="순이익", kind="용어 뜻")]),
                    ("tool_use", [tool_use("go_main")]))
     r = client.post("/tutor/start", json={"user_id": USER, "card_id": 17}).json()

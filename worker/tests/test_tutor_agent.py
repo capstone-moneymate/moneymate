@@ -88,7 +88,8 @@ def test_flow_pauses_on_quiz_and_resumes(monkeypatch, no_guard):
     calls = script(monkeypatch,
                    ("tool_use", [tool_use("ready_concepts")]),
                    ("tool_use", [tool_use("ask_quiz", concept="유통 주식 수", kind="용어 뜻")]),
-                   ("tool_use", [tool_use("explain", concept="유통 주식 수", style="예시 위주", text="시장에 도는 주식 수예요.")]),
+                   ("tool_use", [tool_use("explain", concept="유통 주식 수", definition="시장에 도는 주식 수예요.",
+                                                  detail="회사가 가진 자사주는 빼요.", example="")]),
                    ("tool_use", [tool_use("go_main")]))
     s = ag.start(session({"순이익": 0.97}))
     assert s.status == "waiting" and s.quizzes == 1 and len(calls) == 2
@@ -101,6 +102,8 @@ def test_flow_pauses_on_quiz_and_resumes(monkeypatch, no_guard):
     assert [e["tool"] for e in s.log] == ["ready_concepts", "ask_quiz", "explain", "go_main"]
     assert s.log[1]["reason"] == "ask_quiz 이유" and s.log[1]["result"] == {"correct": False, "confidence": "확신해요"}
     assert [e["type"] for e in s.events] == ["quiz", "graded", "explain", "done"]
+    assert s.events[2] == {"type": "explain", "concept": "유통 주식 수", "definition": "시장에 도는 주식 수예요.",
+                           "detail": "회사가 가진 자사주는 빼요.", "example": ""}   # reason 은 빠지고 칸이 따로 간다
     # 답이 tool_result 로 넘어가고, 모델 설정이 맞다
     last_user = calls[2]["messages"][-1]["content"][0]
     assert last_user["tool_use_id"] == "tu_ask_quiz_3" and '"correct": false' in last_user["content"]
@@ -120,9 +123,11 @@ def test_quiz_error_goes_back_to_agent(monkeypatch, no_guard):
     assert res["is_error"] and res["content"] == "만들기 실패" and s.finished_by == "go_main" and s.quizzes == 0
 
 
-def test_explain_banned_is_rejected(monkeypatch, no_guard):
+@pytest.mark.parametrize("field", ["definition", "detail", "example"])
+def test_explain_banned_is_rejected(monkeypatch, no_guard, field):
+    args = {"definition": "번 돈에서 비용을 뺀 거예요.", "detail": "d", "example": "e"} | {field: "지금 매수 추천"}
     calls = script(monkeypatch,
-                   ("tool_use", [tool_use("explain", concept="순이익", style="정의 위주", text="지금 매수 추천")]),
+                   ("tool_use", [tool_use("explain", concept="순이익", **args)]),
                    ("tool_use", [tool_use("go_main")]))
     s = ag.start(session())
     assert calls[1]["messages"][-1]["content"][0]["is_error"]
@@ -228,7 +233,7 @@ def test_demo_wrong_answer_is_never_the_key():
 def test_measure_counts_multiple_tools_as_miss():
     from scripts.measure_tutor_latency import choice_key
     one = tool_use("ask_quiz", concept="순이익", kind="틀린 설명")
-    two = [one, tool_use("explain", concept="순이익", style="예시 위주", text="t")]
+    two = [one, tool_use("explain", concept="순이익", definition="t", detail="t", example="t")]
     assert choice_key([one]) == "ask_quiz:틀린 설명"
     assert choice_key(two) == "(도구 2개)" and choice_key([]) == "(도구 없음)"
 

@@ -54,11 +54,13 @@ export interface TutorGradedEvent {
   explanation: string
 }
 
+/** 설명. 정의·보충·예시 칸이 따로 온다. example 은 빈 문자열일 수 있다 (그러면 "예를 들면" 상자를 숨긴다) */
 export interface TutorExplainEvent {
   type: 'explain'
   concept: string
-  style: string
-  text: string
+  definition: string
+  detail: string
+  example: string
 }
 
 export interface TutorDoneEvent {

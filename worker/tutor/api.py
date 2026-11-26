@@ -6,7 +6,7 @@
 - GET  /tutor/{session_id}        지금 상태와 지금까지의 이벤트 전부 (화면을 새로 열었을 때)
 
 이벤트 (tutor/agent.py 가 만든다. 화면은 순서대로 그린다)
-- explain {concept, style, text}                 짧은 설명
+- explain {concept, definition, detail, example} 짧은 설명. 정의·보충·예시 칸이 따로다 (example 은 빈 문자열일 수 있다)
 - quiz    {kind, concept, content, guess_p}      퀴즈. content 는 화면용이고 정답이 없다 (정답은 이 서버 메모리에만)
 - graded  {concept, kind, correct, key, explanation}  채점 결과. 답한 뒤라 정답(key)을 같이 준다
 - done    {by}                                    끝 (go_main: 본 문제로 / quiz_limit / call_limit / no_tool / stop:오류 / no_targets)
