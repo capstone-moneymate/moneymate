@@ -144,8 +144,9 @@ export const mockTutorStart = async (cardId: string): Promise<TutorState> => {
     {
       type: 'explain',
       concept: '자사주 소각',
-      style: '예시 위주',
-      text: '회사가 시장에서 자기 회사 주식을 사들인 뒤 아예 없애 버리는 것을 자사주 소각이라고 해요. 피자를 8조각에서 6조각으로 다시 자르면 한 조각이 커지는 것과 비슷해요.',
+      definition: '회사가 사들여 갖고 있던 자기 회사 주식을 아예 없애 버리는 거예요.',
+      detail: '주식 수가 줄어서 남은 주식 1주가 차지하는 몫이 커져요.',
+      example: '100만 주 중 10만 주를 소각하면 유통 주식 수가 90만 주로 줄어요.',
     },
     SCRIPT[0].quiz,
   ]

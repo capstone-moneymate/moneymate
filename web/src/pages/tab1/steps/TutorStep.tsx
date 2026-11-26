@@ -157,16 +157,29 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
   if (event.type === 'explain') {
     return (
       <StepFrame
-        badge={event.style}
-        heading={`${event.concept}, 들어본 적 있나요?`}
+        badge="꿀팁"
+        heading="이것부터 짚고 갈게요"
         mood="hi"
-        buttonLabel="알겠어요"
+        buttonLabel="알겠어요, 문제로 확인하기"
         onButton={() => setAt(here + 1)}
       >
+        {/* 2026-11-27 시안: 정의 따로, 예시 따로. 새 UI 가 들어오면 다시 맞춘다 */}
         <article className="mm-box mm-concept mt-0">
-          <span className="mm-chip gray">한 줄 개념</span>
-          <h3 className="kw">{event.concept}</h3>
-          <p className="def">{event.text}</p>
+          <h3 className="kw mt-0">{event.concept}</h3>
+          <p className="def">{event.definition}</p>
+          {event.detail && (
+            <p className="text-sub mt-2 text-[15px] leading-relaxed font-semibold">
+              {event.detail}
+            </p>
+          )}
+          {event.example && (
+            <div className="bg-butter-soft mt-4 rounded-2xl px-4 py-3.5 text-[15px] leading-relaxed font-semibold">
+              <small className="text-butter-ink mb-1 block text-[13px] font-extrabold">
+                예를 들면
+              </small>
+              {event.example}
+            </div>
+          )}
         </article>
       </StepFrame>
     )
