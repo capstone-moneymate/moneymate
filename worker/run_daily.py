@@ -6,6 +6,8 @@
     python run_daily.py --no-llm              # 수집·선별 점수까지만 (Claude 호출 없음, 비용 0)
     python run_daily.py --skip-collect        # 수집은 건너뛰고 DB 에 있는 것으로 선별·출제
     python run_daily.py --schedule            # 매일 08:00 KST 에 실행 (APScheduler, 멈출 때까지)
+                                              #   + 평일 15:40(16:10·17:10 재시도)에 그날 국내 가격만 받는다
+    python run_daily.py --close-prices        # 오늘 국내 가격만 한 번 (장 마감 뒤, 홈 차트 O/X 정답용)
 
 언제: 아침 08:00 KST. 그때면 전날 국내 장(15:30 마감)과 DART 공시, 미국 장(한국 시각 새벽 마감)이 다 나와 있다.
 기준일(target)은 오늘 이전 가장 최근 국내 거래일이다. 카드 날짜는 실행한 날(오늘).
@@ -36,6 +38,10 @@ LOG_PATH = Path(__file__).resolve().parents[1] / "logs" / "run_daily.jsonl"
 MAX_CARDS = 3  # 하루 카드 수 (기술확정안 "고르기 최대 3건")
 MAX_CLASSIFY = 10  # Haiku 분류 상한 (점수 높은 순). 비용을 묶는다
 SCHEDULE_TIME = (8, 0)  # KST
+# 장 마감(15:30) 뒤 그날 국내 일봉을 한 번 더 받는다 → 홈 종목 차트 O/X 퀴즈 정답(todayClose)이 그날 안에 나온다.
+# KRX 자료가 늦게 올라오는 날을 위해 16:10·17:10 에 다시 보고, 이미 받았으면 건너뛴다.
+CLOSE_TIMES = [(15, 40), (16, 10), (17, 10)]  # KST
+CLOSE_MIN_ROWS = 2000  # 그날 국내 일봉이 이만큼 있으면 이미 받은 것으로 본다 (평소 약 2,700종목)
 # 지수 → 장 마감 시각을 볼 시장 (collectors/prices.py INDEXES 와 같은 키)
 INDEX_MARKET = {"KS11": "KR", "KQ11": "KR", "IXIC": "US", "US500": "US"}
 
@@ -88,6 +94,33 @@ def collect_prices(target: date) -> str:
         for key in INDEXES:
             save_prices(conn, fetch_index(key, target - timedelta(days=10), target + timedelta(days=1)))
     return f"국내 {target} {n}종목 + 지수 {len(INDEXES)}개"
+
+
+def collect_closing_prices(today: date) -> str:
+    """장 마감 뒤 그날(today) 국내 전 종목 일봉 + 국내 지수 2개. 휴장일이거나 KRX 자료가 아직 없으면 0종목.
+    이미 CLOSE_MIN_ROWS 이상 받았으면 다시 받지 않는다 (16:10·17:10 재시도용). 다음 날 08:00 수집이 같은 날을 덮어써도 된다."""
+    from collectors.prices import fetch_index, fetch_kr_daily, save_prices
+    from db import get_conn
+
+    with get_conn() as conn:
+        have = conn.execute(
+            "SELECT count(*) FROM prices WHERE market = 'KR' AND market_date = %s", (today,)
+        ).fetchone()[0]
+        if have >= CLOSE_MIN_ROWS:
+            return f"국내 {today} 이미 {have}종목"
+        n = save_prices(conn, fetch_kr_daily(today))
+        if n:
+            for key in ("KS11", "KQ11"):
+                save_prices(conn, fetch_index(key, today - timedelta(days=10), today + timedelta(days=1)))
+    return f"국내 {today} {n}종목" + (" + 국내 지수 2개" if n else " (휴장이거나 아직 자료 없음)")
+
+
+def run_close(today: date) -> DailyReport:
+    """장 마감 뒤 가격만 받는 짧은 실행. run_daily.jsonl 에 target=today 로 남는다."""
+    report = DailyReport(today.isoformat(), datetime.now(KST).isoformat(timespec="seconds"))
+    run_step(report, "장 마감 국내 가격", collect_closing_prices, today)
+    write_log(report)
+    return report
 
 
 def watch_us_tickers() -> list[str]:
@@ -455,8 +488,17 @@ def schedule() -> None:
         today = datetime.now(KST).date()
         run(previous_trading_day(today), today)
 
+    def close_job():
+        today = datetime.now(KST).date()
+        if today.weekday() < 5:  # 주말은 장이 없다 (공휴일은 KRX 가 빈 표를 줘서 0종목으로 끝난다)
+            run_close(today)
+
     sched.add_job(job, "cron", hour=SCHEDULE_TIME[0], minute=SCHEDULE_TIME[1], misfire_grace_time=3600)
-    print(f"매일 {SCHEDULE_TIME[0]:02d}:{SCHEDULE_TIME[1]:02d} KST 에 실행합니다. 멈추려면 Ctrl+C")
+    for h, m in CLOSE_TIMES:
+        sched.add_job(close_job, "cron", hour=h, minute=m, misfire_grace_time=1800)
+    closes = "·".join(f"{h:02d}:{m:02d}" for h, m in CLOSE_TIMES)
+    print(f"매일 {SCHEDULE_TIME[0]:02d}:{SCHEDULE_TIME[1]:02d} KST 에 실행합니다. "
+          f"평일 {closes} 에는 그날 국내 가격만 받습니다. 멈추려면 Ctrl+C")
     sched.start()
 
 
@@ -465,12 +507,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--date", help="기준 거래일 YYYY-MM-DD (없으면 오늘 이전 가장 최근 국내 거래일)")
     parser.add_argument("--skip-collect", action="store_true", help="수집·계산을 건너뛴다")
     parser.add_argument("--no-llm", action="store_true", help="분류·출제를 건너뛴다 (Claude 호출 없음)")
-    parser.add_argument("--schedule", action="store_true", help="매일 08:00 KST 에 실행")
+    parser.add_argument("--schedule", action="store_true", help="매일 08:00 KST 에 실행 (+ 평일 장 마감 뒤 국내 가격)")
+    parser.add_argument("--close-prices", action="store_true", help="오늘(또는 --date) 국내 가격만 받는다 (장 마감 뒤)")
     args = parser.parse_args(argv)
     if args.schedule:
         schedule()
         return 0
     today = datetime.now(KST).date()
+    if args.close_prices:
+        report = run_close(date.fromisoformat(args.date) if args.date else today)
+        return 0 if report.ok else 1
     target = date.fromisoformat(args.date) if args.date else previous_trading_day(today)
     report = run(target, today, collect=not args.skip_collect, llm=not args.no_llm)
     return 0 if report.ok else 1

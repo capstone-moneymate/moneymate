@@ -29,12 +29,45 @@ public final class NewsDtos {
             int stepCount) {
     }
 
-    /** GET /api/news/home */
+    /** 지난 뉴스 한 건: 홈 카드와 같은 내용 + 그 카드의 날짜(cards.card_date, YYYY-MM-DD). */
+    public record PastCard(String date, NewsCardSummary card) {
+    }
+
+    /** GET /api/news/past. 최근 날짜부터. completedCardIds 는 그중 이 사용자가 학습을 끝낸 카드. */
+    public record PastNews(List<PastCard> cards, List<String> completedCardIds) {
+    }
+
+    /** GET /api/news/home. stockChart 는 그날 차트를 그릴 종목 카드가 없으면 null. */
     public record NewsHome(
             String date,
+            StockChart stockChart,
             List<MarketIndex> indices,
             List<NewsCardSummary> cards,
             List<String> completedCardIds) {
+    }
+
+    /** 일봉 하나 (date = 그 시장 거래일). */
+    public record Candle(String date, double open, double high, double low, double close) {
+    }
+
+    /** 차트 날짜 하나에 붙는 설명. pastCardId 가 있으면 화면이 그날 위에 ○ 를 띄운다. */
+    public record StockChartNote(String date, String reason, String pastCardId, String pastCardTitle) {
+    }
+
+    /**
+     * 탭1 홈 종목 차트 (web/src/types/news.ts StockChart).
+     * today = 홈 카드 날짜, candles = today 앞까지 최근 거래일(5일선용으로 앞 4일 더),
+     * todayClose = today 일봉이 이미 있으면 그 종가(O/X 퀴즈 정답), 없으면 null.
+     */
+    public record StockChart(
+            String ticker,
+            String name,
+            String market,
+            String today,
+            String todayCardId,
+            Double todayClose,
+            List<Candle> candles,
+            List<StockChartNote> notes) {
     }
 
     /**

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { useLogout, useMe } from '@/api/auth'
 import { useCalibration, useReviews } from '@/api/learner'
 import { useCalendar, useCausalMap, useSummary } from '@/api/mypage'
+import { Mate } from '@/components/Mate'
 import { OpenSourceNotice } from '@/components/OpenSourceNotice'
 import { CausalMapView } from '@/pages/tab3/CausalMapView'
 import { ConfidenceCard } from '@/pages/tab3/ConfidenceCard'
@@ -28,10 +29,10 @@ export const MyPage = () => {
     : null
 
   return (
-    <div className="h-full overflow-y-auto bg-[#f0f3fc] pb-6">
+    <div className="h-full overflow-y-auto pb-6">
       <ProfileHeader streakDays={summary.data?.streakDays ?? null} cardCount={cardCount} />
 
-      <div role="tablist" className="grid grid-cols-3 border-y border-[#dfe4f6] bg-white">
+      <div role="tablist" aria-label="기록 보기 전환" className="mm-subtabs">
         <TabButton
           active={view === 'calendar'}
           label="달력"
@@ -52,12 +53,14 @@ export const MyPage = () => {
         />
       </div>
 
-      <div className="pt-6">
+      <div className="pt-4">
         {view === 'calendar' ? (
           <>
-            {calendar.isPending && <p className="px-5 text-sm text-slate-500">불러오는 중</p>}
+            {calendar.isPending && (
+              <p className="text-sub px-5 text-sm font-semibold">불러오는 중</p>
+            )}
             {calendar.isError && (
-              <p className="px-5 text-sm text-slate-500">학습 달력을 불러오지 못했어요</p>
+              <p className="text-sub px-5 text-sm font-semibold">학습 달력을 불러오지 못했어요</p>
             )}
             {calendar.data && (
               <StudyCalendar days={calendar.data.days} streakDays={summary.data?.streakDays ?? 0} />
@@ -76,7 +79,7 @@ export const MyPage = () => {
   )
 }
 
-/** 프로필 줄: 동그란 얼굴 · 닉네임 님 · 연속 학습 · 푼 카드뉴스 수. 로그인·로그아웃은 오른쪽 위 작은 글자 */
+/** 프로필 줄 (UI 시안 app.html 의 .me-head): 마스코트 얼굴 · 닉네임 님 · 연속 학습 · 푼 카드뉴스 수 · 로그인/로그아웃 */
 const ProfileHeader = ({
   streakDays,
   cardCount,
@@ -86,45 +89,42 @@ const ProfileHeader = ({
 }) => {
   const me = useMe()
   const logout = useLogout()
-  const name = me.data?.loginId ?? '게스트'
 
   return (
-    <header className="flex items-center gap-4 px-5 pt-6 pb-5">
-      <div className="flex size-16 shrink-0 items-center justify-center rounded-full border-[3px] border-[#5468b8] bg-[#cfe9fb] text-2xl font-bold text-[#3a4a99]">
-        {name.slice(0, 1).toUpperCase()}
+    <header className="flex items-center gap-3 px-5 pt-[calc(14px+env(safe-area-inset-top))] pb-3">
+      <div className="border-blue bg-blue-soft grid size-[62px] shrink-0 place-items-center overflow-hidden rounded-full border-[3px]">
+        <Mate className="size-[52px]" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="truncate text-xl font-bold text-[#232c5c]">{name} 님</p>
-          {me.data ? (
-            <button
-              type="button"
-              onClick={() => logout.mutate()}
-              disabled={logout.isPending}
-              className="shrink-0 text-xs font-semibold text-[#5b6694]"
-            >
-              로그아웃
-            </button>
-          ) : (
-            !me.isPending && (
-              <Link
-                to="/login?next=/mypage"
-                className="shrink-0 text-xs font-semibold text-[#5468b8]"
-              >
-                로그인
-              </Link>
-            )
-          )}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-sm font-bold">
-          <span className="rounded-full bg-[#ffd84d] px-3.5 py-1.5 text-[#232c5c]">
-            🔥 연속 학습 {streakDays ?? '-'}일
+        <p className="truncate text-[21px] font-extrabold tracking-[-0.02em]">
+          {me.data ? `${me.data.loginId} 님` : '둘러보는 중'}
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <span className="mm-chip butter h-[30px] text-[13px]">
+            연속 학습 {streakDays ?? '-'}일
           </span>
-          <span className="rounded-full border-2 border-[#dfe4f6] bg-white px-3.5 py-1 text-[#3a4473]">
-            카드뉴스 {cardCount ?? '-'}장
-          </span>
+          <span className="mm-chip line h-[30px] text-[13px]">카드뉴스 {cardCount ?? '-'}장</span>
         </div>
       </div>
+      {me.data ? (
+        <button
+          type="button"
+          onClick={() => logout.mutate()}
+          disabled={logout.isPending}
+          className="text-faint shrink-0 px-1 py-2 text-[12.5px] font-bold underline underline-offset-[3px]"
+        >
+          로그아웃
+        </button>
+      ) : (
+        !me.isPending && (
+          <Link
+            to="/login?next=/mypage"
+            className="text-blue-ink shrink-0 px-1 py-2 text-[12.5px] font-bold underline underline-offset-[3px]"
+          >
+            로그인하기
+          </Link>
+        )
+      )}
     </header>
   )
 }
@@ -137,15 +137,7 @@ interface TabButtonProps {
 }
 
 const TabButton = ({ active, label, icon, onClick }: TabButtonProps) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={active}
-    onClick={onClick}
-    className={`flex flex-col items-center gap-1 border-b-4 pt-3 pb-2 text-sm font-bold ${
-      active ? 'border-[#5468b8] text-[#3a4a99]' : 'border-transparent text-[#5b6694]'
-    }`}
-  >
+  <button type="button" role="tab" aria-selected={active} onClick={onClick}>
     {icon}
     {label}
   </button>
@@ -158,11 +150,13 @@ const LearnPanel = () => {
 
   return (
     <div className="space-y-5 px-5">
-      {reviews.isPending && <p className="text-sm text-slate-500">불러오는 중</p>}
-      {reviews.isError && <p className="text-sm text-slate-500">오늘의 복습을 불러오지 못했어요</p>}
+      {reviews.isPending && <p className="text-sub text-sm font-semibold">불러오는 중</p>}
+      {reviews.isError && (
+        <p className="text-sub text-sm font-semibold">오늘의 복습을 불러오지 못했어요</p>
+      )}
       {reviews.data && <ReviewQueueCard queue={reviews.data} />}
       {calibration.isError && (
-        <p className="text-sm text-slate-500">확신 점검을 불러오지 못했어요</p>
+        <p className="text-sub text-sm font-semibold">확신 점검을 불러오지 못했어요</p>
       )}
       {calibration.data && <ConfidenceCard calibration={calibration.data} />}
     </div>
@@ -176,18 +170,23 @@ const MapPanel = () => {
 
   return (
     <section className="px-5">
-      {isPending && <p className="text-sm text-slate-500">불러오는 중</p>}
-      {isError && <p className="text-sm text-slate-500">인과 지도를 불러오지 못했어요</p>}
+      {isPending && <p className="text-sub text-sm font-semibold">불러오는 중</p>}
+      {isError && <p className="text-sub text-sm font-semibold">인과 지도를 불러오지 못했어요</p>}
       {data && !hasLearned && (
-        <div className="rounded-3xl bg-white px-5 py-10 text-center">
-          <p className="text-sm font-semibold text-[#232c5c]">아직 배운 개념이 없어요</p>
-          <p className="mt-1 text-xs text-[#5b6694]">
-            탭 1에서 뉴스 문제를 풀면 배운 개념이 지도에 쌓여요
+        <div className="mm-empty">
+          <Mate mood="think" />
+          <p>
+            아직 배운 개념이 없어요.
+            <br />
+            뉴스 한 건을 배우면 원인과 결과가 여기에 이어져요.
           </p>
+          <Link to="/" className="mm-btn">
+            오늘 뉴스 배우러 가기
+          </Link>
         </div>
       )}
       {data && hasLearned && (
-        <div className="flex h-[480px] flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_6px_0_#dfe4f6]">
+        <div className="mm-box flex h-[480px] flex-col overflow-hidden rounded-[22px]">
           <ReactFlowProvider>
             <CausalMapView map={data} />
           </ReactFlowProvider>
@@ -198,30 +197,14 @@ const MapPanel = () => {
 }
 
 const CalendarIcon = () => (
-  <svg
-    width="26"
-    height="26"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden
-  >
+  <svg viewBox="0 0 24 24" aria-hidden>
     <rect x="3" y="5" width="18" height="16" rx="3" />
     <path d="M3 10h18M8 3v4M16 3v4" />
   </svg>
 )
 
 const ShareIcon = () => (
-  <svg
-    width="26"
-    height="26"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden
-  >
+  <svg viewBox="0 0 24 24" aria-hidden>
     <circle cx="18" cy="5" r="3" />
     <circle cx="6" cy="12" r="3" />
     <circle cx="18" cy="19" r="3" />
@@ -230,15 +213,7 @@ const ShareIcon = () => (
 )
 
 const GaugeIcon = () => (
-  <svg
-    width="26"
-    height="26"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    aria-hidden
-  >
+  <svg viewBox="0 0 24 24" aria-hidden>
     <path d="M4 18a8 8 0 1 1 16 0" />
     <path d="m12 18 4-6" />
   </svg>

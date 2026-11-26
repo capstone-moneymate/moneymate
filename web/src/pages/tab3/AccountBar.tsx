@@ -32,10 +32,10 @@ export const AccountBar = () => {
         로그인하면 다른 기기에서도 학습 기록을 이어 볼 수 있어요.
       </p>
       <div className="mt-2 flex gap-4 font-semibold">
-        <Link to="/login?next=/mypage" className="text-primary">
+        <Link to="/login?next=/mypage" className="text-blue-ink">
           로그인
         </Link>
-        <Link to="/login?mode=signup&next=/mypage" className="text-primary">
+        <Link to="/login?mode=signup&next=/mypage" className="text-blue-ink">
           회원가입
         </Link>
       </div>

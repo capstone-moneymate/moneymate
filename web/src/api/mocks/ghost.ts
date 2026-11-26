@@ -3,6 +3,7 @@ import type { GhostReport } from '@/types/ghost'
 /**
  * 고스트 비교 목 데이터 (가짜 기록). 실제로 어떻게 풀었는지와 상관없이 카드마다 같은 값을 돌려준다.
  * mock-rate-hold: 세 번째 시도. 퀴즈는 빨라졌고, 인과 순서는 처음 맞혔고, 판단 점수가 올랐다.
+ * 개념 단계는 튜터 퀴즈를 지난번 5문제(3개 맞힘) → 이번 2문제(2개 맞힘)로 적게 풀었다.
  */
 export const ghostMocks: Record<string, GhostReport> = {
   'mock-rate-hold': {
@@ -29,6 +30,11 @@ export const ghostMocks: Record<string, GhostReport> = {
       previous: { attemptNo: 2, date: '2026-11-20', sureWrong: 1 },
       current: { attemptNo: 3, date: '2026-11-24', sureWrong: 0 },
       improvedSteps: 3,
+      concept: {
+        previous: { quizzes: 5, correct: 3 },
+        current: { quizzes: 2, correct: 2 },
+        improved: true,
+      },
       rows: [
         {
           stepId: 'rh-2',

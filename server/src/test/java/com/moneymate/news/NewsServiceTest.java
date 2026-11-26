@@ -104,6 +104,144 @@ class NewsServiceTest {
         assertThat(service.home(USER).completedCardIds()).containsExactly("4");
     }
 
+    // --- 홈 종목 차트 ---
+
+    static CandleRow candleRow(LocalDate d, String close) {
+        BigDecimal c = new BigDecimal(close);
+        return new CandleRow(d, c.subtract(BigDecimal.ONE), c.add(BigDecimal.TEN), c.subtract(BigDecimal.TEN), c);
+    }
+
+    /** 홈 카드 날짜 11-06 에 차트 종목 카드(41, 277070)가 있다. */
+    void givenChartCard() {
+        LocalDate d = LocalDate.of(2026, 11, 6);
+        when(repo.findLatestCardDate(TODAY, false)).thenReturn(Optional.of(d));
+        when(repo.findCardsByDate(d, false)).thenReturn(List.of(card(41, "dart", "린드먼아시아", null, d)));
+        when(repo.findChartPick(d, false)).thenReturn(Optional.of(new ChartPickRow(41, "277070", "KR", "린드먼아시아")));
+    }
+
+    @Test
+    void stockChartHasCandlesOldestFirstAndNoTodayCloseBeforeTheClose() {
+        givenChartCard();
+        LocalDate d = LocalDate.of(2026, 11, 6);
+        // 최근 날짜부터 온다. 11-06(오늘) 일봉은 아직 없다
+        when(repo.findCandles("277070", "KR", d, NewsService.CHART_CANDLES + 1)).thenReturn(List.of(
+                candleRow(LocalDate.of(2026, 11, 5), "5100"),
+                candleRow(LocalDate.of(2026, 11, 4), "5000")));
+
+        var chart = service.home(null).stockChart();
+
+        assertThat(chart.ticker()).isEqualTo("277070");
+        assertThat(chart.name()).isEqualTo("린드먼아시아");
+        assertThat(chart.market()).isEqualTo("KR");
+        assertThat(chart.today()).isEqualTo("2026-11-06");
+        assertThat(chart.todayCardId()).isEqualTo("41");
+        assertThat(chart.todayClose()).isNull();
+        assertThat(chart.candles()).extracting(NewsDtos.Candle::date).containsExactly("2026-11-04", "2026-11-05");
+        var first = chart.candles().get(0);
+        assertThat(List.of(first.open(), first.high(), first.low(), first.close()))
+                .containsExactly(4999.0, 5010.0, 4990.0, 5000.0);
+    }
+
+    @Test
+    void stockChartUsesTodayCandleOnlyAsTodayCloseAndKeepsTwentyFourPastDays() {
+        givenChartCard();
+        LocalDate d = LocalDate.of(2026, 11, 6);
+        List<CandleRow> rows = new java.util.ArrayList<>();
+        rows.add(candleRow(d, "5200"));                      // 오늘 (장 마감 뒤 수집)
+        for (int i = 1; i <= NewsService.CHART_CANDLES; i++) {
+            rows.add(candleRow(d.minusDays(i), String.valueOf(5000 + i)));
+        }
+        when(repo.findCandles("277070", "KR", d, NewsService.CHART_CANDLES + 1)).thenReturn(rows);
+
+        var chart = service.home(null).stockChart();
+
+        assertThat(chart.todayClose()).isEqualTo(5200.0);
+        assertThat(chart.candles()).hasSize(24);
+        assertThat(chart.candles()).extracting(NewsDtos.Candle::date).doesNotContain("2026-11-06");
+        assertThat(chart.candles().get(23).date()).isEqualTo("2026-11-05");
+        assertThat(chart.candles().get(0).date()).isEqualTo("2026-10-13");
+    }
+
+    @Test
+    void stockChartNotesAreOnePerCandleDateWithFirstSlideAsReason() {
+        givenChartCard();
+        LocalDate d = LocalDate.of(2026, 11, 6);
+        LocalDate d4 = LocalDate.of(2026, 11, 4);
+        when(repo.findCandles("277070", "KR", d, NewsService.CHART_CANDLES + 1)).thenReturn(List.of(
+                candleRow(LocalDate.of(2026, 11, 5), "5100"), candleRow(d4, "5000")));
+        when(repo.findChartNotes("277070", "KR", d4, d, false)).thenReturn(List.of(
+                new ChartNoteRow(30, d4, "자사주 취득 결정", SLIDES),
+                new ChartNoteRow(31, d4, "같은 날 다른 카드", SLIDES),            // 같은 날은 첫 카드만
+                new ChartNoteRow(32, LocalDate.of(2026, 11, 3), "휴장일", SLIDES))); // 일봉 없는 날은 뺀다
+
+        var notes = service.home(null).stockChart().notes();
+
+        assertThat(notes).hasSize(1);
+        assertThat(notes.get(0).date()).isEqualTo("2026-11-04");
+        assertThat(notes.get(0).pastCardId()).isEqualTo("30");
+        assertThat(notes.get(0).pastCardTitle()).isEqualTo("자사주 취득 결정");
+        assertThat(notes.get(0).reason()).isEqualTo("한국은행이 기준금리를 3.00%로 그대로 뒀어요.");
+    }
+
+    @Test
+    void stockChartIsNullWithoutChartCardOrCandles() {
+        LocalDate d = LocalDate.of(2026, 11, 6);
+        when(repo.findLatestCardDate(TODAY, false)).thenReturn(Optional.of(d));
+        when(repo.findCardsByDate(d, false)).thenReturn(List.of(card(3, "macro", "한국은행", null, d)));
+        when(repo.findChartPick(d, false)).thenReturn(Optional.empty());
+        assertThat(service.home(null).stockChart()).isNull();
+
+        when(repo.findChartPick(d, false)).thenReturn(Optional.of(new ChartPickRow(3, "277070", "KR", "린드먼아시아")));
+        when(repo.findCandles(anyString(), anyString(), any(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of());
+        assertThat(service.home(null).stockChart()).isNull();
+    }
+
+    @Test
+    void homeWithoutCardsDoesNotLookForAChart() {
+        when(repo.findLatestCardDate(any(), anyBoolean())).thenReturn(Optional.empty());
+        when(repo.findCardsByDate(TODAY, false)).thenReturn(List.of());
+
+        assertThat(service.home(null).stockChart()).isNull();
+        verify(repo, never()).findChartPick(any(), anyBoolean());
+    }
+
+    // --- 지난 뉴스 ---
+
+    @Test
+    void pastListsCardsBeforeHomeDateWithTheirDates() {
+        LocalDate homeDate = LocalDate.of(2026, 11, 6);
+        when(repo.findLatestCardDate(TODAY, false)).thenReturn(Optional.of(homeDate));
+        CardRow older = new CardRow(1, 1, LocalDate.of(2026, 11, 4), "환율 1,400원", "환율", null, SLIDES,
+                null, null, null, null, null, 4);
+        CardRow newer = new CardRow(2, 2, LocalDate.of(2026, 11, 5), "유가 급등", "원자재", null, SLIDES,
+                null, null, null, null, null, 5);
+        when(repo.findCardsBefore(eq(homeDate), eq(false), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of(newer, older));
+        when(repo.findCompletedCardIds(USER, List.of(2L, 1L))).thenReturn(List.of(1L));
+
+        var past = service.past(USER);
+
+        // 저장소가 준 순서(최근 날짜부터) 그대로, 카드마다 그 카드의 날짜를 붙인다
+        assertThat(past.cards()).extracting(c -> c.date()).containsExactly("2026-11-05", "2026-11-04");
+        assertThat(past.cards().get(0).card().id()).isEqualTo("2");
+        assertThat(past.cards().get(0).card().title()).isEqualTo("유가 급등");
+        assertThat(past.completedCardIds()).containsExactly("1");
+    }
+
+    @Test
+    void pastWithoutUserDoesNotAskCompleted() {
+        when(repo.findLatestCardDate(any(), anyBoolean())).thenReturn(Optional.empty());
+        when(repo.findCardsBefore(eq(TODAY), eq(false), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(List.of());
+
+        var past = service.past(null);
+
+        assertThat(past.cards()).isEmpty();
+        assertThat(past.completedCardIds()).isEmpty();
+        verify(repo, never()).findCompletedCardIds(anyString(), anyList());
+    }
+
     @Test
     void includePendingIsPassedToRepository() {
         NewsService pending = new NewsService(repo, true, CLOCK);

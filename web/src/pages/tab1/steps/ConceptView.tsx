@@ -9,11 +9,11 @@ interface ConceptViewProps {
   nextLabel: string | null
 }
 
-const CIRCLED = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
+const MOODS = ['hi', 'think', 'smile', 'happy'] as const
 
 /**
- * 개념 학습: 설명 + 용어 탭(①②③…) + 고른 용어의 파란 설명 칸 (UI 시안 05~08). 채점 없음.
- * 용어를 하나씩 넘기고, 마지막 용어에서 다음 단계로 간다
+ * 개념 학습 (UI 시안 app.html 의 개념 칸): 말풍선에 제목, 아래에 용어 하나씩 큰 키워드 + 설명. 채점 없음.
+ * 용어를 하나씩 넘기고, 마지막 용어에서 다음 단계로 간다. 위 칩을 눌러 다른 용어로 바로 갈 수도 있다
  */
 export const ConceptView = ({ step, onNext, nextLabel }: ConceptViewProps) => {
   const [open, setOpen] = useState(0)
@@ -22,62 +22,43 @@ export const ConceptView = ({ step, onNext, nextLabel }: ConceptViewProps) => {
 
   return (
     <StepFrame
+      badge={step.terms.length > 0 ? `오늘의 개념 ${open + 1} / ${step.terms.length}` : '개념 학습'}
       heading={step.title}
-      buttonLabel={
-        lastTerm ? `이해했어요${nextLabel ? `, ${nextLabel}` : ''} ›` : '다음 개념 보기 ›'
-      }
+      mood={MOODS[open % MOODS.length]}
+      buttonLabel={lastTerm ? `이해했어요${nextLabel ? `, ${nextLabel}` : ''}` : '알겠어요'}
       onButton={() => (lastTerm ? onNext() : setOpen(open + 1))}
     >
-      <p className="leading-relaxed text-slate-600">{step.body}</p>
+      <p className="text-sub text-[15.5px] leading-relaxed font-medium">{step.body}</p>
 
-      {step.terms.length > 0 && (
+      {term && (
         <>
-          <div className="mt-5 flex flex-wrap gap-2" role="tablist">
-            {step.terms.map((t, i) => (
-              <button
-                key={t.term}
-                type="button"
-                role="tab"
-                aria-selected={i === open}
-                onClick={() => setOpen(i)}
-                className={`min-h-11 rounded-full px-4 text-sm font-semibold transition ${
-                  i === open ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600'
-                }`}
-              >
-                {CIRCLED[i] ?? `${i + 1}.`} {t.term}
-              </button>
-            ))}
-          </div>
+          {step.terms.length > 1 && (
+            <div className="mt-3.5 flex flex-wrap gap-2" role="tablist">
+              {step.terms.map((t, i) => (
+                <button
+                  key={t.term}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === open}
+                  onClick={() => setOpen(i)}
+                  className={`h-9 rounded-full border-2 px-3.5 text-sm font-extrabold ${
+                    i === open ? 'border-blue bg-blue text-white' : 'border-line text-sub bg-white'
+                  }`}
+                >
+                  {t.term}
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div role="tabpanel" className="mt-4 rounded-3xl bg-blue-50 px-5 py-5">
-            <span className="text-primary flex size-11 items-center justify-center rounded-xl bg-white">
-              <BulbIcon />
-            </span>
-            <h3 className="mt-4 text-lg font-bold text-slate-900">{term.term}</h3>
-            <p className="mt-2 leading-relaxed text-slate-700">{term.desc}</p>
-          </div>
+          {/* key: 용어가 바뀌면 칸이 다시 들어온다 */}
+          <article key={term.term} role="tabpanel" className="mm-box mm-concept">
+            <span className="mm-chip gray">한 줄 개념</span>
+            <h3 className="kw">{term.term}</h3>
+            <p className="def">{term.desc}</p>
+          </article>
         </>
       )}
     </StepFrame>
-  )
-}
-
-function BulbIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <path
-        d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2.2h5c.1-1 .5-1.7 1.1-2.2A6 6 0 0 0 12 3z"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }

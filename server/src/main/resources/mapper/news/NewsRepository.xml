@@ -79,10 +79,88 @@
          ORDER BY c.id
     </select>
 
+    <!-- 지난 뉴스: 홈에 보이는 날짜(before)보다 앞선 카드. 최근 날짜부터 -->
+    <select id="findCardsBefore" resultMap="cardMap">
+        <include refid="cardColumns"/>
+         WHERE c.card_date &lt; #{before}
+           AND <include refid="visibleStatus"/>
+         ORDER BY c.card_date DESC, c.id
+         LIMIT #{limit}
+    </select>
+
     <select id="findCard" resultMap="cardMap">
         <include refid="cardColumns"/>
          WHERE c.id = #{cardId}
            AND <include refid="visibleStatus"/>
+    </select>
+
+    <!-- ===== 홈 종목 차트 ===== -->
+    <resultMap id="chartPickMap" type="com.moneymate.news.ChartPickRow">
+        <constructor>
+            <arg column="card_id" javaType="_long"/>
+            <arg column="ticker" javaType="String"/>
+            <arg column="market" javaType="String"/>
+            <arg column="name" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- worker(stock_move_card)가 고른 차트 카드(model_info.select.chart = true)가 먼저.
+         그 표시가 없는 날(11/25 이전 카드)은 일봉이 있는 종목 카드 중 id 가 가장 작은 것 -->
+    <select id="findChartPick" resultMap="chartPickMap">
+        SELECT c.id AS card_id, rs.ticker, rs.market, COALESCE(rs.issuer_name, rs.ticker) AS name
+          FROM cards c
+          JOIN card_sources cs ON cs.card_id = c.id AND cs.is_main
+          JOIN raw_sources rs  ON rs.id = cs.source_id
+         WHERE c.card_date = #{cardDate}
+           AND <include refid="visibleStatus"/>
+           AND rs.ticker IS NOT NULL
+           AND rs.market IN ('KR', 'US')
+           AND EXISTS (SELECT 1 FROM prices p WHERE p.ticker = rs.ticker AND p.market = rs.market)
+         ORDER BY (c.model_info -> 'select' ->> 'chart') = 'true' DESC NULLS LAST, c.id
+         LIMIT 1
+    </select>
+
+    <resultMap id="candleMap" type="com.moneymate.news.CandleRow">
+        <constructor>
+            <arg column="market_date" javaType="java.time.LocalDate"/>
+            <arg column="open" javaType="java.math.BigDecimal"/>
+            <arg column="high" javaType="java.math.BigDecimal"/>
+            <arg column="low" javaType="java.math.BigDecimal"/>
+            <arg column="close" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <select id="findCandles" resultMap="candleMap">
+        SELECT market_date, open, high, low, close
+          FROM prices
+         WHERE ticker = #{ticker}
+           AND market = #{market}
+           AND market_date &lt;= #{upTo}
+         ORDER BY market_date DESC
+         LIMIT #{limit}
+    </select>
+
+    <resultMap id="chartNoteMap" type="com.moneymate.news.ChartNoteRow">
+        <constructor>
+            <arg column="card_id" javaType="_long"/>
+            <arg column="market_date" javaType="java.time.LocalDate"/>
+            <arg column="title" javaType="String"/>
+            <arg column="slides_json" javaType="String"/>
+        </constructor>
+    </resultMap>
+
+    <!-- 그 종목이 대표 자료였던 지난 카드. 홈 카드(before 날짜)는 빼고, 차트 기간(from 이후) 안의 것만 -->
+    <select id="findChartNotes" resultMap="chartNoteMap">
+        SELECT c.id AS card_id, rs.published_date AS market_date, c.title, c.slides::text AS slides_json
+          FROM cards c
+          JOIN card_sources cs ON cs.card_id = c.id AND cs.is_main
+          JOIN raw_sources rs  ON rs.id = cs.source_id
+         WHERE rs.ticker = #{ticker}
+           AND rs.market = #{market}
+           AND rs.published_date &gt;= #{from}
+           AND c.card_date &lt; #{before}
+           AND <include refid="visibleStatus"/>
+         ORDER BY rs.published_date, c.id
     </select>
 
     <!-- ===== 단계 ===== -->

@@ -1,11 +1,75 @@
 @import 'tailwindcss';
+@import './design.css';
+@import './landing.css';
 
+/*
+ * 색·글꼴은 UI 시안(docs/design/app.html, index.html)의 값이다: 흰 바탕에 파란 포인트 색 하나.
+ * 시안의 --blue, --ink … 를 Tailwind 색 이름(bg-blue, text-ink …)으로 쓸 수 있게 여기 한 곳에 둔다.
+ */
 @theme {
-  --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
-  --color-primary: #1b64da;
+  --font-sans:
+    'Pretendard Variable', Pretendard, 'Noto Sans KR', -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  /* 워드마크·큰 숫자·축하 문구에 쓰는 제목 글꼴 */
+  --font-display: 'Bagel Fat One', 'Pretendard Variable', Pretendard, system-ui, sans-serif;
+
+  --color-ink: #2b3344;
+  --color-sub: #6b7688;
+  --color-faint: #9aa4b5;
+  --color-line: #e3e8ef;
+  --color-mist: #f3f6fa;
+
+  --color-blue: #3b8dff;
+  --color-blue-deep: #2a6fd6;
+  --color-blue-soft: #eaf3ff;
+  --color-blue-ink: #1f5fc4;
+  /* 채우는 파랑(버튼·막대). 흰 바탕 위 파란 글자는 더 진한 blue-ink 를 쓴다 */
+  --color-primary: #3b8dff;
+
+  --color-butter: #ffc94d;
+  --color-butter-soft: #fff4d1;
+  --color-butter-ink: #8a5a00;
+
   /* 늘림·상승 빨강 ▲, 줄임·하락 파랑 ▼ */
-  --color-up: #d6213b;
-  --color-down: #1b64da;
+  --color-up: #f0506a;
+  --color-up-soft: #ffe6ea;
+  --color-down: #4f63d2;
+  --color-down-soft: #e6e9fb;
+
+  --color-ok: #2fae6b;
+  --color-ok-soft: #e2f6ea;
+  --color-ok-ink: #1b7a48;
+  --color-no-soft: #ffe6ea;
+  --color-no-ink: #c22f49;
+
+  /*
+   * 회색(slate)도 시안의 회색으로 맞춘다. 아직 시안 모양으로 손보지 않은 화면(탭2, 복습 문제 등)이
+   * text-slate-500 같은 이름을 그대로 쓰고 있어서, 이름은 두고 값만 바꿔 전체 색을 하나로 맞춘다.
+   */
+  --color-slate-50: #f7f9fc;
+  --color-slate-100: #f3f6fa;
+  --color-slate-200: #e3e8ef;
+  --color-slate-300: #c6ceda;
+  --color-slate-400: #9aa4b5;
+  --color-slate-500: #6b7688;
+  --color-slate-600: #566072;
+  --color-slate-700: #414a5c;
+  --color-slate-800: #2b3344;
+  --color-slate-900: #2b3344;
+}
+
+html {
+  background: #eef2f7;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  color: var(--color-ink);
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible {
+  outline: 3px solid var(--color-butter);
+  outline-offset: 2px;
 }
 
 /* 스크롤바 숨김 (모든 화면). 스크롤은 그대로 되고 막대만 안 보인다 */
@@ -15,4 +79,13 @@
 }
 *::-webkit-scrollbar {
   display: none; /* Safari, 옛 Chrome */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

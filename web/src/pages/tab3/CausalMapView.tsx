@@ -267,7 +267,7 @@ export const CausalMapView = ({ map, focusId = null }: CausalMapViewProps) => {
         minZoom={0.2}
         maxZoom={2.5}
       >
-        <Background variant={BackgroundVariant.Dots} gap={14} size={1} color="#cbd5e1" />
+        <Background variant={BackgroundVariant.Dots} gap={14} size={1} color="#e3e8ef" />
       </ReactFlow>
 
       <Legend />

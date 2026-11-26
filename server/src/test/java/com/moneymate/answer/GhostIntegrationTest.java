@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.moneymate.TestDatabase;
 import com.moneymate.answer.GhostDtos.Cell;
+import com.moneymate.answer.GhostDtos.ConceptCell;
+import com.moneymate.answer.GhostDtos.ConceptRow;
+import com.moneymate.answer.GhostRepository.GhostConcept;
 import com.moneymate.answer.GhostDtos.Report;
 import com.moneymate.answer.GhostRepository.GhostStep;
 import com.moneymate.judgement.JudgementRepository;
@@ -47,6 +50,7 @@ class GhostIntegrationTest {
 
     @BeforeEach
     void clean() {
+        jdbc.update("DELETE FROM concept_answers");
         jdbc.update("DELETE FROM user_answers");
         answers.ensureUser(ME);
         answers.ensureUser(YOU);
@@ -62,7 +66,17 @@ class GhostIntegrationTest {
     }
 
     Report report(String user) {
-        return Ghost.report(ghosts.findSteps(1L), ghosts.findRows(user, 1L));
+        return Ghost.report(ghosts.findSteps(1L), ghosts.findRows(user, 1L), ghosts.findConceptRows(user, 1L));
+    }
+
+    /** 튜터(또는 복습) 퀴즈 답 하나. cardId·attempt 는 복습이면 null */
+    void conceptAnswer(String user, String source, Long cardId, Integer attempt, boolean correct) {
+        Long node = jdbc.queryForObject(
+                "INSERT INTO concept_nodes (label) VALUES ('고스트 테스트 개념') "
+                        + "ON CONFLICT (label) DO UPDATE SET label = EXCLUDED.label RETURNING id", Long.class);
+        jdbc.update("INSERT INTO concept_answers (user_id, node_id, source, card_id, attempt_no, quiz_kind, guess_p, "
+                + "is_correct) VALUES (CAST(? AS uuid), ?, ?, ?, ?, '용어 뜻', 0.3333, ?)",
+                user, node, source, cardId, attempt, correct);
     }
 
     @Test
@@ -97,6 +111,31 @@ class GhostIntegrationTest {
         assertThat(r.comparison().improvedSteps()).isEqualTo(2);
         assertThat(r.comparison().previous().sureWrong()).isEqualTo(1);
         assertThat(r.comparison().current().sureWrong()).isEqualTo(0);
+    }
+
+    @Test
+    void conceptRowCountsTutorQuizzesPerAttempt() {
+        // 시도 1: 개념 단계에서 튜터 퀴즈 3개(1개 맞힘) → 본 문제
+        conceptAnswer(ME, "tutor", 1L, 1, false);
+        conceptAnswer(ME, "tutor", 1L, 1, false);
+        conceptAnswer(ME, "tutor", 1L, 1, true);
+        quiz(ME, 102, true, 2, 12_000);
+        quiz(ME, 103, true, 1, 25_000);
+        judge(ME, 60);
+        // 시도 2: 튜터 퀴즈 1개(맞힘) → 본 문제
+        conceptAnswer(ME, "tutor", 1L, 2, true);
+        quiz(ME, 102, true, 2, 12_000);
+        quiz(ME, 103, true, 2, 25_000);
+        judge(ME, 60);
+        // 섞이면 안 되는 것: 복습 문제(카드 없음), 다른 카드의 튜터 퀴즈, 다른 사용자
+        conceptAnswer(ME, "review", null, null, true);
+        conceptAnswer(ME, "tutor", 2L, 1, true);
+        conceptAnswer(YOU, "tutor", 1L, 1, true);
+
+        assertThat(ghosts.findConceptRows(ME, 1L)).containsExactly(new GhostConcept(1, 3, 1), new GhostConcept(2, 1, 1));
+        assertThat(report(ME).comparison().concept())
+                .isEqualTo(new ConceptRow(new ConceptCell(3, 1), new ConceptCell(1, 1), true));
+        assertThat(report(ME).comparison().improvedSteps()).isZero();
     }
 
     @Test

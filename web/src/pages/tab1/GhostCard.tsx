@@ -1,6 +1,6 @@
 import { reviewLabel } from '@/lib/review'
 import type { CardDetail } from '@/types/card'
-import type { GhostCell, GhostComparison, GhostRow } from '@/types/ghost'
+import type { GhostCell, GhostComparison, GhostConceptCell, GhostRow } from '@/types/ghost'
 
 /**
  * 결과 화면의 고스트 비교 (추가 구현 2-6): 같은 카드를 다시 풀었을 때 지난번과 이번을 단계별로 나란히 보여 준다.
@@ -14,29 +14,33 @@ export const GhostCard = ({
   card: CardDetail
   comparison: GhostComparison
 }) => {
-  const { previous, current, rows, improvedSteps } = comparison
+  const { previous, current, rows, improvedSteps, concept } = comparison
   const last = `지난번(${reviewLabel(previous.date)})`
   const fewerSureWrong =
     previous.sureWrong !== null &&
     current.sureWrong !== null &&
     current.sureWrong < previous.sureWrong
-  // 정답·시간이 먼저, 그다음이 확신 (계획 2-6 의 판단 순서)
+  // 정답·시간이 먼저, 그다음이 개념 퀴즈 수, 그다음이 확신 (계획 2-6 의 판단 순서)
   const headline =
     improvedSteps > 0
       ? `${last}보다 ${improvedSteps}단계 좋아졌어요`
-      : fewerSureWrong
-        ? `${last}보다 확실하다고 하고 틀린 답이 줄었어요`
-        : `${last} 기록과 나란히 봤어요`
+      : concept?.improved
+        ? `${last}보다 개념 퀴즈를 적게 풀고 넘어갔어요`
+        : fewerSureWrong
+          ? `${last}보다 확실하다고 하고 틀린 답이 줄었어요`
+          : `${last} 기록과 나란히 봤어요`
   const labels = stepLabels(card)
   const best = rows.filter((r) => r.best)
 
   return (
-    <section className="mt-7">
-      <h3 className="font-bold text-slate-900">지난번의 나와 비교</h3>
-      <div className="mt-3 rounded-2xl bg-slate-100 px-4 py-4">
-        <p className="text-base font-bold break-keep text-slate-900">{headline}</p>
+    <section>
+      <div className="mm-h-sec">
+        <h3>지난번의 나와 비교</h3>
+      </div>
+      <div className="mm-box px-4 py-3.5">
+        <p className="text-base font-extrabold break-keep">{headline}</p>
         {best.length > 0 && (
-          <p className="text-primary mt-1 text-sm font-bold break-keep">
+          <p className="text-blue-ink mt-1 text-sm font-extrabold break-keep">
             {best.map((r) => labels[r.stepId] ?? KIND_LABEL[r.kind]).join(', ')} 최고 기록 경신
           </p>
         )}
@@ -44,7 +48,7 @@ export const GhostCard = ({
         <table className="mt-3 w-full table-fixed text-sm">
           <caption className="sr-only">단계별 지난번 기록과 이번 기록</caption>
           <thead>
-            <tr className="text-xs text-slate-500">
+            <tr className="text-sub text-xs">
               <td className="w-[30%]" />
               <th scope="col" className="py-1 text-left font-semibold">
                 지난번
@@ -55,16 +59,31 @@ export const GhostCard = ({
             </tr>
           </thead>
           <tbody>
+            {concept && (
+              <tr className="border-line border-t-2">
+                <th scope="row" className="py-2.5 text-left font-bold">
+                  개념 퀴즈
+                </th>
+                <td className="text-sub py-2.5 pr-2 font-medium break-keep tabular-nums">
+                  {conceptText(concept.previous)}
+                </td>
+                <td
+                  className={`py-2.5 break-keep tabular-nums ${concept.improved ? 'text-blue-ink font-extrabold' : 'font-medium'}`}
+                >
+                  {conceptText(concept.current)}
+                </td>
+              </tr>
+            )}
             {rows.map((row) => (
-              <tr key={row.stepId} className="border-t border-slate-200">
-                <th scope="row" className="py-2.5 text-left font-semibold text-slate-900">
+              <tr key={row.stepId} className="border-line border-t-2">
+                <th scope="row" className="py-2.5 text-left font-bold">
                   {labels[row.stepId] ?? KIND_LABEL[row.kind]}
                 </th>
-                <td className="py-2.5 text-slate-500 tabular-nums">
+                <td className="text-sub py-2.5 font-medium tabular-nums">
                   {cellText(row, row.previous)}
                 </td>
                 <td
-                  className={`py-2.5 tabular-nums ${row.improved ? 'text-primary font-bold' : 'text-slate-900'}`}
+                  className={`py-2.5 tabular-nums ${row.improved ? 'text-blue-ink font-extrabold' : 'font-medium'}`}
                 >
                   {cellText(row, row.current)}
                   {row.best && <span className="sr-only"> (최고 기록)</span>}
@@ -75,12 +94,13 @@ export const GhostCard = ({
         </table>
 
         {previous.sureWrong !== null && current.sureWrong !== null && (
-          <p className="mt-3 border-t border-slate-200 pt-3 text-sm break-keep text-slate-900">
+          <p className="border-line mt-1 border-t-2 pt-3 text-sm font-semibold break-keep">
             확실해요인데 틀림: 지난번 {previous.sureWrong}개 → 이번 {current.sureWrong}개
           </p>
         )}
-        <p className="mt-3 text-xs break-keep text-slate-500">
+        <p className="text-faint mt-3 text-xs font-semibold break-keep">
           같은 문제를 다시 푼 기록이에요. 문제를 기억해서 빨라졌을 수도 있어요.
+          {concept && ' 개념 퀴즈는 풀 때마다 새 문제가 나와요.'}
         </p>
       </div>
     </section>
@@ -107,6 +127,10 @@ const stepLabels = (card: CardDetail): Record<string, string> => {
   }
   return labels
 }
+
+/** "5문제 · 3개 맞힘". 그 시도에 튜터 기록이 없으면 "-" */
+const conceptText = (cell: GhostConceptCell | null): string =>
+  cell ? `${cell.quizzes}문제 · ${cell.correct}개 맞힘` : '-'
 
 /** "맞힘 · 12초", "틀림", "71점". 기록이 없으면 "-" */
 const cellText = (row: GhostRow, cell: GhostCell | null): string => {

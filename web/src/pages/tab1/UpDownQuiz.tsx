@@ -30,67 +30,32 @@ export const UpDownQuiz = ({ chart }: UpDownQuizProps) => {
   }
 
   return (
-    <div className="mt-3 border-t border-slate-100 pt-3">
-      <div>
-        {/* 390px 폭에서 질문이 세 줄로 꺾이지 않게 질문 한 줄, 버튼은 아래 반반 */}
-        <p className="text-[15px] leading-snug font-bold break-keep text-slate-900">
-          오늘 {chart.ticker}, 어제보다 올랐을까요?
+    <div className="border-line mt-2.5 border-t-2 pt-3">
+      {/* UI 시안 app.html 의 O/X 줄: 왼쪽 질문, 오른쪽에 빨강 O · 파랑 X 버튼 */}
+      <div className="flex items-center gap-2">
+        <p className="min-w-0 flex-1 text-[15px] leading-snug font-extrabold">
+          오늘 {chart.ticker},
+          <br />
+          어제보다 올랐을까요?
         </p>
-        <div
-          className="mt-2.5 grid grid-cols-2 gap-2"
-          role="group"
-          aria-label="오늘 올랐을지 고르기"
-        >
-          <QuizButton
-            kind="up"
-            picked={pick === 'up'}
-            dimmed={pick !== null && pick !== 'up'}
-            disabled={closed}
-            onClick={() => choose('up')}
-          />
-          <QuizButton
-            kind="down"
-            picked={pick === 'down'}
-            dimmed={pick !== null && pick !== 'down'}
-            disabled={closed}
-            onClick={() => choose('down')}
-          />
+        <div className="flex shrink-0 gap-2" role="group" aria-label="오늘 올랐을지 고르기">
+          {(['up', 'down'] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={pick === kind}
+              disabled={closed}
+              onClick={() => choose(kind)}
+              className={`mm-ox ${kind === 'up' ? 'o' : 'x'} ${pick !== null && pick !== kind ? 'dim' : ''}`}
+            >
+              {kind === 'up' ? 'O 오른다' : 'X 내린다'}
+            </button>
+          ))}
         </div>
       </div>
 
       <QuizResult chart={chart} pick={pick} answer={answer} chg={chg} />
     </div>
-  )
-}
-
-interface QuizButtonProps {
-  kind: Pick
-  picked: boolean
-  dimmed: boolean
-  disabled: boolean
-  onClick: () => void
-}
-
-const QuizButton = ({ kind, picked, dimmed, disabled, onClick }: QuizButtonProps) => {
-  const up = kind === 'up'
-  const base = up
-    ? 'border-rose-300 bg-rose-50 text-rose-600'
-    : 'border-indigo-300 bg-indigo-50 text-indigo-700'
-  const active = up
-    ? 'border-rose-500 bg-rose-500 text-white'
-    : 'border-indigo-600 bg-indigo-600 text-white'
-  return (
-    <button
-      type="button"
-      aria-pressed={picked}
-      disabled={disabled}
-      onClick={onClick}
-      className={`min-h-12 rounded-2xl border-2 px-3.5 text-[15px] font-bold transition active:scale-95 disabled:cursor-default ${
-        picked ? active : base
-      } ${dimmed ? 'opacity-40' : ''}`}
-    >
-      {up ? 'O 오른다' : 'X 내린다'}
-    </button>
   )
 }
 
@@ -106,8 +71,8 @@ const QuizResult = ({ chart, pick, answer, chg }: QuizResultProps) => {
   if (answer === null || chg === null) {
     if (!pick) return null
     return (
-      <p role="status" className="mt-2 text-xs text-slate-500">
-        <b className="text-slate-700">{pick === 'up' ? 'O 오른다' : 'X 내린다'}</b>를 골랐어요.{' '}
+      <p role="status" className="text-sub mt-2.5 text-xs font-semibold">
+        <b className="text-ink">{pick === 'up' ? 'O 오른다' : 'X 내린다'}</b>를 골랐어요.{' '}
         {closeText(chart.market, chart.today)} 정답을 알려 드려요. 그 전에는 바꿀 수 있어요.
       </p>
     )
@@ -118,19 +83,16 @@ const QuizResult = ({ chart, pick, answer, chg }: QuizResultProps) => {
       ? '어제와 같은 값으로 마감했어요'
       : `${(Math.abs(chg) * 100).toFixed(2)}% ${answer === 'up' ? '올랐어요' : '내렸어요'}`
   const head = !pick ? '오늘은' : pick === answer ? '정답! 오늘은' : '아쉬워요. 오늘은'
-  const tone = answer === 'up' ? 'text-up' : answer === 'down' ? 'text-down' : 'text-slate-600'
+  const tone = answer === 'up' ? 'text-up' : answer === 'down' ? 'text-down' : 'text-sub'
 
   return (
-    <div role="status" className="mt-2 rounded-2xl bg-slate-50 px-3.5 py-3 text-sm">
-      <p className="font-semibold text-slate-800">
-        {head} <span className={tone}>{moved}</span>
+    <div role="status" className="bg-blue-soft mt-3 rounded-[14px] px-3.5 py-3">
+      <p className="text-[14.5px] leading-normal font-bold">
+        <b className="text-blue-ink">{head}</b> <span className={tone}>{moved}</span>
       </p>
       {chart.todayCardId && (
-        <Link
-          to={`/news/${chart.todayCardId}`}
-          className="text-primary mt-1 inline-flex min-h-9 items-center text-sm font-semibold"
-        >
-          왜 그런지 카드뉴스로 ›
+        <Link to={`/news/${chart.todayCardId}`} className="mm-btn sm mt-2">
+          왜 그런지 카드뉴스로 확인하기
         </Link>
       )}
     </div>

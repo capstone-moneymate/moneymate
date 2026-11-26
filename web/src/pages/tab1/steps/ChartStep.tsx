@@ -11,11 +11,11 @@ import {
 import type { ChartData } from '@/types/chart'
 
 const COLOR = {
-  primary: '#1b64da',
-  bar: '#cbd5e1',
-  text: '#64748b',
-  grid: '#f1f5f9',
-  border: '#e2e8f0',
+  primary: '#3b8dff',
+  bar: '#c6ceda',
+  text: '#6b7688',
+  grid: '#f3f6fa',
+  border: '#e3e8ef',
 }
 const PRICE_VOLUME_HEIGHT = 240
 const RSI_HEIGHT = 90
@@ -34,14 +34,14 @@ export const ChartStep = ({ chart: data, ticker }: ChartStepProps) => {
 
   const hasRsi = data.points.some((p) => p.rsi != null)
   return (
-    <figure className="mb-5">
+    <figure className="mm-box mb-3.5 px-2 pt-3 pb-2.5">
       <PriceVolumeChart data={data} hasRsi={hasRsi} label={`${ticker} 가격·거래량 차트`} />
-      <figcaption className="mt-2 text-xs text-slate-500">
+      <figcaption className="text-sub mt-2 px-1.5 text-xs font-semibold">
         위: 종가 · 아래: 거래량{hasRsi && ' · 맨 아래: RSI'}
         {data.highlight && (
           <>
             {' · '}
-            <span className="text-primary font-semibold">파란 막대: {data.highlight.label}</span>
+            <span className="text-blue-ink font-extrabold">파란 막대: {data.highlight.label}</span>
           </>
         )}
       </figcaption>
@@ -51,7 +51,7 @@ export const ChartStep = ({ chart: data, ticker }: ChartStepProps) => {
 
 const ChartMessage = ({ text }: { text: string }) => {
   return (
-    <div className="mb-5 flex h-40 items-center justify-center rounded-2xl bg-slate-50 px-4 text-center text-sm text-slate-500">
+    <div className="bg-mist text-sub mb-3.5 flex h-40 items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold">
       {text}
     </div>
   )

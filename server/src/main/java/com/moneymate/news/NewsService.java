@@ -1,9 +1,14 @@
 package com.moneymate.news;
 
+import com.moneymate.news.NewsDtos.Candle;
 import com.moneymate.news.NewsDtos.CardDetail;
 import com.moneymate.news.NewsDtos.MarketIndex;
 import com.moneymate.news.NewsDtos.NewsCardSummary;
 import com.moneymate.news.NewsDtos.NewsHome;
+import com.moneymate.news.NewsDtos.PastCard;
+import com.moneymate.news.NewsDtos.PastNews;
+import com.moneymate.news.NewsDtos.StockChart;
+import com.moneymate.news.NewsDtos.StockChartNote;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.Clock;
@@ -12,9 +17,12 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +50,10 @@ public class NewsService {
 
     /** 홈 카드 한 줄 요약 최대 글자 수 (첫 슬라이드 본문을 자른다) */
     static final int SUMMARY_MAX = 80;
+    /** 지난 뉴스로 한 번에 내려 주는 카드 수 (약 2주치) */
+    static final int PAST_LIMIT = 40;
+    /** 홈 종목 차트 일봉 수: 화면이 그리는 20거래일 + 5일선을 첫날부터 그릴 앞 4일 */
+    static final int CHART_CANDLES = 24;
 
     /** content 에 있으면 안 되는 정답 키. compose.py 는 정답을 steps.answer 에만 쓰지만 한 번 더 막는다 */
     static final Set<String> ANSWER_KEYS = Set.of("answer", "answer_index", "answer_order", "correct",
@@ -76,8 +88,82 @@ public class NewsService {
             List<Long> ids = rows.stream().map(CardRow::id).toList();
             completed = repository.findCompletedCardIds(userId, ids).stream().map(String::valueOf).toList();
         }
-        return new NewsHome(cardDate.toString(), indices(repository.findLatestIndices(List.copyOf(INDICES.keySet()))),
-                cards, completed);
+        StockChart chart = rows.isEmpty() ? null : stockChart(cardDate);
+        return new NewsHome(cardDate.toString(), chart,
+                indices(repository.findLatestIndices(List.copyOf(INDICES.keySet()))), cards, completed);
+    }
+
+    // --- 홈 종목 차트 ---
+
+    /**
+     * 그날 차트 종목 카드의 최근 일봉 + 지난 카드 표시. 차트 종목이 없거나 일봉이 없으면 null (화면은 차트를 숨긴다).
+     * 일봉은 cardDate 앞까지 CHART_CANDLES 개. cardDate 일봉이 이미 있으면(장 마감 뒤 수집) todayClose 로만 쓴다.
+     */
+    StockChart stockChart(LocalDate cardDate) {
+        Optional<ChartPickRow> found = repository.findChartPick(cardDate, includePending);
+        if (found.isEmpty()) {
+            return null;
+        }
+        ChartPickRow pick = found.get();
+        List<CandleRow> recent = repository.findCandles(pick.ticker(), pick.market(), cardDate, CHART_CANDLES + 1);
+
+        Double todayClose = null;
+        List<CandleRow> past = new ArrayList<>();
+        for (CandleRow r : recent) {
+            if (r.marketDate().equals(cardDate)) {
+                todayClose = r.close().doubleValue();
+            } else if (past.size() < CHART_CANDLES) {
+                past.add(r);
+            }
+        }
+        if (past.isEmpty()) {
+            return null;
+        }
+        Collections.reverse(past);   // 오래된 날부터
+
+        Set<LocalDate> dates = new HashSet<>();
+        past.forEach(r -> dates.add(r.marketDate()));
+        Map<LocalDate, StockChartNote> notes = new LinkedHashMap<>();
+        for (ChartNoteRow n : repository.findChartNotes(pick.ticker(), pick.market(), past.get(0).marketDate(),
+                cardDate, includePending)) {
+            if (dates.contains(n.marketDate()) && !notes.containsKey(n.marketDate())) {
+                String reason = summaryText(n.slidesJson());
+                notes.put(n.marketDate(), new StockChartNote(n.marketDate().toString(),
+                        reason.isEmpty() ? null : reason, String.valueOf(n.cardId()), n.title()));
+            }
+        }
+
+        return new StockChart(pick.ticker(), pick.name(), pick.market(), cardDate.toString(),
+                String.valueOf(pick.cardId()), todayClose, past.stream().map(NewsService::candle).toList(),
+                List.copyOf(notes.values()));
+    }
+
+    /** 일봉 한 개. 시가·고가·저가가 비어 있으면 종가로 채운다. */
+    static Candle candle(CandleRow r) {
+        double close = r.close().doubleValue();
+        return new Candle(r.marketDate().toString(),
+                r.open() == null ? close : r.open().doubleValue(),
+                r.high() == null ? close : r.high().doubleValue(),
+                r.low() == null ? close : r.low().doubleValue(),
+                close);
+    }
+
+    /**
+     * 지난 뉴스: 홈에 보이는 날짜(가장 최근 card_date)보다 앞선 카드를 최근 날짜부터 PAST_LIMIT 건까지.
+     * 홈과 겹치지 않게 기준 날짜를 홈과 같은 방법으로 정한다.
+     */
+    public PastNews past(String userId) {
+        LocalDate today = LocalDate.now(clock.withZone(KST));
+        LocalDate cardDate = repository.findLatestCardDate(today, includePending).orElse(today);
+        List<CardRow> rows = repository.findCardsBefore(cardDate, includePending, PAST_LIMIT);
+
+        List<PastCard> cards = rows.stream().map(r -> new PastCard(r.cardDate().toString(), summary(r))).toList();
+        List<String> completed = List.of();
+        if (userId != null && !rows.isEmpty()) {
+            List<Long> ids = rows.stream().map(CardRow::id).toList();
+            completed = repository.findCompletedCardIds(userId, ids).stream().map(String::valueOf).toList();
+        }
+        return new PastNews(cards, completed);
     }
 
     public CardDetail card(long cardId) {

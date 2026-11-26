@@ -13,11 +13,11 @@ import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts'
 import { UpDownQuiz } from '@/pages/tab1/UpDownQuiz'
 import type { Candle, StockChart, StockChartNote } from '@/types/news'
 
-/** 오른 날 빨강, 내린 날 파랑 (styles/index.css --color-up / --color-down 계열) */
-const UP = '#e8455f'
-const DOWN = '#3b5bdb'
-const MA5 = '#d4a017'
-const RING = '#4c6ef5'
+/** 오른 날 빨강, 내린 날 파랑, 5일선 노랑, 지난 카드뉴스 ○ 파랑 (styles/index.css 의 up·down·butter·blue 와 같은 값) */
+const UP = '#f0506a'
+const DOWN = '#4f63d2'
+const MA5 = '#ffc94d'
+const RING = '#3b8dff'
 const CHART_HEIGHT = 200
 const VISIBLE_DAYS = 20
 /** 이 시간(ms) 이상 누르고 있으면 말풍선을 연다 */
@@ -52,47 +52,48 @@ export const StockChartCard = ({ chart }: StockChartCardProps) => {
   const shown = candles.slice(-VISIBLE_DAYS)
   const last = candles[candles.length - 1]
   const prev = candles[candles.length - 2]
-  const chg = last && prev ? last.close / prev.close - 1 : null
+  // 장 마감 뒤(todayClose 있음)에는 오늘 종가와 어제 대비 등락률, 그 전에는 어제 종가와 그 전날 대비
+  const price = chart.todayClose ?? last?.close
+  const base = chart.todayClose != null ? last : prev
+  const chg = price != null && base ? price / base.close - 1 : null
 
   return (
-    <section className="rounded-3xl bg-white px-4 pt-4 pb-3 shadow-[0_4px_20px_rgba(30,41,90,0.08)]">
+    <section className="mm-box p-3.5" aria-label="TOP 1 종목">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-            TOP 1 종목
-          </span>
-          <span className="font-bold text-slate-900">{chart.ticker}</span>
-          <span className="truncate text-sm text-slate-500">{chart.name}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="mm-chip">TOP 1 종목</span>
+          <b className="font-display text-xl leading-none font-normal">{chart.ticker}</b>
+          <span className="text-sub truncate text-[13.5px] font-semibold">{chart.name}</span>
         </div>
-        {last && (
+        {price != null && (
           <div className="shrink-0 text-right">
-            <p className="text-xl leading-none font-bold text-slate-900 tabular-nums">
-              {formatPrice(last.close, chart.market)}
+            <p className="font-display text-[22px] leading-[1.1] whitespace-nowrap tabular-nums">
+              {formatPrice(price, chart.market)}
             </p>
-            {chg !== null && <ChangeText chg={chg} className="mt-1 text-sm" />}
+            {chg !== null && <ChangeText chg={chg} className="mt-1 block text-[13px]" />}
           </div>
         )}
       </div>
 
-      <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+      <p className="text-sub mt-2 flex flex-wrap items-center gap-2.5 text-xs font-semibold">
         <span>최근 {shown.length}거래일</span>
         <span className="flex items-center gap-1">
-          <span aria-hidden className="w-3 border-t border-dashed border-slate-400" />
+          <span aria-hidden className="border-faint w-3.5 border-t-2 border-dashed" />
           어제 종가
         </span>
         <span className="flex items-center gap-1">
-          <span aria-hidden className="h-0.5 w-3 rounded" style={{ background: MA5 }} />
+          <span aria-hidden className="h-[2.5px] w-3.5 rounded" style={{ background: MA5 }} />
           5일선
         </span>
       </p>
 
       <CandleChart chart={chart} />
 
-      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+      <p className="text-faint mt-1.5 flex items-center gap-1 text-xs font-semibold">
         꾹 눌러 밀면 날짜별 이유 ·
         <span
           aria-hidden
-          className="inline-block h-2.5 w-2.5 rounded-full border-[1.5px]"
+          className="inline-block size-2.5 rounded-full border-2"
           style={{ borderColor: RING }}
         />
         지난 카드뉴스
@@ -160,10 +161,10 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
       layout: {
         attributionLogo: false, // 출처 표기는 마이페이지 오픈소스 라이선스(components/OpenSourceNotice)에 모았다
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#64748b',
+        textColor: '#9aa4b5',
         fontSize: 11,
       },
-      grid: { vertLines: { visible: false }, horzLines: { color: '#eef1f6' } },
+      grid: { vertLines: { visible: false }, horzLines: { color: '#e3e8ef' } },
       leftPriceScale: {
         visible: true,
         borderVisible: false,
@@ -200,7 +201,7 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
     if (yesterday) {
       series.createPriceLine({
         price: yesterday.close,
-        color: '#94a3b8',
+        color: '#9aa4b5',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: false,
@@ -357,7 +358,7 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
           {/* 오늘 칸: 아직 마감 전 */}
           <div
             aria-hidden
-            className="pointer-events-none absolute top-1 rounded-full bg-amber-100/80"
+            className="bg-butter-soft pointer-events-none absolute top-1 rounded-md"
             style={{
               left: layout.xs[layout.xs.length - 1] - Math.max(layout.barWidth * 0.4, 7),
               width: Math.max(layout.barWidth * 0.8, 14),
@@ -383,7 +384,7 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
               <span
                 key={date}
                 aria-hidden
-                className="pointer-events-none absolute h-4 w-4 rounded-full border-2 bg-white"
+                className="pointer-events-none absolute size-4 rounded-full border-[2.6px] bg-white"
                 style={{ left: layout.xs[i] - 8, top: y - RING_GAP - 8, borderColor: RING }}
               />
             )
@@ -394,7 +395,7 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
               <span
                 key={d.date}
                 aria-hidden
-                className="pointer-events-none absolute -translate-x-1/2 text-[11px] font-medium text-slate-500 tabular-nums"
+                className="text-faint pointer-events-none absolute -translate-x-1/2 text-[11px] font-bold tabular-nums"
                 style={{ left: layout.xs[i], top: CHART_HEIGHT + 4 }}
               >
                 {shortDate(d.date)}
@@ -403,7 +404,7 @@ const CandleChart = ({ chart }: StockChartCardProps) => {
           )}
           <span
             aria-hidden
-            className="pointer-events-none absolute -translate-x-1/2 text-[11px] font-semibold text-amber-700"
+            className="text-ink pointer-events-none absolute -translate-x-1/2 text-[11px] font-extrabold"
             style={{ left: layout.xs[layout.xs.length - 1], top: CHART_HEIGHT + 4 }}
           >
             오늘
@@ -461,20 +462,20 @@ const DayBubble = ({ candle, prev, note, market, x, containerWidth }: DayBubbleP
   return (
     <div
       role="status"
-      className="absolute bottom-7 z-10 rounded-2xl border border-slate-100 bg-white px-3.5 py-3 text-sm shadow-[0_6px_24px_rgba(30,41,90,0.16)]"
+      className="border-line absolute bottom-7 z-10 rounded-2xl border-2 bg-white px-3.5 py-3 text-sm shadow-[0_12px_28px_rgba(43,51,68,0.14)]"
       style={{ left, width: BUBBLE_WIDTH }}
     >
-      <p className="font-semibold text-slate-900 tabular-nums">
+      <p className="font-extrabold tabular-nums">
         {shortDate(candle.date)} ({weekday(candle.date)}) 종가 {formatPrice(candle.close, market)}
         {chg !== null && <ChangeText chg={chg} className="ml-1.5 inline" />}
       </p>
-      <p className="mt-1 leading-snug break-keep text-slate-600">
+      <p className="text-sub mt-1 leading-snug font-medium break-keep">
         {note?.reason ?? '이날은 따로 정리한 이유가 없어요.'}
       </p>
       {note?.pastCardId && (
         <Link
           to={`/news/${note.pastCardId}`}
-          className="mt-2 flex min-h-9 items-center justify-between rounded-xl bg-indigo-50 px-3 text-xs font-semibold text-indigo-700"
+          className="bg-blue-soft text-blue-ink mt-2 flex min-h-9 items-center justify-between rounded-xl px-3 text-xs font-extrabold"
         >
           <span className="truncate pr-2">{note.pastCardTitle ?? '지난 카드뉴스'}</span>
           <span className="shrink-0">풀어보기 ›</span>
@@ -487,9 +488,9 @@ const DayBubble = ({ candle, prev, note, market, x, containerWidth }: DayBubbleP
 const ChangeText = ({ chg, className = '' }: { chg: number; className?: string }) => {
   const up = chg > 0
   const flat = chg === 0
-  const color = flat ? 'text-slate-500' : up ? 'text-up' : 'text-down'
+  const color = flat ? 'text-sub' : up ? 'text-up' : 'text-down'
   return (
-    <span className={`font-semibold whitespace-nowrap tabular-nums ${color} ${className}`}>
+    <span className={`font-extrabold whitespace-nowrap tabular-nums ${color} ${className}`}>
       {flat ? '' : up ? '▲ ' : '▼ '}
       {up ? '+' : ''}
       {(chg * 100).toFixed(2)}%

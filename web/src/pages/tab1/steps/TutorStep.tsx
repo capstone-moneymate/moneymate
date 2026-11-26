@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import axios from 'axios'
 import { fetchTutor, useTutorAnswer, useTutorStart } from '@/api/tutor'
+import { Mate } from '@/components/Mate'
 import type { ConceptStep } from '@/types/card'
 import type { AnswerMeta } from '@/types/card'
 import type { TutorAnswer, TutorEvent, TutorGradedEvent, TutorQuizEvent } from '@/types/tutor'
@@ -114,11 +115,18 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
 
   if (event.type === 'explain') {
     return (
-      <StepFrame heading={event.concept} buttonLabel="다음 ›" onButton={() => setAt(here + 1)}>
-        <div className="rounded-3xl bg-blue-50 px-5 py-5">
-          <p className="text-primary text-xs font-bold">{event.style}</p>
-          <p className="mt-2 leading-relaxed text-slate-700">{event.text}</p>
-        </div>
+      <StepFrame
+        badge={event.style}
+        heading={`${event.concept}, 들어본 적 있나요?`}
+        mood="hi"
+        buttonLabel="알겠어요"
+        onButton={() => setAt(here + 1)}
+      >
+        <article className="mm-box mm-concept mt-0">
+          <span className="mm-chip gray">한 줄 개념</span>
+          <h3 className="kw">{event.concept}</h3>
+          <p className="def">{event.text}</p>
+        </article>
       </StepFrame>
     )
   }
@@ -176,8 +184,8 @@ const QuizScreen = ({ event, shared, submit }: QuizScreenProps) => {
 
 /** 세션이 사라졌거나(서버 재시작 404) 채점 서버가 꺼졌을 때(503): 개념 단계를 여기서 끝낸다 */
 const fallbackEnd = (onNext: () => void) => (
-  <StepFrame heading="개념 퀴즈를 이어 가지 못했어요" buttonLabel="다음 단계로 ›" onButton={onNext}>
-    <p className="leading-relaxed text-slate-600">
+  <StepFrame heading="개념 퀴즈를 이어 가지 못했어요" buttonLabel="다음 단계로" onButton={onNext}>
+    <p className="text-sub leading-relaxed font-medium">
       지금까지 푼 기록은 저장됐어요. 다음 단계로 넘어가요.
     </p>
   </StepFrame>
@@ -185,8 +193,8 @@ const fallbackEnd = (onNext: () => void) => (
 
 const Waiting = ({ text }: { text: string }) => (
   <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5" role="status">
-    <span className="border-primary size-9 animate-spin rounded-full border-4 border-t-transparent" />
-    <p className="text-sm text-slate-500">{text}</p>
+    <Mate mood="think" className="size-24" />
+    <p className="text-sub text-sm font-semibold">{text}</p>
   </div>
 )
 
@@ -201,16 +209,14 @@ const Done = ({
 }) => (
   <StepFrame
     heading="개념 퀴즈를 마쳤어요"
-    buttonLabel={`이해했어요${nextLabel ? `, ${nextLabel}` : ''} ›`}
+    mood="happy"
+    buttonLabel={`이해했어요${nextLabel ? `, ${nextLabel}` : ''}`}
     onButton={onNext}
   >
-    <p className="leading-relaxed text-slate-600">이 카드에서 쓰는 개념이에요.</p>
+    <p className="text-sub leading-relaxed font-medium">이 카드에서 쓰는 개념이에요.</p>
     <div className="mt-4 flex flex-wrap gap-2">
       {targets.map((t) => (
-        <span
-          key={t}
-          className="text-primary rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold"
-        >
+        <span key={t} className="mm-chip h-9 px-4 text-sm">
           {t}
         </span>
       ))}
