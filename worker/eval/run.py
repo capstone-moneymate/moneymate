@@ -55,6 +55,8 @@ def grid() -> list[dict]:
         for e in EFFECTS:
             for c in conds:
                 out.append(cell("main", c, e, prior=prior))
+            if prior:   # 예전 튜터 규칙(선수 개념부터)과 비교 (#285: 앱 기본은 목표 먼저)
+                out.append(cell("main", "agent_prereq_first", e))
         for c in conds:
             out.append(cell("cap10", c, 0.5, cap=10, prior=prior))
         for pl in (0.1, 0.5):
@@ -119,7 +121,9 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
         agent_map = cmap
         if cond == "agent_no_prereq":
             agent_map = ag.ConceptMap(cmap.labels, cmap.desc, [], cmap.confusable)
-        ep, s = te.agent(agent_map, targets, learner, draw, mastery, cap, title=card_bank.get("title", ""))
+        order = "prereq_first" if cond == "agent_prereq_first" else ag.DEFAULT_ORDER
+        ep, s = te.agent(agent_map, targets, learner, draw, mastery, cap, title=card_bank.get("title", ""), order=order)
+        row["order"] = order
         row["calls"] = s.calls
         row["go_main_refused"] = s.go_main_refused
         row["log"] = [{"tool": e["tool"], "input": {k: v for k, v in e["input"].items() if k != "text"}} for e in s.log]
@@ -254,6 +258,7 @@ def main() -> None:
     p.add_argument("--limit", type=int, help="새로 돌릴 에이전트 세션 수 상한 (시험용)")
     p.add_argument("--bkt", help="BKT 처음,배울,실수 (예 0.25,0.1,0.1). 비우면 지금 앱의 값")
     p.add_argument("--report", action="store_true", help="표·그래프만 다시 만든다")
+    p.add_argument("--settings", nargs="*", help="이 설정만 돌린다 (예: main). 비우면 전부")
     args = p.parse_args()
     if args.report:
         print(f"표: {report(load_rows())}")
@@ -273,6 +278,8 @@ def main() -> None:
     agent_runs = 0
     with open(RESULTS, "a", encoding="utf-8") as f:
         for c in grid():
+            if args.settings and c["setting"] not in args.settings:
+                continue
             is_agent = c["condition"].startswith("agent")
             if is_agent and not args.agent:
                 continue

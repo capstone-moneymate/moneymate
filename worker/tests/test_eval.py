@@ -207,7 +207,8 @@ def test_summarize_empty_test_is_none_and_inputs_split(tmp_path):
 def test_grid_counts():
     g = rn.grid()
     agent_cells = [x for x in g if x["condition"].startswith("agent")]
-    assert len(agent_cells) == 8 and all(x["prior"] for x in agent_cells)   # 8칸 × 16 = 128 세션
+    assert len(agent_cells) == 11 and all(x["prior"] for x in agent_cells)   # 11칸 × 16 = 176 세션 (#285 예전 규칙 비교 3칸)
+    assert {x["prereq_effect"] for x in agent_cells if x["condition"] == "agent_prereq_first"} == {1.0, 0.5, 0.0}
     assert all(x["conf_noise"] is None for x in g if x["setting"] != "conf")   # 확신은 conf 설정에서만
     assert {x["conf_noise"] for x in g if x["setting"] == "conf"} == {0.0, 0.4}
     assert rn.cell("ablation", "agent_no_bkt", 0.5) in g and rn.cell("cap10", "agent", 0.5, cap=10) in g

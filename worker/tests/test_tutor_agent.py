@@ -75,8 +75,8 @@ def test_ready_tool_by_hand():
     # 순이익만 앎 → 유통 주식 수만 준비됨. 두 목표 모두 유통 주식 수를 몰라서 아직
     assert out["ready"] == [{"concept": "유통 주식 수", "p_know": 0.0, "confusable": []}]
     assert out["targets"] == [
-        {"concept": "주당순이익", "p_know": 0.0, "state": "선수 개념 먼저", "missing": ["유통 주식 수"]},
-        {"concept": "자사주 소각", "p_know": 0.0, "state": "선수 개념 먼저", "missing": ["유통 주식 수"]},
+        {"concept": "주당순이익", "p_know": 0.0, "state": "선수 개념 모름", "missing": ["유통 주식 수"]},
+        {"concept": "자사주 소각", "p_know": 0.0, "state": "선수 개념 모름", "missing": ["유통 주식 수"]},
     ]
     out = ag.tool_ready(session({"순이익": 0.97, "유통 주식 수": 0.97, "주당순이익": 0.96}))
     assert [t["state"] for t in out["targets"]] == ["앎", "준비됨"]
