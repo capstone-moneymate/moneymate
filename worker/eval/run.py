@@ -55,6 +55,8 @@ def grid() -> list[dict]:
         for e in EFFECTS:
             for c in conds:
                 out.append(cell("main", c, e, prior=prior))
+            if prior:   # 예전 튜터 규칙(선수 개념부터)과 비교 (#285: 앱 기본은 목표 먼저)
+                out.append(cell("main", "agent_prereq_first", e))
         for c in conds:
             out.append(cell("cap10", c, 0.5, cap=10, prior=prior))
         for pl in (0.1, 0.5):
@@ -84,9 +86,24 @@ def fingerprint(bank: dict, cmap: ag.ConceptMap) -> str:
     return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True, default=list).encode()).hexdigest()[:12]
 
 
+def cell_order(condition: str) -> str:
+    """그 조건에서 튜터가 쓰는 개념 순서 규칙 (#285). 에이전트가 아니면 "-"."""
+    if not condition.startswith("agent"):
+        return "-"
+    return "prereq_first" if condition == "agent_prereq_first" else ag.DEFAULT_ORDER
+
+
+def order_of(row) -> str:
+    """결과 줄의 순서 규칙. #285 전 에이전트 줄은 order 가 없고 모두 선수 개념부터(prereq_first)라 그렇게 읽는다.
+    그래야 같은 입력 지문의 예전 줄이 목표 먼저 세션으로 잘못 건너뛰어지거나 한 칸으로 묶이지 않는다 (#286 리뷰)."""
+    if not row["condition"].startswith("agent"):
+        return "-"
+    return row.get("order") or "prereq_first"
+
+
 def key(row) -> str:
-    parts = [str(row[k]) for k in CELL_FIELDS] + [row["bkt"], row["inputs"], str(row["card"]), row["profile"],
-                                                  str(row["seed"])]
+    parts = [str(row[k]) for k in CELL_FIELDS] + [row["bkt"], row["inputs"], order_of(row), str(row["card"]),
+                                                  row["profile"], str(row["seed"])]
     return "|".join(parts)
 
 
@@ -119,7 +136,9 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
         agent_map = cmap
         if cond == "agent_no_prereq":
             agent_map = ag.ConceptMap(cmap.labels, cmap.desc, [], cmap.confusable)
-        ep, s = te.agent(agent_map, targets, learner, draw, mastery, cap, title=card_bank.get("title", ""))
+        order = cell_order(cond)
+        ep, s = te.agent(agent_map, targets, learner, draw, mastery, cap, title=card_bank.get("title", ""), order=order)
+        row["order"] = order
         row["calls"] = s.calls
         row["go_main_refused"] = s.go_main_refused
         row["log"] = [{"tool": e["tool"], "input": {k: v for k, v in e["input"].items() if k != "text"}} for e in s.log]
@@ -133,15 +152,15 @@ def run_one(cmap: ag.ConceptMap, card_bank: dict, card: int, profile: str, seed:
 def summarize(rows: list[dict]) -> list[dict]:
     groups: dict[tuple, list[dict]] = {}
     for r in rows:
-        groups.setdefault(tuple(r[k] for k in CELL_FIELDS) + (r["bkt"], r["inputs"]), []).append(r)
+        groups.setdefault(tuple(r[k] for k in CELL_FIELDS) + (r["bkt"], r["inputs"], order_of(r)), []).append(r)
     order = {"main": 0, "ablation": 1, "conf": 2, "cap10": 3, "sens": 4, "slip": 5}
     out = []
-    for g, rs in sorted(groups.items(), key=lambda x: (x[0][-1], x[0][-2], not x[0][5], order.get(x[0][0], 9),
-                                                       -x[0][2], x[0][3], x[0][6], str(x[0][7]), x[0][1])):
+    for g, rs in sorted(groups.items(), key=lambda x: (x[0][-2], x[0][-3], not x[0][5], order.get(x[0][0], 9),
+                                                       -x[0][2], x[0][3], x[0][6], str(x[0][7]), x[0][1], x[0][-1])):
         mastered = [r["mastered_at"] for r in rs if r["mastered_at"] is not None]
         total = sum(r["test_total"] for r in rs)
         out.append({
-            **dict(zip(CELL_FIELDS, g[:-2])), "bkt": g[-2], "inputs": g[-1], "n": len(rs),
+            **dict(zip(CELL_FIELDS, g[:-3])), "bkt": g[-3], "inputs": g[-2], "order": g[-1], "n": len(rs),
             # 시험 문제가 하나도 없으면 0% 가 아니라 "없음" (#239 리뷰)
             "test_acc": round(sum(r["test_right"] for r in rs) / total, 3) if total else None,
             "targets_known": round(statistics.mean(r["targets_known"] / r["n_targets"] for r in rs), 3),
@@ -154,13 +173,13 @@ def summarize(rows: list[dict]) -> list[dict]:
 
 def report(rows: list[dict], out_dir: Path = OUT) -> Path:
     table = summarize(rows)
-    lines = ["| 입력 | BKT(처음/배움/실수) | 과거 기록 | 설정 | 조건 | 선수 효과 | 학습자 배울 | 학습자 실수 | 확신 잡음 | 상한 | 세션 | "
+    lines = ["| 입력 | BKT(처음/배움/실수) | 과거 기록 | 설정 | 조건 | 순서 | 선수 효과 | 학습자 배울 | 학습자 실수 | 확신 잡음 | 상한 | 세션 | "
              "마지막 시험 정답률 | 목표 개념 앎 비율 | 목표 다 앎 | 낸 퀴즈 | 다 알기까지 퀴즈 |",
-             "| :--- | :--- | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+             "| :--- | :--- | :--- | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for t in table:
         noise = "-" if t["conf_noise"] is None else t["conf_noise"]
         acc = "-" if t["test_acc"] is None else f"{t['test_acc']:.0%}"
-        lines.append(f"| {t['inputs']} | {t['bkt']} | {'있음' if t['prior'] else '없음'} | {t['setting']} | {t['condition']} | {t['prereq_effect']} | "
+        lines.append(f"| {t['inputs']} | {t['bkt']} | {'있음' if t['prior'] else '없음'} | {t['setting']} | {t['condition']} | {t['order']} | {t['prereq_effect']} | "
                      f"{t['p_learn']} | {t['slip']} | {noise} | {t['cap']} | {t['n']} | {acc} | "
                      f"{t['targets_known']:.0%} | {t['mastered_rate']:.0%} | {t['quizzes']} | "
                      f"{t['mastered_at'] if t['mastered_at'] is not None else '-'} |")
@@ -181,7 +200,7 @@ def _graph(table: list[dict], path: Path) -> None:
     except ImportError:
         return
     main = [t for t in table if t["setting"] == "main" and t["prior"] and t["bkt"] == bkt_tag(bkt.DEFAULT)]
-    conds = [c for c in ("fixed", "rules", "agent") if any(t["condition"] == c for t in main)]
+    conds = [c for c in ("fixed", "rules", "agent", "agent_prereq_first") if any(t["condition"] == c for t in main)]
     if not conds:
         return
     plt.rcParams["font.family"] = ["Malgun Gothic", "AppleGothic", "NanumGothic", "DejaVu Sans"]
@@ -189,7 +208,9 @@ def _graph(table: list[dict], path: Path) -> None:
     width = 0.8 / len(conds)
     for i, c in enumerate(conds):
         # 안 돌린 칸은 0 이 아니라 막대를 그리지 않는다 (재서 0 이 나온 칸은 0 으로 그린다, #239 리뷰)
-        pts = [(x, next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e), None))
+        # 순서 규칙까지 맞춰 고른다: 순서 없는 예전 agent 줄(선수 먼저)이 agent 막대로 잡히지 않게 (#286 리뷰)
+        pts = [(x, next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e
+                         and t["order"] == cell_order(c)), None))
                for x, e in enumerate(EFFECTS)]
         pts = [(x, y) for x, y in pts if y is not None]
         ax.bar([x + i * width for x, _ in pts], [y for _, y in pts], width, label=c)
@@ -254,6 +275,7 @@ def main() -> None:
     p.add_argument("--limit", type=int, help="새로 돌릴 에이전트 세션 수 상한 (시험용)")
     p.add_argument("--bkt", help="BKT 처음,배울,실수 (예 0.25,0.1,0.1). 비우면 지금 앱의 값")
     p.add_argument("--report", action="store_true", help="표·그래프만 다시 만든다")
+    p.add_argument("--settings", nargs="*", help="이 설정만 돌린다 (예: main). 비우면 전부")
     args = p.parse_args()
     if args.report:
         print(f"표: {report(load_rows())}")
@@ -273,6 +295,8 @@ def main() -> None:
     agent_runs = 0
     with open(RESULTS, "a", encoding="utf-8") as f:
         for c in grid():
+            if args.settings and c["setting"] not in args.settings:
+                continue
             is_agent = c["condition"].startswith("agent")
             if is_agent and not args.agent:
                 continue
@@ -281,7 +305,7 @@ def main() -> None:
                 for profile in profiles(cb["scope"], cb["targets"], []):
                     for seed in SEEDS:
                         probe = {**c, "bkt": bkt_tag(params), "inputs": inputs, "card": int(card_s), "profile": profile,
-                                 "seed": seed}
+                                 "seed": seed, "order": cell_order(c["condition"])}
                         if key(probe) in done:
                             continue
                         if is_agent:

@@ -129,12 +129,12 @@ def rules(scope, targets, edges, learner: Learner, draw, mastery, cap: int) -> E
 
 
 def agent(cmap: ag.ConceptMap, targets, learner: Learner, draw, mastery, cap: int, title: str = "",
-          ) -> tuple[Episode, ag.Session]:
+          order: str = ag.DEFAULT_ORDER) -> tuple[Episode, ag.Session]:
     """튜터 에이전트로 가르친다 (Opus 호출, 비용 발생). 설명 사건이 오면 학습자가 배울 기회를 얻는다.
     확신은 학습자가 낸 것을 그대로 넘긴다 (Learner.conf_noise 가 None 이면 None)."""
     ep = Episode(targets)
     ep.check(learner)
-    s = ag.Session("sim", cmap, targets, mastery, card=title, max_quizzes=cap, quiz_maker=draw)
+    s = ag.Session("sim", cmap, targets, mastery, card=title, max_quizzes=cap, quiz_maker=draw, order=order)
     seen = 0
     s = ag.start(s)
     while True:
