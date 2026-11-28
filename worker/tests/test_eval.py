@@ -190,8 +190,21 @@ def test_summarize_by_hand():
     rows = [{**c, "bkt": "0.3/0.1/0.1", "inputs": "abc", "mastered_at": m, "targets_known": k, "n_targets": 2,
              "test_right": r, "test_total": 4, "quizzes": q} for m, k, r, q in ((3, 2, 4, 3), (None, 1, 2, 6))]
     t = rn.summarize(rows)[0]
-    assert t == {**c, "bkt": "0.3/0.1/0.1", "inputs": "abc", "n": 2, "test_acc": 0.75, "targets_known": 0.75,
-                 "mastered_rate": 0.5, "quizzes": 4.5, "mastered_at": 3}
+    assert t == {**c, "bkt": "0.3/0.1/0.1", "inputs": "abc", "order": "-", "n": 2, "test_acc": 0.75,
+                 "targets_known": 0.75, "mastered_rate": 0.5, "quizzes": 4.5, "mastered_at": 3}
+
+
+def test_order_splits_keys_and_groups():
+    # #285 전 에이전트 줄(order 없음)은 선수 먼저로 읽어, 같은 입력의 목표 먼저 세션과 건너뛰기·묶기가 섞이지 않는다 (#286 리뷰)
+    c = rn.cell("main", "agent", 0.5)
+    base = {**c, "bkt": "0.25/0.2/0.1", "inputs": "abc", "card": 1, "profile": "처음 배움", "seed": 0,
+            "mastered_at": None, "targets_known": 1, "n_targets": 2, "test_right": 1, "test_total": 2, "quizzes": 6}
+    old, new = dict(base), base | {"order": rn.cell_order("agent")}
+    assert rn.order_of(old) == "prereq_first" and rn.order_of(new) == "target_first"
+    assert rn.key(old) != rn.key(new) and rn.key(new) == rn.key(dict(new))   # 같은 버전이면 그대로 건너뛴다
+    assert sorted(t["order"] for t in rn.summarize([old, new])) == ["prereq_first", "target_first"]
+    prf = base | {"condition": "agent_prereq_first", "order": rn.cell_order("agent_prereq_first")}
+    assert rn.order_of(prf) == "prereq_first" and rn.cell_order("rules") == "-"
 
 
 def test_summarize_empty_test_is_none_and_inputs_split(tmp_path):
