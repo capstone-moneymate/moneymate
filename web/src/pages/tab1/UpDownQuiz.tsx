@@ -12,6 +12,7 @@ interface UpDownQuizProps {
  * 차트 아래 O/X 퀴즈: "오늘 NVDA, 어제보다 올랐을까요?"
  * 정답은 코드가 정한다: 오늘 종가(todayClose) > 어제 종가 → O, < → X, 같으면 둘 다 아님.
  * 장 마감 전(todayClose = null)에는 고른 것만 기억하고, 마감 뒤에 정답·등락률을 보여 준다.
+ * 오늘의 카드뉴스로 가는 파란 버튼은 마감 전(고르기 전에도)·마감 뒤 모두 보여 준다.
  * 고른 답은 아직 서버 API 가 없어서 이 기기에만 저장한다(localStorage).
  */
 export const UpDownQuiz = ({ chart }: UpDownQuizProps) => {
@@ -68,13 +69,23 @@ interface QuizResultProps {
 
 /** 고른 뒤 한 줄 안내 / 마감 뒤 정답 */
 const QuizResult = ({ chart, pick, answer, chg }: QuizResultProps) => {
+  // 장 마감 전: 고른 것만 알려 주고, 카드뉴스로 가는 버튼은 고르기 전에도 보여 준다
   if (answer === null || chg === null) {
-    if (!pick) return null
+    if (!pick && !chart.todayCardId) return null
     return (
-      <p role="status" className="text-sub mt-2.5 text-xs font-semibold">
-        <b className="text-ink">{pick === 'up' ? 'O 오른다' : 'X 내린다'}</b>를 골랐어요.{' '}
-        {closeText(chart.market, chart.today)} 정답을 알려 드려요. 그 전에는 바꿀 수 있어요.
-      </p>
+      <div role="status">
+        {pick && (
+          <p className="text-sub mt-2.5 text-xs font-semibold">
+            <b className="text-ink">{pick === 'up' ? 'O 오른다' : 'X 내린다'}</b>를 골랐어요.{' '}
+            {closeText(chart.market, chart.today)} 정답을 알려 드려요. 그 전에는 바꿀 수 있어요.
+          </p>
+        )}
+        {chart.todayCardId && (
+          <Link to={`/news/${chart.todayCardId}`} className="mm-btn sm mt-3">
+            카드뉴스로 확인하기
+          </Link>
+        )}
+      </div>
     )
   }
 
