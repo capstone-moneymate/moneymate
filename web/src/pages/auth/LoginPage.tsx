@@ -17,7 +17,7 @@ const validateSignup = (
   password: string,
   passwordCheck: string,
 ): string | null => {
-  if (!LOGIN_ID_RULE.test(loginId)) return '아이디는 영문 소문자·숫자·_ 4~20자로 써 주세요'
+  if (!LOGIN_ID_RULE.test(loginId)) return '아이디는 영문 소문자·숫자 4~20자로 써 주세요'
   if (password.length < MIN_PASSWORD || password.length > MAX_PASSWORD)
     return '비밀번호는 8~64자로 써 주세요'
   if (password !== passwordCheck) return '비밀번호가 서로 달라요'
@@ -113,7 +113,7 @@ export const LoginPage = () => {
           value={loginId}
           onChange={setLoginIdInput}
           autoComplete="username"
-          placeholder={mode === 'signup' ? '영문 소문자·숫자·_ 4~20자' : '아이디를 입력하세요'}
+          placeholder={mode === 'signup' ? '영문 소문자·숫자 4~20자' : '아이디를 입력하세요'}
         />
         <Field
           label="비밀번호"

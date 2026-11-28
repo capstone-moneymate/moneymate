@@ -4,8 +4,15 @@ import { fetchTutor, useTutorAnswer, useTutorStart } from '@/api/tutor'
 import { Mate } from '@/components/Mate'
 import type { ConceptStep } from '@/types/card'
 import type { AnswerMeta } from '@/types/card'
-import type { TutorAnswer, TutorEvent, TutorGradedEvent, TutorQuizEvent } from '@/types/tutor'
+import type {
+  TutorAnswer,
+  TutorEvent,
+  TutorExplainEvent,
+  TutorGradedEvent,
+  TutorQuizEvent,
+} from '@/types/tutor'
 import { CHOICE_KINDS } from '@/types/tutor'
+import { VerdictIcon } from '@/pages/tab1/steps/AnswerFeedback'
 import { ConceptView } from '@/pages/tab1/steps/ConceptView'
 import { StepFrame } from '@/pages/tab1/steps/StepFrame'
 import { TutorChipQuiz } from '@/pages/tab1/steps/TutorChipQuiz'
@@ -154,39 +161,20 @@ export const TutorStep = ({ cardId, step, onNext, nextLabel }: TutorStepProps) =
   // 다음 이벤트가 아직 안 왔다: 답을 내고 다음 문제를 기다리는 중
   if (!event) return <Waiting text="다음 문제를 고르는 중이에요…" />
 
-  if (event.type === 'explain') {
+  if (event.type === 'explain') return <Explain event={event} onNext={() => setAt(here + 1)} />
+
+  if (event.type === 'done') {
+    const gradedAll = events.filter((e) => e.type === 'graded')
     return (
-      <StepFrame
-        badge="꿀팁"
-        heading="이것부터 짚고 갈게요"
-        mood="hi"
-        buttonLabel="알겠어요, 문제로 확인하기"
-        onButton={() => setAt(here + 1)}
-      >
-        {/* 2026-11-27 시안: 정의 따로, 예시 따로. 새 UI 가 들어오면 다시 맞춘다 */}
-        <article className="mm-box mm-concept mt-0">
-          <h3 className="kw mt-0">{event.concept}</h3>
-          <p className="def">{event.definition}</p>
-          {event.detail && (
-            <p className="text-sub mt-2 text-[15px] leading-relaxed font-semibold">
-              {event.detail}
-            </p>
-          )}
-          {event.example && (
-            <div className="bg-butter-soft mt-4 rounded-2xl px-4 py-3.5 text-[15px] leading-relaxed font-semibold">
-              <small className="text-butter-ink mb-1 block text-[13px] font-extrabold">
-                예를 들면
-              </small>
-              {event.example}
-            </div>
-          )}
-        </article>
-      </StepFrame>
+      <Done
+        targets={start.data.targets}
+        solved={gradedAll.length}
+        right={gradedAll.filter((e) => e.correct).length}
+        onNext={onNext}
+        nextLabel={nextLabel}
+      />
     )
   }
-
-  if (event.type === 'done')
-    return <Done targets={start.data.targets} onNext={onNext} nextLabel={nextLabel} />
 
   // 퀴즈: 바로 다음 이벤트가 채점이면 결과를 표시한다
   const after = events[here + 1]
@@ -249,35 +237,78 @@ const fallbackEnd = (onNext: () => void) => (
   </StepFrame>
 )
 
+/** 튜터가 다음 행동을 고르는 동안: 마스코트가 생각 중 */
 const Waiting = ({ text }: { text: string }) => (
-  <div className="flex flex-1 flex-col items-center justify-center gap-4 px-5" role="status">
+  <div className="flex flex-1 flex-col items-center justify-center gap-3 px-5" role="status">
     <Mate mood="think" className="size-24" />
-    <p className="text-sub text-sm font-semibold">{text}</p>
+    <p className="mm-chip h-9 px-4 text-sm">{text}</p>
   </div>
 )
 
-const Done = ({
-  targets,
-  onNext,
-  nextLabel,
-}: {
-  targets: string[]
-  onNext: () => void
-  nextLabel: string | null
-}) => (
+/**
+ * 튜터의 "설명하기": 정의 칸과 예시 칸을 따로 보여 준다.
+ * 정의 칸 = 개념 이름(큰 제목) · 정의 1문장(굵게) · 보충 1문장(회색). 예시 칸 = "예를 들면" (비어 있으면 숨긴다)
+ */
+const Explain = ({ event, onNext }: { event: TutorExplainEvent; onNext: () => void }) => (
   <StepFrame
-    heading="개념 퀴즈를 마쳤어요"
-    mood="happy"
-    buttonLabel={`이해했어요${nextLabel ? `, ${nextLabel}` : ''}`}
+    badge="개념 설명"
+    heading="이것부터 짚고 갈게요"
+    mood="hi"
+    buttonLabel="알겠어요, 문제로 확인하기"
     onButton={onNext}
   >
-    <p className="text-sub leading-relaxed font-medium">이 카드에서 쓰는 개념이에요.</p>
-    <div className="mt-4 flex flex-wrap gap-2">
-      {targets.map((t) => (
-        <span key={t} className="mm-chip h-9 px-4 text-sm">
-          {t}
-        </span>
-      ))}
+    <article className="mm-box mm-concept mt-0">
+      <span className="mm-chip gray">정의</span>
+      <h3 className="kw">{event.concept}</h3>
+      <p className="def">{event.definition}</p>
+      {event.detail && (
+        <p className="text-sub mt-2 text-[15px] leading-relaxed font-semibold">{event.detail}</p>
+      )}
+    </article>
+    {event.example && (
+      <aside className="mm-box mm-fb also px-[18px] py-4">
+        <span className="mm-chip butter bg-white">예를 들면</span>
+        <p className="mt-2.5 text-[15.5px] leading-relaxed font-semibold">{event.example}</p>
+      </aside>
+    )}
+  </StepFrame>
+)
+
+interface DoneProps {
+  targets: string[]
+  /** 이번에 푼 개념 퀴즈 수와 그중 맞힌 수 (채점 결과를 센 것) */
+  solved: number
+  right: number
+  onNext: () => void
+  nextLabel: string | null
+}
+
+/** 튜터의 "끝내기": 개념 단계를 마치고 본 문제로 넘어가기 전 한 장 */
+const Done = ({ targets, solved, right, onNext, nextLabel }: DoneProps) => (
+  <StepFrame buttonLabel={nextLabel ? `${nextLabel} 풀러 가기` : '다음으로'} onButton={onNext}>
+    <div className="mm-done-top pt-2">
+      <Mate mood="happy" />
+      <h2>개념 준비 끝!</h2>
+      <p>
+        {solved > 0
+          ? `개념 퀴즈 ${solved}문제 중 ${right}문제를 맞혔어요.`
+          : '이제 본 문제로 넘어가요.'}
+      </p>
     </div>
+    {targets.length > 0 && (
+      <>
+        <div className="mm-h-sec">
+          <h3>이 카드에서 쓰는 개념</h3>
+        </div>
+        <ul className="mm-did">
+          {targets.map((t) => (
+            <li key={t}>
+              <VerdictIcon ok />
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
   </StepFrame>
 )
