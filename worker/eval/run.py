@@ -208,7 +208,9 @@ def _graph(table: list[dict], path: Path) -> None:
     width = 0.8 / len(conds)
     for i, c in enumerate(conds):
         # 안 돌린 칸은 0 이 아니라 막대를 그리지 않는다 (재서 0 이 나온 칸은 0 으로 그린다, #239 리뷰)
-        pts = [(x, next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e), None))
+        # 순서 규칙까지 맞춰 고른다: 순서 없는 예전 agent 줄(선수 먼저)이 agent 막대로 잡히지 않게 (#286 리뷰)
+        pts = [(x, next((t["targets_known"] for t in main if t["condition"] == c and t["prereq_effect"] == e
+                         and t["order"] == cell_order(c)), None))
                for x, e in enumerate(EFFECTS)]
         pts = [(x, y) for x, y in pts if y is not None]
         ax.bar([x + i * width for x, _ in pts], [y for _, y in pts], width, label=c)
